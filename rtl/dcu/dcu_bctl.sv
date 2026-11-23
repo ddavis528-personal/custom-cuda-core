@@ -3,7 +3,9 @@
 // Spec: docs/design-snapshots/dcu-spec.md (live: CCV per-block architecture
 //       specs, DCU tab, "MA's Phase 2", slice 1 (rev 83): the stage table's
 //       D0 to D3 rows, "Bank arbitration", "LRU and the predictor", the
-//       module partition's dcu_bctl row and the port budgets).
+//       module partition's dcu_bctl row and the port budgets; slice 2 part 1
+//       (rev 112): "Waits", the miss-wait entries and their retry, with
+//       DI-34, DI-35 and DI-36 in the DI tab).
 //
 // One instance per bank (8). Slice 1's read lookups: the bank's arbitration
 // and its every-other-cycle cadence, the lookup queue, the way predictor's
@@ -30,16 +32,30 @@
 //   D2 = H+4  btag's result: a hit on another way than the predicted one is
 //        a mispredict and takes the H+5 access (due + 2). A hit updates the
 //        set's PLRU bits (a cycle on, from flops: CG-5). A loser that hit
-//        joins the queue (or takes the next access straight away when the
-//        queue is empty); one that missed, and a granted lookup that missed,
-//        leaves for a miss buffer (slice 2: av/mv below).
+//        joins the hit FIFO (or takes the next access straight away when it
+//        is empty). The lookup goes to dcu_mshr (dv, from flops; dcu_mshr
+//        takes dcu_btag's hit beside it), unless this bank holds a miss-wait
+//        waiter: then a miss waits here behind it (bank order).
 //   D3      the answer carry: the access two cycles back gave a valid
-//        answer (av: req_id, slot, late) or a miss (mv), from flops.
+//        answer (av: req_id, slot, late), from flops. dcu_mshr's outcome for
+//        a miss: placed, or waiting with its cause.
 //
-// The queue holds only hits: a loser's tag result is known before it waits,
-// so a waiter reads its line's way without prediction. A queued lookup keeps
-// that result; slice 2's fills and evictions, which can change it, are not
-// in slice 1.
+// Slice 2's entries (DI-36): every lookup holds one of the bank's 16 queue
+// entries (its MIU credit's) from D1 until it leaves, with the payload a
+// retry needs (line, req_id, op, exclusive, fold). A hit leaves at D3; a
+// miss leaves when dcu_mshr places it, or is marked miss-wait and joins the
+// bank's miss-wait FIFO. The FIFO's head is offered to dcu_mshr's retry
+// port (DI-35: rov and a 10-bit stamp of when it became head or last
+// waited, its payload from flops), granted a cycle on, and its outcome comes
+// at R+3: placed (it leaves) or waiting again (stamped anew). A credit goes
+// back as an entry leaves: answered (a waiter's access, a granted hit at D2)
+// or placed.
+//
+// The hit FIFO holds only hits: a loser's tag result is known before it
+// waits, so a waiter reads its line's way without prediction. A queued
+// lookup keeps that result; fills and evictions, which can change it, come
+// with tag-stale marking (slice 2, increment B), and so does a miss-wait
+// whose line has been filled (it looks up again instead of retrying).
 //
 // Stage tags: the bank's control state (grants, carries, the queue, PLRU,
 // the credit count) is one stage, 04, as a queue's entries and count are
@@ -65,6 +81,13 @@ module dcu_bctl #(
   parameter  int WF    = ccv_prov_pkg::CCV_DCU_WAYPRED_BITS,       // fold bits
   parameter  int QD    = ccv_prov_pkg::CCV_DCU_BANK_QDEPTH,        // queue, 16
   parameter  int AGE   = ccv_prov_pkg::CCV_DCU_BANK_AGE,           // 16
+  parameter  int WA    = ccv_prov_pkg::CCV_P_W_PA,                   // PA, 48
+  parameter  int WO    = $clog2(ccv_prov_pkg::CCV_P_LINE_BYTES),     // line offset, 7
+  parameter  int WC    = ccv_prelim_pkg::CCV_L_W_COH_OP,             // coh_op, 4
+  parameter  int WST   = 4,                                          // store-data index
+  parameter  int WRS   = 10,                                         // retry stamp (DI-35)
+  localparam int WL    = WA - WO,                                    // line, 41
+  localparam int WB    = NB,                                         // bank index, 3
   localparam int WR    = WS - NB,                                    // set in the bank, 6
   localparam int NSET  = 1 << WR,                                    // 64
   localparam int WWY   = WAYS > 1 ? $clog2(WAYS) : 1,                // 3
@@ -86,6 +109,13 @@ module dcu_bctl #(
   input  logic [SLOTS*WI-1:0]    rid_cc02h,
   input  logic [SLOTS*WF-1:0]    fold_cc02h,
   input  logic [SLOTS-1:0]       drop_cc02h,
+  // D1: the payload a retry needs (slice 2, DI-34 (3)), from each slot's
+  // dcu_cap flops: the line, pa_fold, coh_op and exclusive_req, kept in the
+  // lookup's queue entry.
+  input  logic [SLOTS*WL-1:0]    pa_cc03h,
+  input  logic [SLOTS*WF-1:0]    fold_cc03h,
+  input  logic [SLOTS*WC-1:0]    coh_cc03h,
+  input  logic [SLOTS-1:0]       excl_cc03h,
   // D2: the lookup's tag result, from dcu_btag.
   input  logic                   hit_cc04h,
   input  logic [WAYS-1:0]        way_cc04h,      // one-hot
@@ -112,9 +142,27 @@ module dcu_bctl #(
   output logic [WI-1:0]          arid_cc04h,
   output logic [WSL-1:0]         aslot_cc04h,
   output logic                   alate_cc04h,    // not its contracted slot
-  output logic                   mv_cc04h,       // a miss (slice 2: a miss buffer)
-  output logic [WI-1:0]          mrid_cc04h,
+  // D2: the lookup at D2, not dropped, for dcu_mshr (which takes dcu_btag's
+  // hit beside it: a miss is dv && !hit), unless this bank holds a
+  // miss-wait waiter, behind which it waits here (bank order).
+  output logic                   dv_cc04h,
   output logic [WSL-1:0]         mslot_cc04h,
+  // D3: dcu_mshr's outcome for this bank (its D2 lookup's or its retry's).
+  input  logic                   ov_cc04h,
+  input  logic                   owait_cc04h,
+  input  logic [1:0]             owhy_cc04h,     // 0 no entry, 1 list full, 2 filled, 3 bank order
+  // The retry (DI-35): the offer of the bank's oldest miss-wait waiter, its
+  // grant a cycle on, and its payload from flops while offered.
+  output logic                   rov_cc04h,
+  output logic [WRS-1:0]         rstp_cc04h,
+  input  logic                   rgv_cc04h,
+  input  logic [WB-1:0]          rgb_cc04h,
+  output logic [WL-1:0]          rpa_cc04h,
+  output logic [WI-1:0]          rrid_cc04h,
+  output logic [1:0]             rop_cc04h,      // 0 read, 1 atomic, 2 store
+  output logic                   rexcl_cc04h,
+  output logic [WF-1:0]          rfold_cc04h,
+  output logic [WST-1:0]         rsti_cc04h,
   // An entry credit back to MIU (ccv_dcu_miu_cred's ent_ret for this bank).
   output logic                   ent_ret_cc04h
 );
@@ -211,6 +259,7 @@ module dcu_bctl #(
   // SRAM address and ce start from flops.
   logic lv_cc02h;
   assign lv_cc02h = |pk_q_cc02h;
+  logic          plc_cc04h;            // a miss placed (a credit)
   logic [WR-1:0]  set_cc02h;
   logic [WI-1:0]  rids_cc02h;
   logic [WF-1:0]  folds_cc02h;
@@ -238,6 +287,7 @@ module dcu_bctl #(
     for (int r = 0; r < NSET; r++)
       if (set_cc02h == WR'(r)) fr_cc03h = fr_cc03h | ft_q_cc03h[r];
   end
+  logic [WQ-1:0] fei_cc04h;            // the D1 lookup's entry (the queue entries below)
   logic [WAYS-1:0] fm_cc03h;
   always_comb begin
     for (int w = 0; w < WAYS; w++)
@@ -301,14 +351,18 @@ module dcu_bctl #(
   logic lc_en_cc03h;
   assign lc_en_cc03h = v_cc03h;
   logic [WI-1:0]   rid_q_cc04h;
-  logic [WSL-1:0]  slot_q_cc04h;
+  (* keep *) logic [WSL-1:0] slot_q_cc04h;
   logic [WR-1:0]   set_q_cc04h;
   logic [WAYS-1:0] pw2_q_cc04h;
   logic            am2_q_cc04h;
+  logic [WQ-1:0]   ei_q_cc04h;
+  (* keep *) logic [WSL-1:0] mslot_q_cc04h;   // drives the output only
   always_ff @(posedge dcu_core_clk) begin
     if (lc_en_cc03h) begin
       rid_q_cc04h  <= rid_q_cc03h;
       slot_q_cc04h <= slot_q_cc03h;
+      ei_q_cc04h   <= fei_cc04h;
+      mslot_q_cc04h <= slot_q_cc03h;
       set_q_cc04h  <= set_q_cc03h;
       pw2_q_cc04h  <= lowest(fm_q_cc04h);
       am2_q_cc04h  <= am_q_cc04h;
@@ -351,7 +405,7 @@ module dcu_bctl #(
   logic [WTS-1:0]  qts_q_cc04h   [QD];
   logic [WQ-1:0]   qh_q_cc04h, qt_q_cc04h;
   logic [WQ:0]     qn_q_cc04h;
-  logic [WTS-1:0]  ts_q_cc04h;
+  logic [WRS-1:0]  ts_q_cc04h;      // the time: its low WTS bits the ages', all of it the retry's stamp
   // The answer carry (a cycle after the access; av a cycle on) and misses.
   logic            oq_q_cc04h;
   logic [WI-1:0]   orid_q_cc04h;
@@ -359,9 +413,6 @@ module dcu_bctl #(
   logic            av_q_cc04h, alate_q_cc04h;
   logic [WI-1:0]   arid_q_cc04h;
   logic [WSL-1:0]  aslot_q_cc04h;
-  logic            mv_q_cc04h;
-  logic [WI-1:0]   mrid_q_cc04h;
-  logic [WSL-1:0]  mslot_q_cc04h;
   // Entry credits: one a cycle, the rest owed.
   logic [WQ+1:0]   ow_q_cc04h;
   logic            er_q_cc04h;
@@ -380,12 +431,8 @@ module dcu_bctl #(
   assign hw_cc04h = enc(way_cc04h);
   logic mp_cc04h;
   assign mp_cc04h = wn_q_cc04h && hit_cc04h && ~|(way_cc04h & pw2_q_cc04h);   // both one-hot on a hit
-  logic wm_cc04h;
-  assign wm_cc04h = wn_q_cc04h && !hit_cc04h;
   logic lh_cc04h;
   assign lh_cc04h = lq_q_cc04h && hit_cc04h;
-  logic lm_cc04h;
-  assign lm_cc04h = lq_q_cc04h && !hit_cc04h;
   // The waiter: the queue's head; else the loser written next; else the
   // loser at D2 that hit (the bypass), youngest last.
   logic qne_cc04h;
@@ -420,7 +467,7 @@ module dcu_bctl #(
   logic [QD-1:0] eag_cc04h;
   logic [WTS-1:0] dt_cc04h [QD];
   always_comb begin
-    for (int e = 0; e < QD; e++) dt_cc04h[e] = ts_q_cc04h - qts_q_cc04h[e];
+    for (int e = 0; e < QD; e++) dt_cc04h[e] = ts_q_cc04h[WTS-1:0] - qts_q_cc04h[e];
   end
   always_comb begin
     for (int e = 0; e < QD; e++)
@@ -457,12 +504,14 @@ module dcu_bctl #(
   // The queue's write: the loser written last cycle unless it went now.
   logic push_cc04h;
   assign push_cc04h = pq_q_cc04h && !popp_cc04h;
-  // Entry credits: the access of a waiter or a new lookup that was not
-  // dropped (it read its line, or left as a miss); a loser that missed.
+  // Entry credits (an entry leaves the queue, answered or gone to MLC): a
+  // waiter's access; a granted lookup's hit at D2 (a mispredict's re-read
+  // reads from its own flops); a miss dcu_mshr placed, its D2 lookup's or
+  // its retry's (one outcome a bank a cycle).
   logic e1_cc04h;
-  assign e1_cc04h = (gn_q_cc04h && !drop_q_cc03h) || gq_q_cc04h;
+  assign e1_cc04h = gq_q_cc04h || (wn_q_cc04h && hit_cc04h);
   logic e2_cc04h;
-  assign e2_cc04h = lm_cc04h;
+  assign e2_cc04h = plc_cc04h;
   logic [WQ+1:0] ow_cc04h;
   assign ow_cc04h = ow_q_cc04h + (WQ+2)'(e1_cc04h) + (WQ+2)'(e2_cc04h);
 
@@ -492,7 +541,6 @@ module dcu_bctl #(
       ts_q_cc04h <= '0;
       oq_q_cc04h <= 1'b0;
       av_q_cc04h <= 1'b0;
-      mv_q_cc04h <= 1'b0;
       ow_q_cc04h <= '0;
       er_q_cc04h <= 1'b0;
       pu_q_cc04h <= 1'b0;
@@ -522,7 +570,6 @@ module dcu_bctl #(
       ts_q_cc04h <= ts_q_cc04h + 1'b1;
       oq_q_cc04h <= gq_q_cc04h || gr_q_cc04h;
       av_q_cc04h <= oq_q_cc04h || (wn_q_cc04h && hit_cc04h && !mp_cc04h);
-      mv_q_cc04h <= wm_cc04h || lm_cc04h;
       ow_q_cc04h <= ow_cc04h - (WQ+2)'(ow_cc04h != '0);
       er_q_cc04h <= ow_cc04h != '0;
       pu_q_cc04h <= (wn_q_cc04h || lq_q_cc04h) && hit_cc04h;
@@ -587,14 +634,6 @@ module dcu_bctl #(
       alate_q_cc04h <= oq_q_cc04h;
     end
   end
-  logic m_en_cc04h;
-  assign m_en_cc04h = wn_q_cc04h || lq_q_cc04h;
-  always_ff @(posedge dcu_core_clk) begin
-    if (m_en_cc04h) begin
-      mrid_q_cc04h  <= rid_q_cc04h;
-      mslot_q_cc04h <= slot_q_cc04h;
-    end
-  end
 
   // The loser that hit, its entry captured at D2 (under its own flop).
   logic p_en_cc04h;
@@ -604,7 +643,7 @@ module dcu_bctl #(
       prid_q_cc04h  <= rid_q_cc04h;
       pslot_q_cc04h <= slot_q_cc04h;
       pa_q_cc04h    <= {set_q_cc04h, hw_cc04h};
-      pts_q_cc04h   <= ts_q_cc04h + WTS'(AGE - 3);   // the deadline
+      pts_q_cc04h   <= ts_q_cc04h[WTS-1:0] + WTS'(AGE - 3);   // the deadline
     end
   end
 
@@ -619,6 +658,253 @@ module dcu_bctl #(
         qa_q_cc04h[e]    <= pa_q_cc04h;
         qts_q_cc04h[e]   <= pts_q_cc04h;
       end
+    end
+  end
+
+  // ---- the queue entries (slice 2: DI-34 (3), DI-36) --------------------------
+  // Every lookup the bank takes holds an entry from its D1 until it leaves
+  // (answered, or placed in a miss buffer): MIU's entry credit for it
+  // guarantees one (CCV_DCU_BANK_QDEPTH). The entry is the lowest free one,
+  // picked a cycle ahead; its payload is written at D1 from its slot's
+  // dcu_cap flops under the bank's own flop of the lookup (CG-5), and it is
+  // valid unless dropped. (D1, not D0: the pick is bank state, and the
+  // lookup's own D0 stage cannot read it.) At D3, from flops of D2: a hit leaves (a loser that hit
+  // waits in the hit FIFO above, with its own copy of what its access
+  // needs); a miss dcu_mshr placed leaves; one that waits, or one this bank
+  // held back because it holds a waiter (bank order), is marked miss-wait
+  // with its cause and joins the bank's miss-wait FIFO.
+  function automatic logic [WQ-1:0] encq(input logic [QD-1:0] oh);
+    encq = '0;
+    for (int e = 0; e < QD; e++) if (oh[e]) encq = encq | WQ'(e);
+  endfunction
+  function automatic logic [QD-1:0] lowq(input logic [QD-1:0] m);
+    for (int e = 0; e < QD; e++) begin
+      lowq[e] = m[e];
+      for (int j = 0; j < e; j++) lowq[e] = lowq[e] && !m[j];
+    end
+  endfunction
+  logic [QD-1:0]   ev_q_cc04h;       // valid
+  logic [QD-1:0]   mw_q_cc04h;       // miss-wait
+  logic [2*QD-1:0] mc_q_cc04h;       // its cause (owhy's code)
+  logic [QD-1:0]   fe_q_cc04h;       // the next entry: the lowest free (one-hot)
+  logic [WL-1:0]   epa_q_cc04h  [QD];
+  logic [WI-1:0]   erid_q_cc04h [QD];
+  logic [1:0]      eop_q_cc04h  [QD];
+  logic            eexc_q_cc04h [QD];
+  logic [WF-1:0]   efld_q_cc04h [QD];
+  assign fei_cc04h = encq(fe_q_cc04h);
+  // The D1 lookup's payload, from its slot's dcu_cap.
+  logic [WL-1:0] pas_cc03h;
+  logic [1:0]    ops_cc03h;
+  logic          excls_cc03h;
+  logic [WF-1:0] folds_cc03h;
+  always_comb begin
+    pas_cc03h   = '0;
+    ops_cc03h   = '0;
+    excls_cc03h = 1'b0;
+    folds_cc03h = '0;
+    // MIU's coh_op as the model decodes it (dcu_block.cpp, decode()).
+    for (int s = 0; s < SLOTS; s++)
+      if (pk_q_cc03h[s]) begin
+        pas_cc03h   = pas_cc03h | pa_cc03h[s*WL +: WL];
+        ops_cc03h   = ops_cc03h | (coh_cc03h[s*WC +: WC] == WC'(0) ? 2'd0 :
+                                   coh_cc03h[s*WC +: WC] == WC'(2) ? 2'd1 : 2'd2);
+        excls_cc03h = excls_cc03h | excl_cc03h[s];
+        folds_cc03h = folds_cc03h | fold_cc03h[s*WF +: WF];
+      end
+  end
+  for (genvar e = 0; e < QD; e++) begin : g_e
+    logic e_en_cc04h;
+    assign e_en_cc04h = v_cc03h && fe_q_cc04h[e];
+    always_ff @(posedge dcu_core_clk) begin
+      if (e_en_cc04h) begin
+        epa_q_cc04h[e]  <= pas_cc03h;
+        erid_q_cc04h[e] <= rid_q_cc03h;
+        eop_q_cc04h[e]  <= ops_cc03h;
+        eexc_q_cc04h[e] <= excls_cc03h;
+        efld_q_cc04h[e] <= folds_cc03h;
+      end
+    end
+  end
+
+  // D2's lookup to dcu_mshr, presented unless the bank holds a waiter by
+  // then: one marked by D3 this cycle, or the D2 lookup now held back that
+  // missed. (One that dcu_mshr makes wait at D3 this cycle is its own
+  // bank order: its outcome flops.) A copy drives the output (keep).
+  (* keep *) logic dv_q_cc04h;
+  (* keep *) logic dvo_q_cc04h;
+  // D3: the D2 lookup's record: there was one, it missed, it was presented.
+  logic d3v_q_cc04h, d3m_q_cc04h, d3p_q_cc04h;
+  logic [WQ-1:0] d3e_q_cc04h;
+  // The retry: granted (R+1), its D2 (R+2), its outcome (R+3).
+  logic gnt_cc04h;
+  assign gnt_cc04h = rgv_cc04h && rgb_cc04h == WB'(BANK);
+  logic rg1_q_cc04h, rg2_q_cc04h;
+  // The miss-wait FIFO: entry indices, oldest first.
+  logic [WQ*QD-1:0] mq_q_cc04h;
+  logic [WQ-1:0]    mh_q_cc04h, mt_q_cc04h;
+  logic [WQ:0]      mn_q_cc04h;
+  logic [WQ-1:0]    pwi_q_cc04h;      // the last push's entry, written a cycle on
+  // The head's offer, its stamp and its payload (from flops: DI-35).
+  logic             rov_q_cc04h;
+  logic [WRS-1:0]   hst_q_cc04h;
+  logic [WQ-1:0]    hix_q_cc04h;      // the head's entry
+  logic [WL-1:0]    ypa_q_cc04h;
+  logic [WI-1:0]    yrid_q_cc04h;
+  logic [1:0]       yop_q_cc04h;
+  logic             yexc_q_cc04h;
+  logic [WF-1:0]    yfld_q_cc04h;
+
+  // D3's events, from the record and dcu_mshr's outcome.
+  logic d3x_cc04h;                     // D3 holds a miss
+  assign d3x_cc04h = d3v_q_cc04h && d3m_q_cc04h;
+  logic hl_cc04h, mpl_cc04h, mwt_cc04h, rpl_cc04h, rwa_cc04h;
+  assign hl_cc04h  = d3v_q_cc04h && !d3m_q_cc04h;                       // a hit leaves
+  assign mpl_cc04h = d3x_cc04h && d3p_q_cc04h && ov_cc04h && !owait_cc04h;  // placed
+  assign mwt_cc04h = d3x_cc04h && (!d3p_q_cc04h || (ov_cc04h && owait_cc04h));  // waits
+  assign rpl_cc04h = rg2_q_cc04h && ov_cc04h && !owait_cc04h;            // the retry placed
+  assign rwa_cc04h = rg2_q_cc04h && ov_cc04h && owait_cc04h;             // waits again
+  assign plc_cc04h = mpl_cc04h || rpl_cc04h;
+  logic [1:0] cz_cc04h;                // a new waiter's cause
+  assign cz_cc04h = d3p_q_cc04h ? owhy_cc04h : 2'd3;
+
+  // The entries' state: one clock gate, enabled by an allocation, a D3
+  // record or a retry's outcome.
+  logic st_en_cc04h;
+  assign st_en_cc04h = rst_r01h || v_cc03h || d3v_q_cc04h || rg2_q_cc04h;
+  logic [QD-1:0]   evn_cc04h, mwn_cc04h;
+  logic [2*QD-1:0] mcn_cc04h;
+  always_comb begin
+    for (int e = 0; e < QD; e++) begin
+      logic al, fr, mk, rh;
+      al = v_cc03h && fe_q_cc04h[e];
+      rh = hix_q_cc04h == WQ'(e);
+      fr = (d3e_q_cc04h == WQ'(e) && (hl_cc04h || mpl_cc04h)) || (rpl_cc04h && rh);
+      mk = d3e_q_cc04h == WQ'(e) && mwt_cc04h;
+      evn_cc04h[e] = rst_r01h ? 1'b0 : al ? !drop_q_cc03h : fr ? 1'b0 : ev_q_cc04h[e];
+      mwn_cc04h[e] = rst_r01h ? 1'b0 : (al || fr) ? 1'b0 : mk ? 1'b1 : mw_q_cc04h[e];
+      mcn_cc04h[2*e +: 2] = mk ? cz_cc04h : (rwa_cc04h && rh) ? owhy_cc04h : mc_q_cc04h[2*e +: 2];
+    end
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    if (st_en_cc04h) begin
+      ev_q_cc04h  <= evn_cc04h;
+      mw_q_cc04h  <= mwn_cc04h;
+      mc_q_cc04h  <= mcn_cc04h;
+      fe_q_cc04h  <= lowq(~evn_cc04h);
+      mh_q_cc04h  <= rst_r01h ? '0 : mh_q_cc04h + WQ'(pop_m_cc04h);
+      mt_q_cc04h  <= rst_r01h ? '0 : mt_q_cc04h + WQ'(push_m_cc04h);
+      mn_q_cc04h  <= rst_r01h ? '0 : mnn_cc04h;
+      pwi_q_cc04h <= d3e_q_cc04h;
+    end
+  end
+
+  logic bwd_cc04h;                     // the D2 lookup now held back missed
+  assign bwd_cc04h = (wn_q_cc04h || lq_q_cc04h) && !dv_q_cc04h && !hit_cc04h;
+  logic dvn_cc04h;
+  assign dvn_cc04h = v_cc03h && !drop_q_cc03h && !(|mwn_cc04h) && !bwd_cc04h;
+  logic d3_en_cc04h;
+  assign d3_en_cc04h = wn_q_cc04h || lq_q_cc04h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (rst_r01h) begin
+      dv_q_cc04h  <= 1'b0;
+      dvo_q_cc04h <= 1'b0;
+      d3v_q_cc04h <= 1'b0;
+      rg1_q_cc04h <= 1'b0;
+      rg2_q_cc04h <= 1'b0;
+      rov_q_cc04h <= 1'b0;
+    end else begin
+      dv_q_cc04h  <= dvn_cc04h;
+      dvo_q_cc04h <= dvn_cc04h;
+      d3v_q_cc04h <= wn_q_cc04h || lq_q_cc04h;
+      rg1_q_cc04h <= gnt_cc04h;
+      rg2_q_cc04h <= rg1_q_cc04h;
+      rov_q_cc04h <= mnn_cc04h != '0 && !gnt_cc04h && !rg1_q_cc04h;
+    end
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    if (d3_en_cc04h) begin
+      d3m_q_cc04h <= !hit_cc04h;
+      d3p_q_cc04h <= dv_q_cc04h;
+      d3e_q_cc04h <= ei_q_cc04h;
+    end
+  end
+
+  // The miss-wait FIFO: a waiter is pushed at its D3; the head pops when its
+  // retry is placed. The pointers and the count are in the entries' clock
+  // gate (above), and so is the last D3's entry (pwi, read only the cycle
+  // after). The index is written a cycle on, under the bank's flop of the
+  // push (CG-5: the push is dcu_mshr's outcome), into the slot behind the
+  // tail, through a mask (one gate), and only if it changes the slot (the
+  // compare made at the push): a pop reads around it.
+  logic push_m_cc04h, pop_m_cc04h;
+  assign push_m_cc04h = mwt_cc04h;
+  assign pop_m_cc04h  = rpl_cc04h;
+  logic [WQ:0] mnn_cc04h;
+  assign mnn_cc04h = mn_q_cc04h + (WQ+1)'(push_m_cc04h) - (WQ+1)'(pop_m_cc04h);
+  logic pw_q_cc04h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (rst_r01h) pw_q_cc04h <= 1'b0;
+    else          pw_q_cc04h <= push_m_cc04h && d3e_q_cc04h != mq_q_cc04h[mt_q_cc04h*WQ +: WQ];
+  end
+  logic [WQ-1:0] mtw_cc04h;
+  assign mtw_cc04h = mt_q_cc04h - 1'b1;
+  logic mqw_en_cc04h;
+  assign mqw_en_cc04h = pw_q_cc04h;
+  logic [WQ*QD-1:0] mqm_cc04h;
+  always_comb begin
+    for (int e = 0; e < QD; e++)
+      mqm_cc04h[e*WQ +: WQ] = {WQ{mtw_cc04h == WQ'(e)}};
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    if (mqw_en_cc04h)
+      mq_q_cc04h <= (mq_q_cc04h & ~mqm_cc04h) | ({QD{pwi_q_cc04h}} & mqm_cc04h);
+  end
+
+  // The next head (after this cycle's push and pop): the one behind a popped
+  // head, or a waiter pushed into an empty FIFO; its payload is loaded and
+  // stamped, from flops (CG-5), at a retry's outcome (a wait again restamps
+  // the same head) or at a D3 miss into an empty FIFO.
+  logic [WQ-1:0] mh1_cc04h;
+  assign mh1_cc04h = mh_q_cc04h + 1'b1;
+  logic [WQ-1:0] nh_cc04h;
+  always_comb begin
+    if (pop_m_cc04h) nh_cc04h = mn_q_cc04h < (WQ+1)'(2) ? d3e_q_cc04h :
+                                pw_q_cc04h && mtw_cc04h == mh1_cc04h ? pwi_q_cc04h :
+                                mq_q_cc04h[mh1_cc04h*WQ +: WQ];
+    else             nh_cc04h = mn_q_cc04h == '0 ? d3e_q_cc04h : hix_q_cc04h;
+  end
+  logic hd_en_cc04h;
+  assign hd_en_cc04h = rg2_q_cc04h || (d3x_cc04h && mn_q_cc04h == '0);
+  logic [QD-1:0] nho_cc04h;
+  always_comb begin
+    for (int e = 0; e < QD; e++) nho_cc04h[e] = nh_cc04h == WQ'(e);
+  end
+  logic [WL-1:0] npa_cc04h;
+  logic [WI-1:0] nrid_cc04h;
+  logic [1:0]    nop_cc04h;
+  logic          nexc_cc04h;
+  logic [WF-1:0] nfld_cc04h;
+  always_comb begin
+    npa_cc04h = '0; nrid_cc04h = '0; nop_cc04h = '0; nexc_cc04h = 1'b0; nfld_cc04h = '0;
+    for (int e = 0; e < QD; e++)
+      if (nho_cc04h[e]) begin
+        npa_cc04h  = npa_cc04h  | epa_q_cc04h[e];
+        nrid_cc04h = nrid_cc04h | erid_q_cc04h[e];
+        nop_cc04h  = nop_cc04h  | eop_q_cc04h[e];
+        nexc_cc04h = nexc_cc04h | eexc_q_cc04h[e];
+        nfld_cc04h = nfld_cc04h | efld_q_cc04h[e];
+      end
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    if (hd_en_cc04h) begin
+      hix_q_cc04h   <= nh_cc04h;
+      hst_q_cc04h   <= ts_q_cc04h;
+      ypa_q_cc04h   <= npa_cc04h;
+      yrid_q_cc04h  <= nrid_cc04h;
+      yop_q_cc04h   <= nop_cc04h;
+      yexc_q_cc04h <= nexc_cc04h;
+      yfld_q_cc04h <= nfld_cc04h;
     end
   end
 
@@ -710,9 +996,16 @@ module dcu_bctl #(
   assign arid_cc04h    = arid_q_cc04h;
   assign aslot_cc04h   = aslot_q_cc04h;
   assign alate_cc04h   = alate_q_cc04h;
-  assign mv_cc04h      = mv_q_cc04h;
-  assign mrid_cc04h    = mrid_q_cc04h;
+  assign dv_cc04h      = dvo_q_cc04h;
   assign mslot_cc04h   = mslot_q_cc04h;
+  assign rov_cc04h     = rov_q_cc04h;
+  assign rstp_cc04h    = hst_q_cc04h;
+  assign rpa_cc04h     = ypa_q_cc04h;
+  assign rrid_cc04h    = yrid_q_cc04h;
+  assign rop_cc04h     = yop_q_cc04h;
+  assign rexcl_cc04h   = yexc_q_cc04h;
+  assign rfold_cc04h   = yfld_q_cc04h;
+  assign rsti_cc04h    = '0;                 // part 3's stores
   assign ent_ret_cc04h = er_q_cc04h;
   assign pvw_cc05h     = pvw_q_cc05h;
 
@@ -730,6 +1023,15 @@ module dcu_bctl #(
   `CCV_ASSERT(bctl_hit_needs_fold, !(wn_q_cc04h && hit_cc04h && !am2_q_cc04h))
   // The credits hold the queue to its depth (MA-25).
   `CCV_ASSERT(bctl_queue_depth, !(push_cc04h && !popq_cc04h && qn_q_cc04h == (WQ+1)'(QD)))
+  // Every lookup finds an entry (its credit), and dcu_mshr's outcomes come
+  // where expected, one a bank a cycle.
+  `CCV_ASSERT(bctl_entry_free, !v_cc03h || |fe_q_cc04h)
+  `CCV_ASSERT(bctl_outcome_d3, !(d3x_cc04h && d3p_q_cc04h) || ov_cc04h)
+  `CCV_ASSERT(bctl_outcome_retry, !rg2_q_cc04h || ov_cc04h)
+  `CCV_ASSERT(bctl_outcome_one, !(d3x_cc04h && d3p_q_cc04h && rg2_q_cc04h))
+  `CCV_ASSERT(bctl_outcome_stray, !ov_cc04h || (d3x_cc04h && d3p_q_cc04h) || rg2_q_cc04h)
+  `CCV_ASSERT(bctl_grant_offered, !gnt_cc04h || rov_q_cc04h)
+  `CCV_ASSERT(bctl_waiters, mn_q_cc04h == (WQ+1)'($countones(mw_q_cc04h)))
   `CCV_ASSERT(bctl_tag_onehot, !(wn_q_cc04h || lq_q_cc04h) || $onehot0(way_cc04h))
 
 endmodule

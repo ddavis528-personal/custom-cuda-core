@@ -1,8 +1,9 @@
 //===-- mshr_tb.cpp - dcu_mshr bench: miss buffers and the request to MLC --===//
 //
 // Drives dcu_mshr as its neighbours do: dcu_cap's lookups (the valid at D0,
-// the payload at D1), dcu_bctl's misses at D2 (one a bank, its slot naming
-// the staged payload) and its retries of each bank's miss-wait waiters (a
+// the payload at D1), dcu_bctl's lookups at D2 (dv, one a bank, its slot
+// naming the staged payload) with dcu_btag's hit (a miss is dv && !hit;
+// noise on banks with none), and its retries of each bank's miss-wait waiters (a
 // lead a cycle ahead, then the waiter's payload), dcu_fill's reads (the
 // fill's valid a cycle ahead, then its req_id) and frees, and MLC's credits.
 // The driver keeps each bank's waiters in order as dcu_bctl does, learning a
@@ -19,7 +20,8 @@
 // allocating its own entry (dcu-mshr-nomerge), and --control order a new
 // miss passing a waiting one of its bank (dcu-miss-reorder), and --control
 // credit a send gate that ignores last cycle's send (MA's condition on the
-// credit counted a cycle late); each must fail.
+// credit counted a cycle late), and --control retry a retry pick of the
+// lowest offering bank, not the oldest (DI-35); each must fail.
 //===----------------------------------------------------------------------===//
 #include "Vdcu_mshr.h"
 #include "verilated.h"
@@ -64,6 +66,7 @@ struct Req {   // a lookup's payload as dcu_mshr sees it
   unsigned rid = 0, op = 0, fold = 0, sti = 0;
   bool excl = false;
   uint64_t seq = 0;   // arrival order (the driver's)
+  unsigned stamp = 0; // when it became its bank's head, or last waited again (DI-35)
   uint32_t item() const { return (rid << 7) | (op << 5) | (unsigned(excl) << 4) | sti; }
 };
 
@@ -279,8 +282,9 @@ struct Bench {
   }
   void quiet() {
     dut->v_cc02h = 0;
-    dut->mv_cc04h = 0;
-    dut->rtv_cc03h = 0;
+    dut->dv_cc04h = 0;
+    dut->hit_cc04h = 0;
+    dut->rov_cc02h = 0;
     dut->mcr_cc04h = 0;
     dut->fv_cc03h = 0;
     dut->xv_cc04h = 0;
@@ -332,15 +336,29 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   m.nomerge = ctl == "nomerge";
   m.noorder = ctl == "order";
   m.stale = ctl == "credit";
+  const bool lowpick = ctl == "retry";
   b.reset();
   const bool rnd = scenario.empty();
   const unsigned n = rnd ? 60000 : scenario == "idle" ? 3000 : 4000;
 
   std::array<std::optional<Req>, kSlots> look1{}, look2{};   // at D1, at D2
   std::array<std::deque<Req>, kBanks> waiters;
-  std::array<unsigned, kBanks> lastLead{};                   // the cycle of each bank's last retry lead
-  std::optional<unsigned> retryNext;                         // a lead went out: present that bank's retry now
+  // The retry (DI-35): each bank (as dcu_bctl) offers its oldest waiter
+  // from a flop; the RTL grants the oldest offer a cycle on and takes the
+  // granted bank's payload a cycle later still, its D2. A bank learns of its
+  // grant a cycle late (its offer that cycle stands, and is passed over) and
+  // offers again once it has read its retry's outcome.
+  std::array<bool, kBanks> offer{};                          // this cycle's offers (the banks' flops)
+  std::array<bool, kBanks> inflight{};                       // granted, outcome unread
+  std::optional<unsigned> pick1, pick2;                      // the grants of 1 and 2 cycles back
+  std::optional<unsigned> retryNext;                         // the retry at D2 now
   std::array<bool, kBanks> pendNew{}, pendRetry{};           // presented last cycle, outcome unread
+  unsigned cov_regrant = 0, cov_retry_race = 0;
+  constexpr unsigned kStampMask = (1u << 10) - 1;
+  const auto older = [&](unsigned a, unsigned b2) {          // a strictly older than b2 (mod 2^10)
+    const unsigned dd = (b2 - a) & kStampMask;
+    return dd != 0 && dd <= (kStampMask >> 1);
+  };
   std::array<Req, kBanks> pendReq{};
   std::optional<Out> lastOut;
   std::optional<unsigned> sendPrev, fillLead, freeLead;
@@ -377,49 +395,63 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     std::array<std::optional<Req>, kBanks> rq{};
     std::array<bool, kBanks> isNew{};
     std::array<std::optional<Req>, kPorts> pq{};
-    {
-      const Req q = retryNext ? waiters[*retryNext].front() : rnd ? g.req() : Req{};   // noise when none (random runs)
-      if (retryNext) {
-        rq[*retryNext] = q;
-        pq[0] = q;
-      }
-      d.rpa_cc04h = q.pa;
-      d.rrid_cc04h = q.rid;
-      d.rop_cc04h = q.op;
-      d.rexcl_cc04h = q.excl;
-      d.rfold_cc04h = q.fold;
-      d.rsti_cc04h = 0;
+    retryNext = pick2;
+    if (retryNext) {
+      const Req q = waiters[*retryNext].front();
+      rq[*retryNext] = q;
+      pq[0] = q;
     }
+    // Each bank's offer (valid and its head's stamp) and its head's payload,
+    // held in its flops (noise when it has none, in random runs).
+    std::optional<unsigned> pick;
+    for (unsigned bk = 0; bk < kBanks; ++bk) {
+      const Req q = !waiters[bk].empty() ? waiters[bk].front() : rnd ? g.req() : Req{};
+      if (offer[bk]) d.rov_cc02h |= 1u << bk;
+      setBits(d.rstp_cc02h, bk * 10, 10, offer[bk] || rnd ? q.stamp & kStampMask : 0);
+      setBits(d.rpa_cc03h, bk * kWl, kWl, q.pa);
+      setInt(d.rrid_cc03h, bk * 6, 6, q.rid);
+      setInt(d.rop_cc03h, bk * 2, 2, q.op);
+      setInt(d.rexcl_cc03h, bk, 1, q.excl);
+      setInt(d.rfold_cc03h, bk * 4, 4, q.fold);
+      setInt(d.rsti_cc03h, bk * 4, 4, 0);
+      // The oldest offer, ties to the lowest bank; last cycle's grant is
+      // passed over.
+      if (!offer[bk] || (pick1 && *pick1 == bk)) {
+        if (offer[bk]) ++cov_regrant;
+        continue;
+      }
+      b.expect(c - q.stamp < 512, "an offered stamp under 512 cycles old (DI-35)");
+      if (!pick || (!lowpick && older(q.stamp & kStampMask, waiters[*pick].front().stamp & kStampMask))) pick = bk;
+    }
+    // dcu_btag's hit on every bank (noise where no lookup is presented).
+    d.hit_cc04h = rnd ? unsigned(g.below(256)) : 0;
     for (unsigned s = 0; s < kSlots; ++s) {
-      if (!look2[s] || g.below(10) < 4) continue;   // a hit: nothing for dcu_mshr
+      if (!look2[s]) continue;
+      const unsigned bk0 = unsigned(look2[s]->pa & 7);
+      if (g.below(10) < 4) {   // a hit: presented with its hit, or held behind a waiter
+        if (!(d.dv_cc04h >> bk0 & 1) && !rq[bk0] && waiters[bk0].empty() && !pendRetry[bk0] &&
+            !inflight[bk0]) {
+          d.dv_cc04h |= 1u << bk0;
+          d.hit_cc04h |= 1u << bk0;
+          setInt(d.mslot_cc04h, bk0 * 2, 2, s);
+        }
+        continue;
+      }
       Req q = *look2[s];
       q.seq = ++seqNo;
       const unsigned bk = unsigned(q.pa & 7);
       if (rq[bk] && isNew[bk]) continue;   // another slot's miss has the bank: this one hit
-      if (rq[bk] || !waiters[bk].empty() || pendRetry[bk]) {
+      if (rq[bk] || !waiters[bk].empty() || pendRetry[bk] || inflight[bk]) {
         waiters[bk].push_back(q);   // dcu_bctl holds it behind the bank's waiters
+        waiters[bk].back().stamp = c;
         continue;
       }
       rq[bk] = q;
       pq[s + 1] = q;
       isNew[bk] = true;
-      d.mv_cc04h |= 1u << bk;
+      d.dv_cc04h |= 1u << bk;
+      d.hit_cc04h &= ~(1u << bk);
       setInt(d.mslot_cc04h, bk * 2, 2, s);
-    }
-    // The retry lead for next cycle: one bank's oldest waiter (dcu_bctl's
-    // pick across the banks), a bank at most every third cycle.
-    std::optional<unsigned> retryLead;
-    {
-      const unsigned first = g.below(kBanks);
-      for (unsigned i = 0; i < kBanks && !retryLead; ++i) {
-        const unsigned bk = (first + i) % kBanks;
-        if (!waiters[bk].empty() && !(retryNext && *retryNext == bk) && !pendRetry[bk] &&
-            c >= lastLead[bk] + 3 && g.below(4) != 0) {
-          retryLead = bk;
-          lastLead[bk] = c;
-          d.rtv_cc03h = 1;
-        }
-      }
     }
     bool pres = bool(pq[0]);
     for (unsigned s = 0; s < kSlots; ++s) pres = pres || bool(look2[s]);
@@ -469,6 +501,8 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     if (freeApply) freePend[*freeApply] = false;
     creditPrev = credit;
     b.edge();
+    b.expect(bool(d.rgv_cc03h) == bool(pick), "retry grant valid");
+    if (pick) b.expect(d.rgb_cc03h == *pick, "retry grant bank");
     for (unsigned bk = 0; bk < kBanks; ++bk) {
       const bool ov = (d.ov_cc05h >> bk) & 1, ow = (d.owait_cc05h >> bk) & 1;
       b.expect(ov == o.ov[bk], "bank " + std::to_string(bk) + " outcome valid");
@@ -507,14 +541,19 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
         if (pendRetry[bk]) {
           if (!lastOut->ow[bk]) {
             waiters[bk].pop_front();
+            if (!waiters[bk].empty()) waiters[bk].front().stamp = c;   // the new head's (DI-35)
             ++cov_retry_placed;
+          } else {
+            waiters[bk].front().stamp = c;   // waits again: stamped anew (DI-35)
           }
+          inflight[bk] = false;
         } else if (pendNew[bk] && lastOut->ow[bk]) {
           // It joins in arrival order: ahead of anything queued since.
           std::deque<Req> &w = waiters[bk];
           auto at = w.begin();
           while (at != w.end() && at->seq < pendReq[bk].seq) ++at;
-          w.insert(at, pendReq[bk]);
+          at = w.insert(at, pendReq[bk]);
+          at->stamp = c;
           cov_ord += lastOut->why[bk] == 3;
         }
       }
@@ -523,18 +562,27 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       pendRetry[bk] = retryNext && *retryNext == bk;
       if (rq[bk]) pendReq[bk] = *rq[bk];
     }
-    retryNext = retryLead;
+    // The banks' offers for next cycle, from what each knows now: its grant
+    // (the RTL's output this cycle) and the outcomes it has read.
+    if (pick1) inflight[*pick1] = true;
+    for (unsigned bk = 0; bk < kBanks; ++bk) {
+      const bool was = offer[bk];
+      offer[bk] = !waiters[bk].empty() && !inflight[bk] && (g.below(8) != 0 || !rnd);
+      if (was && pick1 && *pick1 == bk && pick && *pick != bk) ++cov_retry_race;
+    }
+    pick2 = pick1;
+    pick1 = pick;
     lastOut = o;
     look2 = look1;
     look1 = look0;
   }
   if (rnd && (!m.merges || !m.allocs || !m.straight || !m.queued || !m.reads || !m.frees ||
-              !m.waits[0] || !m.waits[1] || !m.waits[2] || !m.waits[3] || !cov_retry_placed || !m.crStalls)) {
+              !m.waits[0] || !m.waits[1] || !m.waits[2] || !m.waits[3] || !cov_retry_placed || !m.crStalls || !cov_regrant)) {
     std::fprintf(stderr,
                  "mshr: coverage: merges %u allocs %u straight %u queued %u reads %u frees %u "
-                 "waits %u/%u/%u/%u retries placed %u credit stalls %u\n",
+                 "waits %u/%u/%u/%u retries placed %u credit stalls %u regrants passed over %u\n",
                  m.merges, m.allocs, m.straight, m.queued, m.reads, m.frees, m.waits[0], m.waits[1],
-                 m.waits[2], m.waits[3], cov_retry_placed, m.crStalls);
+                 m.waits[2], m.waits[3], cov_retry_placed, m.crStalls, cov_regrant);
     if (ctl.empty()) ++b.fails;
   }
   const std::string tag = ctl.empty() ? ":" : " control " + ctl + ":";
@@ -542,6 +590,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
               rnd ? "random" : scenario.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
               b.fails ? "FAIL" : "PASS");
   (void)cov_ord;
+  (void)cov_retry_race;
   return b.fails ? 1 : 0;
 }
 
@@ -556,7 +605,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i) {
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "nomerge" && ctl != "order" && ctl != "credit") {
+      if (ctl != "nomerge" && ctl != "order" && ctl != "credit" && ctl != "retry") {
         std::fprintf(stderr, "mshr: unknown control %s\n", ctl.c_str());
         return 2;
       }
