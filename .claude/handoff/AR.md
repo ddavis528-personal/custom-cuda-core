@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 405 .662302 (tab rev 409).
-  - **The next AR row inserts after .662302**, labelled AR 406.
+  - Latest row: AR 406 .664201 (tab rev 410).
+  - **The next AR row inserts after .664201**, labelled AR 407.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 409, OA 468, TI 517, MA 157, DI 41,
+- **Bookmarks** (revs read through): AR 410, OA 471, TI 517, MA 157, DI 41,
   MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
   sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
   tab rev 82, MIU tab rev 161.
@@ -223,6 +223,15 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000f. **OA 469 pc_kept on ccv_ooe_rau_drained (AR 406 .664201, 11-23; TI, RA,
+   OA rung).** Confirmed; PC-on-alloc stays rejected. pc_kept=1 iff nothing
+   retired since the slot's alloc (launch/restore-alloc) and nothing in
+   ROB/decq (held stragglers incl.); RAU resumes at its alloc PC. Exactness
+   rests on "arch PC moves only at retire" (FET's predictor leaves start_pc
+   without a ROB redirect, so OA's fetch argument was not the reason). Asked
+   RA where RAU holds a restored warp's PC until drained (parked record kept
+   valid vs a per-slot VA register, which would be the rejected flop moved).
+   Waiting on RA's row; TI applies the text.
 000e. **MA-30 way predictor (AR 405 .662302, 11-22; MA, TI rung).** Agreed
    k=4 fold table (16,384 flops in dcu_bctl), pa_fold on ccv_miu_dcu_req,
    HIT 8. Price vs k=5: S1 -0.02, cm32priv -0.17, cm128priv +0.30%; vs B9
