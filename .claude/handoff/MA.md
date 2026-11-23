@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 417, OA 479, IS 201, CP 160, OI 405, RA 158, RI 91, MA 194, DA 132, MI 50, DI 85, TI 541.
+Conventions 20, AR 417, OA 479, IS 201, CP 160, OI 405, RA 158, RI 91, MA 195, DA 132, MI 51, DI 85, TI 541.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -107,6 +107,7 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - DI-42 SPECIFIED (MA rev 182-183, DCU tab rev 121): fold-table margin (OA-479 (b), DA adopted) held by re-read not bypass: margin lookups take mispredict re-read (late, due+2; CHECK<=2), colliding fill re-snapshot (CHECK<=2); bins, control dcu-ft-margin. DCU snapshot due at rev 121. Bookmark DI 78, OA 479.
 - DI-43 (MA rev 184, DCU tab rev 122): fill re-snapshot rule: slot w/o way, one snapshot/cycle oldest-first outside margin, reservation held until write visible (closes grant-cycle gap; bctl_one_fill_per_way + control), wait CHECK <= 2*(slots-1)+1; DI to confirm < 32 with DI-37 bound. Bookmark DI 79. DCU snapshot rev 122.
 - MA-32: TI done (16943021, lands with TI's next gate-push; TI rev 540): CCV-L23 admits by MA under rtl/miu, rtl/dcu with a check-1d control. Close MA-32 when landed; TI may still answer the two-writer-form FYI. Bookmark TI 541; TI 541: the two-writer table form uses the same scope-aware signer list.
+- MI-26 ANSWERED (MA rev 195): (D) adopted, agu8 24.5 NGD / 412 flops, MI-24 (A) withdrawn, mw dropped; local b unsigned 17-bit (O-69) -> no ctx carry, C one add per slot in miu_form; agu8 out 0 / A2 in 0 (if flops hold chosen field); grp out 12, a2 from grp arr 12 restored. Owed: miu_lead measurement + leader VPN add placement. MIU tab rev 181. Bookmark MI 51, MA 195. MIU snapshot rev 181.
 - DI-47 ANSWERED (MA rev 194, DCU tab rev 126): fold-table port 4 credits (round trip) + 2 entries confirmed; overflow control = 5 credits (must reach 3rd entry); port wait max 2 seen. MA signs port-level L23 entry (by MA) when TI's two-writer form lands -- DI sends text. Bookmark DI 85, MA 194. DCU snapshot rev 126.
 - DI-46 ANSWERED (MA rev 193, DCU tab rev 125): fold-table port write buffer in dcu_bctl + credits to driver; depth max(2, credit round trip); fwcr_cc03h flop pulse cycle after entry writes; counter starts at depth; assert no overflow (control depth+1), CHECK wait <= 4 + occupancy. Bookmark DI 84, MA 193. DCU snapshot rev 125.
 - DI-45 rev 83 ANSWERED (MA rev 192, DCU tab rev 124): fold-table port = port writes (fwe/fws/fwy/fwf) + fill at W; held fill yields at most once then wins -> DI-37 22 < 32, port-write wait <= 4 (fill slots); CHECKs+bins; control always-yield under flood; no invalidation rate limit, part 4 must not time the port. Bookmark DI 83, MA 192. DCU snapshot rev 124.
