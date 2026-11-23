@@ -368,7 +368,10 @@ closed. Sweep 11-23: nothing for RA. Watch AR 410 / TI-531: CCV_P_TIMEOUT_MEMOP 
 80102643 (6), 9eb50716 (3), miu-dcu-spec (3), 58815650 (18, resolve), 5e4d6c70 (8, resolve): all branches merged.
 RA 159 (11-23): TI-537 common credit ends (cr_src/cr_go/cr_dst in rtl/common, Daniel's ask relayed by TI; no DA
 row) confirmed with 5 corrections: wire-valid 1-flop mode + width param, release-count owed counter, parent's flopped
-reset, CG-5 of credit_in stated, flopped stall. RCU migration (RI): rcu_kill pulses + CSR, rcu_mig counts/FIFO/dm_cred.
+reset, CG-5 of credit_in stated, flopped stall. RCU migration (RI): rcu_kill pulses + CSR, rcu_mig counts/FIFO/dm_cred. TI-539 took all 5.
+TI-541 (Daniel via TI, no DA row; AR 415 (5) option A): credit/stall -> cr_go -> same channel's valid at a flopped
+sending end is a named exception, timed as the port-budget pair (credit/stall at 0), never NGD-5; depths stay 4+2N.
+When RI moves rcu_mig's rcu_pca_mig sender onto cr_go, RA sets ccv_rcu's boundary budgets for that pair (architect's).
 Sweep 11-22: nothing for RA. DA 129-131 (OOE: mempl waiver, redirect lag D, L23 table form). AR 403-405: CE corrected
 by MIU as a later ccv_miu_rcu_data write then completion; way mispredict = AR 368 miss then late completion at due+2,
 same req_id; L1_HIT 8 and L1_ECC 1 unchanged. Merged 183cc441 (126), 5e4d6c70 (10), 9eb50716 (5), c22116ce (2),
