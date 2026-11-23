@@ -492,6 +492,19 @@ void Core::serveLook(const Req &r, uint64_t born) {
     // fill's answer is the second. dcu-ue-noanswer drops the refetch;
     // dcu-ue-stale keeps the line and looks it up again (no fill).
     ue_open_[{r.slot, r.req_id}] = now_;
+    // The first answer (TI-528, MI-20): the line as read, with a double-bit
+    // syndrome in its first word, on the lookup's own slot. MIU withholds
+    // the completion and keeps the req_id for the second.
+    Rsp f = rspFor(r);
+    f.data = true;
+    f.line = w->data;
+    f.flip = 0;
+    f.flip2 = 1;
+    f.hit = true;
+    f.ue_first = true;
+    if ((late || r.reread) && c_.brk != "late-own-slot") f.bank = int(b);
+    f.born = born + dOff();
+    respond(now_ + launchOff(), f);
     if (c_.brk == "dcu-ue-noanswer") return;
     if (c_.brk == "dcu-ue-stale") {
       w->valid = true;
@@ -1764,6 +1777,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   // CHECKs (part 4): a recovered UE's second answer comes from a fill, and
   // comes (within kUeAnswerBound cycles).
   for (const Rsp &r : o.rsps) {
+    if (r.ue_first) continue;
     auto it = ue_open_.find({r.slot, r.req_id});
     if (it == ue_open_.end() || it->second == t) continue;
     if (r.fid < 0) h_.fail(fmt("dcu: a recovered UE's second answer (req_id %llu) is not a fill's", r.req_id));

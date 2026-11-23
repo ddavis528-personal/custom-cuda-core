@@ -227,6 +227,7 @@ private:
       // control, codes the bad line instead, so MIU's syndrome misses it.
       Line ln = getLine(b, field(c.dcu_miu, "read_data").lsb);
       if (r.flip >= 0) ln[unsigned(r.flip) / 8] ^= uint8_t(1u << (r.flip % 8));
+      if (r.flip2 >= 0) ln[unsigned(r.flip2) / 8] ^= uint8_t(1u << (r.flip2 % 8));
       putCheckBits(b, field(c.dcu_miu, "check_bits").lsb,
                    k_.brk == "dcu-ecc-recode" ? ln : getLine(b, field(c.dcu_miu, "read_data").lsb));
       putLine(b, field(c.dcu_miu, "read_data").lsb, ln);

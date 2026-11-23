@@ -82,6 +82,10 @@ struct Rsp {
   /// The stored bit in error under `line` (MA-28 (c), AR 401), or -1: the
   /// block sends the check bits of `line` as written and this bit flipped.
   int flip = -1;
+  /// A second stored bit in error, or -1: with `flip`, a double-bit syndrome
+  /// in one word, a recovered UE's first answer (part 4; TI-528, MI-20).
+  int flip2 = -1;
+  bool ue_first = false;   ///< a recovered UE's first answer; the fill's is its second
   uint64_t tid = 0;
   /// A late answer read from a bank (a queue waiter or a re-read): it takes
   /// any free slot, lowest bank first, and holds its bank until it leaves
