@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 407 .665996 (tab rev 411).
-  - **The next AR row inserts after .665996**, labelled AR 408.
+  - Latest row: AR 408 .667395 (tab rev 412).
+  - **The next AR row inserts after .667395**, labelled AR 409.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 411, OA 471, TI 517, MA 157, DI 41,
+- **Bookmarks** (revs read through): AR 412, OA 474, TI 517, MA 157, DI 41,
   MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
   sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
   tab rev 82, MIU tab rev 161.
@@ -236,6 +236,9 @@ Credit rules (TI-49):
    non-provisional restores can't hit pc_kept (RAU's retired_ < p_base_+P
    guard). Stub's demote() must stop clearing parked[w].resume_pc. TI
    applies; nothing owed. LESSON: RA = RCU architect, not RAU.
+   AR 408 .667395: took OA 471's 'iff' (pc_kept = !rsa, no retire since
+   alloc; ROB/decq term dropped, per OA 470's RTL); OA 472 crossed, answered
+   by AR 407. Final text for TI: AR 406 (1) as amended + AR 407 (5). CLOSED.
 000e. **MA-30 way predictor (AR 405 .662302, 11-22; MA, TI rung).** Agreed
    k=4 fold table (16,384 flops in dcu_bctl), pa_fold on ccv_miu_dcu_req,
    HIT 8. Price vs k=5: S1 -0.02, cm32priv -0.17, cm128priv +0.30%; vs B9
