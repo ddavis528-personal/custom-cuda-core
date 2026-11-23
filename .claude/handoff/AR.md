@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 408 .667395 (tab rev 412).
-  - **The next AR row inserts after .667395**, labelled AR 409.
+  - Latest row: AR 409 .668434 (tab rev 413).
+  - **The next AR row inserts after .668434**, labelled AR 410.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 412, OA 474, TI 517, MA 157, DI 41,
+- **Bookmarks** (revs read through): AR 413, OA 474, TI 517, MA 157, DI 41,
   MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
   sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
   tab rev 82, MIU tab rev 161.
@@ -223,6 +223,12 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000g. **TI-527 probe ack (AR 409 .668434, 11-23; TI, MA rung).** ack=1 iff
+   dirty_data carries the line (DI's reading); one ack per probe, its valid
+   the acknowledgement; a dirty line reaches MLC exactly once (ack or
+   writeback); a writeback-buffer hit answers ack=1 and cancels that
+   writeback; already sent -> ack=0. MLC-stub CHECK, controls, bins. MA owns
+   DCU's side and may overrule; wait for MA's row before writing more.
 000f. **OA 469 pc_kept on ccv_ooe_rau_drained (AR 406 .664201, 11-23; TI, RA,
    OA rung).** Confirmed; PC-on-alloc stays rejected. pc_kept=1 iff nothing
    retired since the slot's alloc (launch/restore-alloc) and nothing in
