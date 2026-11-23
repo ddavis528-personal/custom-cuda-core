@@ -2737,6 +2737,28 @@ for spec in "corrupt-map:CHECK parked warp 0 R1 lane" "mig-row-order:CHECK parke
     bad "--break $brk" "PCA's copy was not refused: $(grep '^KERNEL' "$B/kernel_demote_$brk.log")"
   fi
 done
+# A narrow register parks at its width (O-38; OI-200, OA 469): narrowadd
+# demoted at cycle 100 has R2 at 16 bits, so PCA holds its element with zeros
+# above, while ccv-sim keeps the slice's old upper half. The parked check
+# compares within ccv-sim's width. parked-full-width compares all 32 bits.
+log="$B/kernel_narrowadd_park100.log"
+CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:100 "$SKEL" --kernel build/oracle/narrowadd/oracle.jsonl \
+  --cycles 20000 >"$log" 2>&1
+w=$(ok "$log")
+if [ -z "$w" ]; then
+  say "narrowadd parked at 100, R2 narrow == ccv-sim" "PASS"
+else
+  bad "narrowadd parked at 100" "$w"
+fi
+log="$B/kernel_narrowadd_park100_full.log"
+CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:100 "$SKEL" --kernel build/oracle/narrowadd/oracle.jsonl \
+  --cycles 20000 --break parked-full-width >"$log" 2>&1
+n=$(grep -c "^CHECK parked warp 0 R2 lane" "$log")
+if [ "$n" -gt 0 ]; then
+  say "--break parked-full-width: R2 above its width" "PASS ($n)"
+else
+  bad "--break parked-full-width" "went unnoticed: $(grep '^KERNEL' "$log")"
+fi
 
 # DEC's decode fields (A-75, TI-1): OOE renames and waits on the sources
 # src_valid marks, and nothing else, so a real read DEC hides is read stale.

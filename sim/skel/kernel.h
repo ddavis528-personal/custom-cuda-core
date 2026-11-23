@@ -274,7 +274,7 @@ struct Kernel {
       // A uop DEC held past a demotion's walk (AR 395).
       "dec_hold",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
-      "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
+      "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote", "pc_kept_launch", "pc_kept_restore",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
       "pred_xfer", "pred_merge", "pred_copy", "crack_split",

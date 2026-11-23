@@ -118,12 +118,22 @@ void Kernel::checkParked(unsigned w) {
   if (pk.resume_pc != pc)
     fail("parked warp %u resumes at %llx; ccv-sim's next after %u retired is %llx", w,
          (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
+  // Each register compared within the width ccv-sim gives it after the n
+  // retired (O-38; OI-200, OA 469): above a narrow element the row is zero,
+  // while ccv-sim keeps the bits the slice last held. The width is ccv-sim's,
+  // never the one OOE's map reports, so a wrong width cannot hide a value.
+  // parked-full-width: every register at 32 bits, as before.
+  const uint32_t widths = n < o.recs.size() ? o.recs[n].widths
+                          : o.recs.empty()  ? 0u
+                                            : o.recs.back().widths;
   unsigned bad = 0;
   for (unsigned a = 0; a != kArchGprs; ++a) {
     auto row = pk.rows.find(a);   // one row per register, Ra as row a (TI-25 (1))
+    const uint32_t em =
+        brk == "parked-full-width" ? ~0u : elemMask(widths >> (2 * a) & 3u);
     for (unsigned l = 0; l != kLanes; ++l) {
       const uint32_t got = row == pk.rows.end() ? 0xbad0bad0u : row->second[l];
-      if (got != want[a][l] && bad++ < 4)
+      if ((got & em) != (want[a][l] & em) && bad++ < 4)
         fail("parked warp %u R%u lane %u: PCA %08x, ccv-sim %08x", w, a, l, got, want[a][l]);
     }
   }
@@ -5960,7 +5970,12 @@ private:
     ready_.erase(w);   // the demotion's own discard reports it again
     syu_ready_.erase(w);
     syuOp(kSyuDemote, w);   // SYU answers its waits to RAU from now (TI-40)
+    // The parked record starts afresh, but keeps its PC: a restored warp's
+    // resume_pc stays valid to its next drained, which may say pc_kept
+    // (AR 407 (3)).
+    const uint64_t kept_pc = k_.parked.count(w) ? k_.parked[w].resume_pc : 0;
     k_.parked[w] = Kernel::Parked();
+    k_.parked[w].resume_pc = kept_pc;
     Bits d = msgOf(c.rau_demote);
     put(d, c.rau_demote, "warp_id", w);
     put(d, c.rau_demote, "squash_to_retirement", 1);
@@ -5985,7 +6000,22 @@ private:
     }
     if (exited_.count(w))
       k_.fail("rau: warp %u drained after its exit retired, where OOE refuses (TI-25)", w);
-    k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
+    // pc_kept (AR 406, AR 408): nothing of the warp retired since its slot
+    // was allocated, so drained's resume_pc is don't-care and RAU resumes it
+    // at the PC it allocated the slot with: the grid's start_pc after a
+    // launch, the restored resume_pc after a restore (AR 407). The parked
+    // check then holds that PC to ccv-sim's. rau-pc-from-drained: RAU takes
+    // drained's resume_pc anyway.
+    if (get(m, c.ooe_drained, "pc_kept") && k_.brk != "rau-pc-from-drained") {
+      if (restored_.count(w)) {
+        k_.hit("pc_kept_restore");   // the record's PC, left as it was
+      } else {
+        k_.parked[w].resume_pc = k_.orcs[w].code_base + k_.orcs[0].entry;
+        k_.hit("pc_kept_launch");
+      }
+    } else {
+      k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
+    }
     if (places_.empty()) {
       k_.fail("rau: warp %u drained, and PCA has no free place", w);
     } else {
