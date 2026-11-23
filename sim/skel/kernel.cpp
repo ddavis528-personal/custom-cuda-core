@@ -5970,7 +5970,12 @@ private:
     ready_.erase(w);   // the demotion's own discard reports it again
     syu_ready_.erase(w);
     syuOp(kSyuDemote, w);   // SYU answers its waits to RAU from now (TI-40)
+    // The parked record starts afresh, but keeps its PC: a restored warp's
+    // resume_pc stays valid to its next drained, which may say pc_kept
+    // (AR 407 (3)).
+    const uint64_t kept_pc = k_.parked.count(w) ? k_.parked[w].resume_pc : 0;
     k_.parked[w] = Kernel::Parked();
+    k_.parked[w].resume_pc = kept_pc;
     Bits d = msgOf(c.rau_demote);
     put(d, c.rau_demote, "warp_id", w);
     put(d, c.rau_demote, "squash_to_retirement", 1);
@@ -5995,7 +6000,22 @@ private:
     }
     if (exited_.count(w))
       k_.fail("rau: warp %u drained after its exit retired, where OOE refuses (TI-25)", w);
-    k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
+    // pc_kept (AR 406, AR 408): nothing of the warp retired since its slot
+    // was allocated, so drained's resume_pc is don't-care and RAU resumes it
+    // at the PC it allocated the slot with: the grid's start_pc after a
+    // launch, the restored resume_pc after a restore (AR 407). The parked
+    // check then holds that PC to ccv-sim's. rau-pc-from-drained: RAU takes
+    // drained's resume_pc anyway.
+    if (get(m, c.ooe_drained, "pc_kept") && k_.brk != "rau-pc-from-drained") {
+      if (restored_.count(w)) {
+        k_.hit("pc_kept_restore");   // the record's PC, left as it was
+      } else {
+        k_.parked[w].resume_pc = k_.orcs[w].code_base + k_.orcs[0].entry;
+        k_.hit("pc_kept_launch");
+      }
+    } else {
+      k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
+    }
     if (places_.empty()) {
       k_.fail("rau: warp %u drained, and PCA has no free place", w);
     } else {
