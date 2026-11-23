@@ -182,6 +182,8 @@ public:
   unsigned bankOf(uint64_t pa) const;
   /// The line's way, or -1 (tests).
   int wayOf(uint64_t pa) const;
+  /// pa's set's PLRU victim way (tests).
+  unsigned victimWay(uint64_t pa) const { return plruVictim(size_t((pa / kLineBytes) % c_.sets)); }
   bool dirtyLine(uint64_t pa) const;
   bool ownedLine(uint64_t pa) const;
 
@@ -223,6 +225,15 @@ private:
     plruTouch(i / c_.ways, unsigned(i % c_.ways));
   }
   void plruTouch(size_t set, unsigned way);
+  /// A lookup's hit touches its way a cycle after its D2 (D + 3), winner or
+  /// bank-conflict loser alike, and only then (dcu_bctl: pu_q, MA's DI-26
+  /// answer): a queued serve and a mispredict's re-read touch nothing more.
+  /// Kept by way, as the RTL's update is: (cycle, way index). Only the PLRU
+  /// bits wait: a way's recency (`used`, the wp-mru predictor's) moves at
+  /// serve, as before.
+  std::multimap<uint64_t, size_t> touch_at_;
+  void touchLater(const Way &w) { touch_at_.emplace(now_ + 3, size_t(&w - l1_.data())); }
+  void plruTouchWay(size_t i) { plruTouch(i / c_.ways, unsigned(i % c_.ways)); }
   unsigned plruVictim(size_t set) const;
   unsigned fold(uint64_t pa) const;
   /// The way the predictor names for pa (nullptr with no fold match);

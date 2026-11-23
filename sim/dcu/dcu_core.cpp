@@ -424,7 +424,15 @@ void Core::serveLook(const Req &r, uint64_t born) {
   // recent, and a recent-way predictor would always name it (TI, MI-9 (3):
   // the control below never fired).
   const bool wp_miss = c_.wp_bits && !predicted(r.pa);
-  touch(*w);
+  // A granted lookup's touch, at D + 3 (a loser's was set when it lost;
+  // a re-read's with its first access). plru-at-serve, the control, touches
+  // now, at serve, as the model did before slice 1.
+  if (c_.brk == "plru-at-serve") {
+    touch(*w);
+  } else {
+    w->used = ++tick_;
+    if (!late && !r.reread) touchLater(*w);
+  }
   ++st_.hits;
   if (!miss_.empty()) h_.hit("hit_under_miss");
   Rsp s = rspFor(r);
@@ -622,6 +630,12 @@ void Core::schedule() {
       h_.hit(r.slot == 0 ? "dcu_bank_loser_s0" : r.slot == 1 ? "dcu_bank_loser_s1"
              : r.slot == 2 ? "dcu_bank_loser_s2" : "dcu_bank_loser_s3");
       bq_[b].push_back(Acc{Acc::Look, now_ - dOff(), now_, r.pa, r, 0, {}});
+      // Its tag result is known at its D2: a hit touches at D + 3 (dcu_bctl
+      // updates PLRU for every hit, a loser included; MA's DI-26 answer).
+      if (c_.brk != "plru-at-serve" && r.op != Op::Store) {
+        const Way *w = find(r.pa);
+        if (w && (r.op == Op::Read || w->owned)) touchLater(*w);
+      }
     }
   }
 }
@@ -896,6 +910,9 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   ports_ = &p;
   notices_.clear();
   Out o;
+  // Hits' PLRU touches due now (D + 3), before this cycle's victim picks.
+  for (auto it = touch_at_.begin(); it != touch_at_.end() && it->first <= now_; it = touch_at_.erase(it))
+    plruTouchWay(it->second);
   // A fill waits in its fill buffer while every way of its set is held by a
   // pending write or a deferred store (no victim yet); fills leave in order.
   if (fill) fills_.push_back(*fill);
@@ -991,6 +1008,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   o.notices = notices_;
   // MA-25's credit returns: at most one of each a bank a cycle.
   for (unsigned b = 0; b != c_.banks; ++b) {
+    h_.peak("dcu_ent_owed_max", ent_owed_[b]);   // dcu_bctl's owed counter (MA's DI-26 answer)
     if (ent_owed_[b]) { --ent_owed_[b]; o.ent_ret |= uint8_t(1u << b); h_.hit("dcu_ent_ret"); }
     if (std_owed_[b]) { --std_owed_[b]; o.std_ret |= uint8_t(1u << b); h_.hit("dcu_std_ret"); }
     // The queue's bounds, which MIU's credits keep (MA-25).

@@ -338,6 +338,36 @@ int main(int argc, char **argv) {
     EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
   });
 
+  // A hit touches PLRU a cycle after its D2 (D + 3), a bank-conflict loser
+  // included, and only then (dcu_bctl's pu_q; MA's DI-26 answer). After
+  // ways 0-7 fill and are read in order the victim is way 0; three reads of
+  // the set in one cycle (one bank: two lose) touch ways 0, 4 and 2, each
+  // moving the victim (to 4, 2, then 6). All three touch at the winner's
+  // D + 3, so the victim moves once, 0 to 6. plru-at-serve, the control,
+  // touches at serve: the winner at D, the losers as each is served.
+  for (bool ctl : {false, true}) {
+    test(ctl ? "plru-at-serve-control" : "plru-touch-at-d3", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "plru-at-serve";
+      Bench b(c);
+      const uint64_t stride = uint64_t(Config{}.sets) * kLineBytes, base = 0x40000;
+      for (unsigned i = 0; i != 8; ++i) warm(b, base + i * stride, 60 + i);
+      const unsigned v0 = b.core.victimWay(base);
+      b.reqs[b.t] = {rd(0, 1, base), rd(1, 2, base + 4 * stride), rd(2, 3, base + 2 * stride)};
+      std::vector<unsigned> moves;
+      unsigned v = v0;
+      for (uint64_t end = b.t + 40; b.t < end;) {
+        b.run(b.t + 1);
+        const unsigned n = b.core.victimWay(base);
+        if (n != v) moves.push_back(n);
+        v = n;
+      }
+      const bool ok = v0 == 0 && moves.size() == 1 && moves[0] == 6;
+      EXPECT(b.rsp(1) && b.rsp(2) && b.rsp(3) && b.rsp(3)->hit, "all three hit");
+      EXPECT(ctl ? !ok : ok, "victim %u, then %zu moves (last %u)", v0, moves.size(), moves.empty() ? 99u : moves.back());
+    });
+  }
+
   // Eviction: a dirty victim is read from its bank and written back whole.
   test("evict-writeback", [] {
     Config c = cfg(9);
