@@ -39,4 +39,7 @@ control miu_cap early
 bench miu_pair test/miu/cg-build.sh miu_pair "$B/miu_pair" -- "$B/miu_pair/tb"
 control miu_pair arrival
 control miu_pair lag
+bench miu_mq test/miu/cg-build.sh miu_mq "$B/miu_mq" -- "$B/miu_mq/tb"
+control miu_mq slot
+control miu_mq discard
 exit $fail

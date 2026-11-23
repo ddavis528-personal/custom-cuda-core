@@ -30,10 +30,15 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-21 (Sat): AR 406, OA 466, IS 201, TI 511, OI 399, CP 160, RA 157, RI 91,
-  MA 155, MI 35, DI 35, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 516 (TI-517: MA-29 landed bc9d61ff on TI's ccr-183cc441, K=128 in stub.h's
-  putCheckBits/fixLine; the model calls those, no model change, pair 390 PASS; TI-516: DI-19 landed e7c3b10f with MI 073943f3; TI-513
-  notice: 8ac4c441 drop/check_bits/CCV_DCU_ECC_INJECT landed). Next pings: Friday.
+- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 519, OI 401, CP 160, RA 157, RI 91,
+  MA 157, MI 36, DI 41, DA 131, Conventions 20; specs MIU 161, Common 9, DCU 84. Next pings: Friday.
+  AR 403/404: MIU corrects CE (syndrome R2, completion withheld 1, fix in the stage after on flopped
+  data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
+  AR 405 / DCU tab 84: mispredict = late answer at due+2 under the original req_id, no credit;
+  pa_fold = XOR of PA[47:16] 4-bit chunks (wayfold helper, DI-24 asks TI); control miu-fold-flip.
+- Sweep 2026-11-22 merge, pushed at 8170fdcf full PASS (gate-push --full, job-gate-push-20261122-104808-444.log): ccr-183cc441 54,
+  ccr-5e4d6c70 10, ccr-80102643 10 (MA.md conflict: kept MA's newer f9fb834e), ccr-9eb50716 5,
+  ccr-c22116ce 2, MA's spec branch 3, ccr-57eff422 17 (OI's; clean now).
 - Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
   b1a85fa6) under full gate-push (job-gate-push-20261121-104904-28964.log). OI's ccr-57eff422
   conflicts in OI's OOE files: left to OI (AR 402); not merged.
@@ -66,20 +71,33 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
-1. RTL slice 1 (MA Phase 2, MIU tab rev 150; DI-20: MA takes DCU slice 1 before MIU slices 2-4, slice 1 unaffected): miu_cap pushed; miu_pair done on mi-dev (ead8f705:
-   ring of LAG rows, tags from memop arrival M=00, V 03, H 05; bench + controls arrival/lag; cg/ngd
-   clean; FW=96 placeholder until miu_mq's layout; LAG param until TI derives it). Next was miu_pair
-   (+ miu_mq: A1 fields read at H-1; per lead pipe ring of {entry, valid} indexed by arrival
-   counter bridging LAG=3, CCV_LAT_MIU_PAIR_LAG once TI derives it; fences pair on slot 0; bulk
-   discards no address; memop ends no-flop). Then miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
-   miu_tlb, miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp, miu_rcap, miu_ext, miu_ecc
-   (syndrome R2, budget 17), miu_out, ccv_miu top. MI-16: TI wires the MIU RTL job.
+0a. UE two answers: model done 012519d8 (mi-dev, unpushed; 66 kernels clean both DCUs). MI-20 to TI
+   (rev 38, rung; DI rung): bin ue_second_answer, control ue-close-first (whitelist-only until DCU
+   sends the first answer), MIU stub's part. TI did MI-20 (TI-528, a3d17bb2 on
+   gate-scratch/TI-mi20, lands after TI's sweep): merge it, check ue-close-first, close MI-20. Gate in flight on 512d2315 (miu_mq + miu_pair budget
+   fix a2c9d3e2; first gate failed: miu_pair 9 ungated > 8.98): job-gate-push-20261123-010405-22813.
+   Push 012519d8 with the next gate.
+1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq e5d50b8b, a2c9d3e2.
+   check-cg --unit exit 0 does not apply the module budget: read the ungated count vs 2%. miu_mq: 40 entries by arrival
+   slot, psel one-hot + pre keep copy (me), rel decoded before its flop, dis (mem_op 0xF) muxes
+   last; cg 5136/5205 gated, ngd 23.6/11.2. miu_pair reads mqa_cm02h (A1 view, FW 63) at H-1;
+   miu_pkg dropped (Yosys refuses pkg->pkg refs; mq_tb static_asserts the layout). Lines, lane map,
+   lost flag in miu_mq come with miu_a2. Next: miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
+   miu_tlb (ccv_common_wayfold, pa_fold), miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp,
+   miu_rcap, miu_ext, miu_ecc (K=128, syndrome R2, budget 17), miu_out, ccv_miu top. Then model
+   checks: UE on a clean line keeps req_id live (AR 403; MIU tab rev 163 via MA notice re DI-30:
+   answered twice under one req_id, complete from DCU's refill, hit 0, no new credit); mispredict late answer at due+2.
    RTL lessons: CCV-L23 forbids a self-feeding param shift array (use a counter-indexed ring);
-   tags _cmNNh; RST-1 flop; CG-5 enables from own flops; (* keep *) output copies.
+   a comb net read by more than its own state's flops must go inline in always_ff; CCV-L04 reads
+   `<=` in always_comb as nonblocking; no package-to-package params; one assert label per module
+   (fold generate checks into vectors); tags _cmNNh; RST-1 flop; CG-5; (* keep *) output copies;
+   a payload no-flop end: compute next state both ways, mux by it last.
 1b. MA-29 done by TI (bc9d61ff): merge it in the next sweep; miu_ecc RTL syndrome at K=128.
 1c. MA-30 agreed (AR 405, MIU tab rev 161): each miu_tlb entry keeps fold(PFN) (k=4), written at
    the TLB fill; miu_a2 sends it as pa_fold in the req payload; control miu-fold-flip must fail.
-   Model + miu_tlb/miu_a2 RTL once TI's schema adds pa_fold.
+   TI-518: pa_fold landed (912a155b, 458ddda3 on ccr-183cc441, after the 11-22 sweep merge):
+   wayfold.h + rtl/common/ccv_common_wayfold.sv; TI's put in putIndexLead (miu-fold-flip) is
+   mine now. Merge next sweep; miu_tlb keeps fold(PFN) per entry via ccv_common_wayfold.
 2. MI-11 (2): lnorm1 under CCV_RAU_DEMOTE=mlc once OI's c461c1b0 lands (AR 399).
 3. Way-mispredict path (AR 390) once TI's same-set kernel exists (MI-9 (3)).
 4. Awaiting TI: MI-4, MI-8, MI-9 (3), MI-13. Phase 1a cold TLB flip (MI-6). M0 report.
