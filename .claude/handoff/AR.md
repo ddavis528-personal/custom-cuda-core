@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 411 .672138 (tab rev 415).
-  - **The next AR row inserts after .672138**, labelled AR 412.
+  - Latest row: AR 412 .673737 (tab rev 416).
+  - **The next AR row inserts after .673737**, labelled AR 413.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -85,7 +85,7 @@ Credit rules (TI-49):
 
   | Tab | Node |
   |---|---|
-  | DA | d5076b00-ef1b (table .231) |
+  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .133923, rev 132) |
   | TI | e8b1d9d9-df9b |
   | OA | 4c6a3151-83eb |
   | OI | 384bc26c-cef6 |
@@ -98,8 +98,8 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 415, OA 474, TI 532, MA 175, DI 69,
-  MI 38, RA 158, RI 91, IS 201, CP 160, OI 405, DA 131, Conventions 20 (full
+- **Bookmarks** (revs read through): AR 416, OA 474, TI 532, MA 176, DI 69,
+  MI 38, RA 158, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
   sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
@@ -230,6 +230,20 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000j. **Testbench latency (DA row .133923, AR 412 .673737, 11-23; TI, MA
+   rung).** Daniel: default 20 +/-5 (seeded draw keyed by CCV_TB_SEED and
+   arrival order; CCV_TB_JITTER half-width; slow regions stay fixed); a swap
+   class (CCV_TB_LATENCY=1000, >4 warps, demotion/restore/refill bins,
+   control at 20); a read class at the true latency 1000 cycles with target
+   16 B/cycle = 125 lines in flight (Daniel chose both). HEAD caps: DCU->MLC
+   16 ids (8x short), MIU->DCU and MLC->EXB 64 (2x), MIU memop queue 40 (~3x).
+   OWED BY AR: a PF row for the read target; raise MLC->EXB's owner with
+   Daniel (no session owns MLC); re-baseline perf-register once on ti-tblat
+   and the 20 default together. MA sizes MIU/DCU (Phase 1 model).
+   The DRAM-latency question to Daniel is ANSWERED.
+000i0. MI-21 (MA rev 176, FYI): O-83's one-sum form (AR revs 211-219) was
+   ~32 NGD in A1; MA added a second 22-bit adder per lane (MIU tab rev 165).
+   MA's block; nothing owed.
 000i. **TI-532 / AR 411 .672138 (11-23; TI, MA rung): re-baseline
    perf-register when ti-tblat lands (OWED BY AR).** TI-532: fix 8daf7a2c on
    gate-scratch/TI-tblat, lands after the FILL_AGE gate; MEMOP timeout
@@ -252,8 +266,7 @@ Credit rules (TI-49):
    require. TI first reports which perf kernels had data >= 0xC0000, with
    cycles before and after; AR then re-baselines docs/perf-register.md.
    Re-run only decisions near Daniel's bar on moved kernels (MA-30
-   cm128priv +0.30%). OWED TO DANIEL: the real external DRAM latency for
-   timed runs (placeholder is 10 cycles); ask him in the next report.
+   cm128priv +0.30%). Daniel's DRAM-latency answer: see 000j.
 000g. **TI-527 probe ack (AR 409 .668434, 11-23; TI, MA rung).** ack=1 iff
    dirty_data carries the line (DI's reading); one ack per probe, its valid
    the acknowledgement; a dirty line reaches MLC exactly once (ack or
