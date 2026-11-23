@@ -80,7 +80,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 0a. MI-20 CLOSED (MI rev 40, TI rung): DI's d400b928 sends the UE first answer; with DCU model, vadd/ldpar/hit
    hit ue_second_answer and ue-close-first is caught (1/3/7 CHECKs). TI adds the kernel lines.
 0c. TI-537 (DA via TI): one common RTL credit implementation (rtl/common, TI's); miu_cred keeps its counters
-   until it lands, then swaps. MI rev 42 told TI miu_cred's needs; TI-538 full form (DEPTH, SPEND_W, REFUND_W,
+   until it lands, then swaps. MI rev 42 told TI miu_cred's needs; TI-538/539 full form, ccv_common_cr_cnt (DEPTH, SPEND_W, REFUND_W,
    THRESH list); MI rev 43: no same-cycle return, capture stays in miu_cred. TI posts the port list after AR/OA/RA/MA.
 0b'. MI-21 DECIDED (MA rev 176, MIU tab rev 165; bookmarks MA 178, MIU 165): miu_form at H-1 beside miu_pair owns
    window table, local_base, W, R(ctx), written from ccv_rau_miu_cta (own enables); flops at H per slot: window word,
