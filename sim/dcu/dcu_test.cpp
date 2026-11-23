@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 #include "dcu_core.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -48,6 +49,8 @@ struct H : Hooks {
     if (g_verbose) std::fprintf(stderr, "  core fail: %s\n", m.c_str());
   }
   void hit(const char *b, uint64_t n) override { bins[b] += n; }
+  std::map<std::string, uint64_t> peaks;
+  void peak(const char *b, uint64_t v) override { peaks[b] = std::max(peaks[b], v); }
 };
 
 /// A bench: the core, its inputs by cycle, and what it launched, by cycle.
@@ -789,6 +792,125 @@ int main(int argc, char **argv) {
       EXPECT(e.b.h.bins["dcu_store_rsv_wait"] >= 1, "the store waited");
       EXPECT(e.wroteBack() && e.b.rsp(3), "written back, the store answered");
       EXPECT(e.b.h.fails.empty(), "%s", e.b.h.fails.empty() ? "" : e.b.h.fails[0].c_str());
+    });
+
+  // ---- Slice 2, part 3 -----------------------------------------------------
+
+  // An exclusive read (an atomic's A1) misses with AcquireData: an owned,
+  // clean line.
+  auto excl = [](unsigned slot, unsigned id, uint64_t pa) {
+    Req r = rd(slot, id, pa);
+    r.op = Op::AtomRead;
+    return r;
+  };
+  auto own = [&](Bench &b, uint64_t pa, unsigned id) {
+    b.reqs[b.t].push_back(excl(0, id, pa));
+    b.run(b.t + 60);
+  };
+
+  // Store hits book their writes at the read: exactly the gap on, at most
+  // two a bank between read and write. Three store hits in one bank: reads
+  // at R and R+2, the third once the first write is done.
+  test("store-hit-bookings", [&] {
+    Bench b(cfg(9));
+    for (unsigned i = 1; i != 4; ++i) own(b, bank0(i), 60 + i);
+    const uint64_t P = b.t;
+    b.reqs[P] = {st(0, 1, bank0(1), 0, 1)};
+    b.reqs[P + 1] = {st(0, 2, bank0(2), 0, 2)};
+    b.reqs[P + 2] = {st(0, 3, bank0(3), 0, 3)};
+    b.run(P + 40);
+    EXPECT(b.rsp(1) && b.rsp(2) && b.rsp(3) && b.rsp(1)->hit && !b.rsp(1)->data, "three acks, hit, no data");
+    EXPECT(b.h.peaks["dcu_store_booked_max"] == 2, "two bookings at most (%llu)",
+           (unsigned long long)b.h.peaks["dcu_store_booked_max"]);
+    EXPECT(b.h.bins["dcu_store_write"] == 3, "three writes");
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+
+  // A store miss with a load and a store merged behind it (part 3): the
+  // fill takes the leading store only, so the load sees it and not the
+  // younger store, which looks up again after W. Answers at F+k+4 (k = 1).
+  // dcu-st-mergeall merges the younger store too, refused by the CHECK.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-mergeall-control" : "fill-merge-leading-stores", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-st-mergeall";
+      Bench b(c);
+      b.reqs[0] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.reqs[1] = {rd(1, 2, 0x2000)};
+      b.reqs[2] = {st(2, 3, 0x2000, 1, 0x33)};
+      b.run(120);
+      if (ctl) {
+        EXPECT(refused(b, "merged a store behind a load"), "the control is refused");
+        return;
+      }
+      const uint64_t F = b.mlc.empty() ? 0 : b.mlc[0].first + b.mlc_lat;
+      EXPECT(b.mlc.size() == 1 && b.mlc[0].second.op == MlcOp::AcquireData, "one AcquireData");
+      EXPECT(b.at(1) == F + 5 && b.rsp(1) && !b.rsp(1)->hit && !b.rsp(1)->data,
+             "the merged store answered at F+%lld, hit 0, no data", (long long)(b.at(1) - F));
+      EXPECT(b.at(2) == F + 5 && b.rsp(2) && b.rsp(2)->line[0] == 0x11 && b.rsp(2)->line[1] == pat(0x2000, 1),
+             "the load at F+%lld sees the older store only", (long long)(b.at(2) - F));
+      EXPECT(b.rsp(3) && b.h.bins["dcu_st_relook"] == 1, "the younger store looked up again");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A store hit on a shared line is an upgrade (AcquireData, its own way);
+  // dcu-st-shared writes the shared line in place, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-shared-control" : "store-upgrade", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-st-shared";
+      Bench b(c);
+      warm(b, 0x2000);   // a read miss: shared
+      const size_t n = b.mlc.size();
+      b.reqs[b.t] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.run(b.t + 60);
+      if (ctl) {
+        EXPECT(refused(b, "not owned"), "the control is refused");
+        return;
+      }
+      EXPECT(b.mlc.size() == n + 1 && b.mlc.back().second.op == MlcOp::AcquireData, "an upgrade");
+      EXPECT(b.h.bins["dcu_upgrade_data"] == 1 && b.h.bins["dcu_evict"] == 0, "its own way, no victim");
+      EXPECT(b.rsp(1) != nullptr, "the store answered");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A store hit's write sets the dirty bit, so the line goes back to MLC at
+  // eviction; dcu-st-dirty leaves it clear, and the line is lost.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-dirty-control" : "store-sets-dirty", [&] {
+      Config c = cfg(9);
+      c.ways = 1;
+      if (ctl) c.brk = "dcu-st-dirty";
+      Bench b(c);
+      own(b, 0x6000, 60);
+      b.reqs[b.t] = {st(0, 1, 0x6000, 0, 0x11)};
+      b.run(b.t + 30);
+      b.reqs[b.t] = {rd(0, 2, 0x6000 + uint64_t(c.sets) * kLineBytes)};
+      b.run(b.t + 80);
+      bool wb = false;
+      for (const auto &m : b.mlc) wb |= m.second.op == MlcOp::Write && m.second.pa == 0x6000;
+      EXPECT(wb != ctl, ctl ? "the control loses the line" : "the dirty line written back");
+      if (!ctl) EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A load behind a store hit to its line waits for the store's write;
+  // dcu-st-noorder lets it read first, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-noorder-control" : "load-after-store", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-st-noorder";
+      Bench b(c);
+      own(b, 0x2000, 60);
+      const uint64_t P = b.t;
+      b.reqs[P] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.reqs[P + 1] = {rd(1, 2, 0x2000)};
+      b.run(P + 40);
+      if (ctl) {
+        EXPECT(refused(b, "before an older store's write"), "the control is refused");
+        return;
+      }
+      EXPECT(b.rsp(2) && b.rsp(2)->line[0] == 0x11, "the load sees the store");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 
   if (g_fail) std::fprintf(stderr, "dcu-test: %d failure(s)\n", g_fail);

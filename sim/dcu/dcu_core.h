@@ -69,6 +69,7 @@ struct Req {
   Line wdata{};      ///< a store's data
   uint64_t tid = 0;  ///< trace identity, carried to the response
   bool reread = false;   ///< pipe C: the true way's read after a mispredict
+  uint64_t born_p = 0;   ///< a store hit's P, its identity in stp_ (model only)
 };
 
 /// A response launched on ccv_dcu_miu_rsp.
@@ -279,7 +280,18 @@ private:
   void schedule();
   void claim(unsigned b);
   bool eligible(unsigned b, size_t i) const;
-  bool olderLook(unsigned b, size_t upto, uint64_t line) const;
+  /// An older lookup of `line` ahead of position `upto` that this one may
+  /// not pass (slice 2, part 3): a store ahead of anything, or anything
+  /// ahead of a store (`store`); loads pass loads.
+  bool olderLook(unsigned b, size_t upto, uint64_t line, bool store = true) const;
+  static bool storeLike(const Acc &x) { return x.k == Acc::StoreR || (x.k == Acc::Look && x.req.op == Op::Store); }
+  /// Store hits' writes, booked at their read (part 3): cycle -> the write.
+  std::vector<std::multimap<uint64_t, Acc>> book_;
+  bool bookable(unsigned b) const;
+  /// Stores between arrival and write, by line: their P (part 3's CHECK).
+  std::multimap<uint64_t, uint64_t> stp_;
+  /// Merged stores' store-data credits, due back at their merge (part 3).
+  std::multimap<uint64_t, unsigned> std_at_;
   void serve(const Acc &a, uint64_t born);
   void serveLook(const Req &r, uint64_t born);
   void entLeave(unsigned b) { ++ent_owed_[b]; --ent_used_[b]; }
@@ -307,6 +319,7 @@ private:
     uint64_t vline = 0;      ///< the dirty victim's line, written back at W
     bool vdirty = false, vread = false, acked = false;
     std::vector<Req> relook; ///< merged requests that look up again after W
+    unsigned kst = 0;        ///< stores merged into the fill buffer (part 3)
   };
   static Miss newMiss(MK k, uint64_t line, std::vector<Req> reqs, const Line &wb) {
     Miss m;
