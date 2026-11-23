@@ -16,6 +16,10 @@
 #            bank order, the request to MLC, a fill's entry read), and its
 #            controls nomerge (dcu-mshr-nomerge), order (dcu-miss-reorder), credit and retry,
 #            which must fail
+#   dcu_fill: test/dcu/fill_tb.cpp, the fill buffers (capture, encode, the
+#            write request, answers owed, the free's credit and entry), and its
+#            controls nowait (freed with answers owed) and highest (the
+#            highest free buffer taken), which must fail
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/dcu-rtl; mkdir -p "$B"
@@ -61,4 +65,9 @@ control dcu_mshr nomerge
 control dcu_mshr order
 control dcu_mshr credit
 control dcu_mshr retry
+for seed in 1 2 3; do
+  bench "dcu_fill seed $seed" test/dcu/cg-build.sh dcu_fill "$B/dcu_fill" -- "$B/dcu_fill/tb" --seed $seed
+done
+control dcu_fill nowait
+control dcu_fill highest
 exit $fail
