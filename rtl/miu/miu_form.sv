@@ -111,7 +111,13 @@ module miu_form #(
   output logic [NS*3-1:0]   fs_cm05h,      // {elig, local, slot} at [k*3 +: 3]
   output logic [NS*WHW-1:0] wh_cm05h,
   output logic [NS*RK-1:0]  rk_cm05h,      // {ctx, hi + 1, hi, lo8, bl}
-  output logic [NS*IW-1:0]  dh_cm05h
+  output logic [NS*IW-1:0]  dh_cm05h,
+  // O-69's address less the lane, per slot (MI-25 (D) (3)), at A2 beside
+  // miu_agu8's sums: C = ((local_base + LC) << 16) + (ctx << 22) +
+  // 128 (b / 4) + b % 4, b the memop's disp, unsigned 17 bits (MA rev 195);
+  // a lane's address is C with 4l in bits [6:2], which are 0. Meaningful
+  // for a local-form slot only.
+  output logic [NS*VW-1:0]  c_cm06h
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
@@ -128,6 +134,7 @@ module miu_form #(
   localparam int AS_L = 4;
   localparam int SF_L = 8;
   localparam int SP_L = 9 + ccv_params_pkg::CCV_L_W_ORDERING;
+  localparam int DS_L = SP_L + 2;                    // disp, above space and scale_en
   localparam int CS_L = FW - WIW - CSW;
   localparam int WI_L = FW - WIW;
 
@@ -266,6 +273,8 @@ module miu_form #(
   logic [NS*WHW-1:0] wh_d_cm04h;
   logic [NS*RK-1:0]  rk_d_cm04h;
   logic [NS*IW-1:0]  dh_d_cm04h;
+  logic [NS*(CXW+RB/2)-1:0] cx_d_cm04h;   // the local region and ctx, for C
+  logic [NS*17-1:0]  ds_d_cm04h;
   for (genvar k = 0; k < NS; k++) begin : g_slot
     logic [EW-1:0]  e_cm04h;
     logic [WIW-1:0] wid_cm04h;
@@ -277,6 +286,7 @@ module miu_form #(
     logic [NE-1:0]  oe_cm04h;
     logic [NC-1:0]  oc_cm04h;
     logic [NWN-1:0] oj_cm04h;
+    logic [16:0]    ds_cm04h;
     always_comb begin
       e_cm04h   = pe_cm04h[k*EW +: EW];
       // The entry's one-hot, then an AND-OR over 40, as miu_pair reads.
@@ -288,6 +298,7 @@ module miu_form #(
       lf_cm04h  = 1'b0;
       gl_cm04h  = 1'b0;
       im_cm04h  = '0;
+      ds_cm04h  = '0;
       oc_cm04h  = '0;
       oj_cm04h  = '0;
       for (int e = 0; e < NE; e++) begin
@@ -296,6 +307,7 @@ module miu_form #(
         lf_cm04h  = lf_cm04h  | (oe_cm04h[e] & mqa_cm02h[e*FW + LF_L]);
         gl_cm04h  = gl_cm04h  | (oe_cm04h[e] & !mqa_cm02h[e*FW + SP_L]);   // space 0: .global
         im_cm04h  = im_cm04h  | ({IW{oe_cm04h[e]}}  & mqi_cm02h[e*IW +: IW]);
+        ds_cm04h  = ds_cm04h  | ({17{oe_cm04h[e]}}  & mqa_cm02h[e*FW + DS_L +: 17]);
         for (int c = 0; c < NC; c++)
           oc_cm04h[c] = oc_cm04h[c] |
                         (oe_cm04h[e] & (mqa_cm02h[e*FW + CS_L +: CSW] == CSW'(c)));
@@ -324,18 +336,28 @@ module miu_form #(
       fs_d_cm04h[k*3 +: 3] = {gl_cm04h && !sf_cm04h && !lf_cm04h && cl_cm04h, lf_cm04h, sf_cm04h};
       // R(ctx)'s operands: the form's region, and ctx.
       rk_d_cm04h[k*RK +: RK] = {ctx_cm04h, lf_cm04h ? rb_cm04h[0 +: RB/2] : rb_cm04h[RB/2 +: RB/2]};
+      // C's operands, flopped at H: the local region whatever the form.
+      cx_d_cm04h[k*(CXW+RB/2) +: CXW+RB/2] = {ctx_cm04h, rb_cm04h[0 +: RB/2]};
+      ds_d_cm04h[k*17 +: 17] = ds_cm04h;
       // Lane d: the issue mask's lowest lane, one-hot.
       dh_d_cm04h[k*IW +: IW] = im_cm04h & (~im_cm04h + IW'(1));
     end
+  end
+
+  // C's split needs ctx's place (22) at the narrow sum's top: k <= 1.
+  if (NN != 22) begin : g_c_nn
+    $error("miu_form: C (O-69) assumes NN = 22 (CCV_PRIV_WINDOWS <= 2)");
   end
 
   // ---- H: the slots' forms ------------------------------------------------
   wire h_en_cm04h = pnew_q_cm04h;
   logic [NS-1:0]     wv_q_cm05h;
   logic [NS*3-1:0]   fs_q_cm05h;
-  logic [NS*WHW-1:0] wh_q_cm05h;
-  logic [NS*RK-1:0]  rk_q_cm05h;
+  (* keep *) logic [NS*WHW-1:0] wh_q_cm05h;   // never merged with cx_q (NGD-7)
+  (* keep *) logic [NS*RK-1:0]  rk_q_cm05h;   // never merged with cx_q (NGD-7)
   logic [NS*IW-1:0]  dh_q_cm05h;
+  (* keep *) logic [NS*(CXW+RB/2)-1:0] cx_q_cm05h;
+  logic [NS*17-1:0]  ds_q_cm05h;
   always_ff @(posedge miu_core_clk) begin
     if (h_en_cm04h) begin
       wv_q_cm05h  <= wv_d_cm04h;
@@ -343,6 +365,8 @@ module miu_form #(
       wh_q_cm05h  <= wh_d_cm04h;
       rk_q_cm05h  <= rk_d_cm04h;
       dh_q_cm05h  <= dh_d_cm04h;
+      cx_q_cm05h  <= cx_d_cm04h;
+      ds_q_cm05h  <= ds_d_cm04h;
     end
   end
   assign wv_cm05h  = wv_q_cm05h;
@@ -350,6 +374,36 @@ module miu_form #(
   assign wh_cm05h  = wh_q_cm05h;
   assign rk_cm05h  = rk_q_cm05h;
   assign dh_cm05h  = dh_q_cm05h;
+
+  // ---- A1: C, from the H flops, into A2's -------------------------------
+  // b rearranged over bits [21:0] adds to bl at [21:16]; its carry joins
+  // lo8 + ctx, whose carry picks hi or hi + 1. b < 2^17 never reaches ctx
+  // at bit 22. Clocked by this module's flop of its H enable (CG-5).
+  logic pnew_q_cm05h;
+  always_ff @(posedge miu_core_clk) begin
+    if (rst_r01h) pnew_q_cm05h <= 1'b0;
+    else          pnew_q_cm05h <= pnew_q_cm04h;
+  end
+  logic [NS*VW-1:0] c_d_cm05h;
+  always_comb begin
+    for (int k = 0; k < NS; k++) begin
+      logic [CXW+RB/2-1:0] x;
+      logic [16:0]         b;
+      logic [NN:0]         lo;
+      logic [8:0]          t;
+      x  = cx_q_cm05h[k*(CXW+RB/2) +: CXW+RB/2];
+      b  = ds_q_cm05h[k*17 +: 17];
+      lo = (NN+1)'({x[0 +: BL], 16'b0}) + (NN+1)'({b[16:2], 5'b00000, b[1:0]});
+      t  = 9'(x[BL +: 8]) + 9'(x[RB/2 +: CXW]) + 9'(lo[NN]);
+      c_d_cm05h[k*VW +: VW] = {t[8] ? x[BL + 8 + HH +: HH] : x[BL + 8 +: HH], t[7:0], lo[NN-1:0]};
+    end
+  end
+  wire c_en_cm05h = pnew_q_cm05h;
+  logic [NS*VW-1:0] c_q_cm06h;
+  always_ff @(posedge miu_core_clk) begin
+    if (c_en_cm05h) c_q_cm06h <= c_d_cm05h;
+  end
+  assign c_cm06h = c_q_cm06h;
   // The base mux's select and window, a copy per octet, so their fanout
   // stays off miu_agu8's adder path.
   for (genvar u = 0; u < NO; u++) begin : g_oct

@@ -108,6 +108,12 @@
       "by": "MA",
       "date": "2026-11-23",
       "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "c_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "O-69's per-slot C, formed in A1 from H flops of the local region, ctx and disp's 17 bits, and flopped for A2, which reads it at arrival 0 beside miu_agu8's sums (MI-25 (D), MA rev 195: agu8 out 0, A2 in 0)."
     }
   }
 }

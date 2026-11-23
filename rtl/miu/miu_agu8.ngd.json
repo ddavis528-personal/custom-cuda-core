@@ -90,6 +90,30 @@
       "by": "MA",
       "date": "2026-11-23",
       "why": "miu_form's per-octet (* keep *) copy of fsel's slot bit at H, the base 2:1 mux's select (MI-22 (c), MA rev 185); miu_agu8 inputs from miu_form arrive at 0."
+    },
+    "va_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
+    },
+    "fal_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
+    },
+    "ilv_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
+    },
+    "loc_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
     }
   }
 }
