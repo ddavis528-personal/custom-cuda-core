@@ -37,7 +37,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    ~53/58; model stamps; --control retry) and this handoff into main, then
    gate-push again. m0w = detached worktree at aa588624 (stash holds old
    leftovers, drop it).
--5. NEXT: dcu_bctl slice 2. PLAN (tell MA as DI-36, informational): every
+-5. NEXT: dcu_bctl slice 2. PLAN (posted as DI-36, tab rev 64, notice sent): every
    lookup the bank takes writes a queue entry at D0 from the channel wires
    (its credit guarantees one; QDEPTH = entries = MIU credits, an entry
    leaves when answered or gone to MLC, per params) holding the full
@@ -48,6 +48,23 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    payload from flops; grant rgv/rgb in; outcome (ov/owait/owhy) at D3.
    A bank with a waiter or a retry in flight keeps its new misses itself.
    Then dcu_fill, btag/rarb/rslot growth, parts 2-4.
+-5a. INCREMENT A DONE in m0w (commit after aa588624/7d7d0943): dcu_bctl
+   slice 2 entries (alloc at D1 from dcu_cap's D1 flops, NOT D0: the pick
+   is stage-04 state and D0 cannot read it, CCV-L23), miss-wait FIFO with
+   a delayed change-only index write (CG-3), head offer rov/rstp/payload
+   (ports tagged _cc04h in bctl's frame; dcu_mshr's names differ), outcome
+   in (ov/owait/owhy_cc04h), credits at waiter access / granted D2 hit /
+   placement; bank order: no dv while the bank holds a waiter (dcu_mshr's
+   owi covers the cycle after a wait). dcu_mshr: mv = dv & !hit (dv from
+   bctl flops, hit from btag flops: the D2=H+4 hand-off). Benches: bctl
+   (--control order new), mshr; depth bctl 24.3, CG 68/94 loose.
+   TELL MA (DI-36 update): D1 not D0; the dv/hit hand-off; ports.
+   MODEL FOLLOW-UPS (keep C++ in sync): (1) ent_ret timing of a granted
+   lookup now at its D2 hit or placement, not its access; (2) retry timing
+   RTL: wait known at D3, offer D3+1, grant +1, its D2 at R+2, outcome
+   R+3, re-offer R+4 (model retries at D2+1 instantly); (3) a cause-2
+   (filled) waiter must look up again after its fill's write, never
+   allocate anew (increment B: btag re-read; tag-stale).
 -4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
    lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
    (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,

@@ -18,14 +18,25 @@
 // write port; lines in a set share folds often, so lookups mispredict,
 // fold-match miss and no-match miss.
 //
+// Slice 2 (DI-36): every lookup holds a queue entry, its payload (line,
+// op, exclusive, fold) on D1's wires from the slots' dcu_cap flops. The
+// bench plays dcu_mshr: each lookup presented at D2 (dv) that missed gets an
+// outcome a cycle on (placed, or waiting with a cause; a miss behind this
+// cycle's wait waits for bank order), and the bank's retry offer (rov, its
+// stamp and payload, checked against the model's miss-wait FIFO) is granted
+// a cycle on at random, its outcome two cycles after the grant. The credits
+// follow the entries: back at a waiter's access, a granted hit's D2, or a
+// placement.
+//
 // Random mode covers: every arbitration outcome (re-read, aged waiter,
 // fix, new lookup, waiter), the bypass of an empty queue,
 // the queue at its deepest (two credits short, held by the pipeline), drops
 // freeing the cycle, no-match misses freeing it, two credits due in a
 // cycle, mispredicts. --cg <idle|medium|high> <vcd> runs one clock-gating
 // scenario (tools/check-cg.py). --control flat (the model puts the new
-// lookup ahead of the re-read) and --control nofree (a dropped access keeps
-// its cycle) must fail.
+// lookup ahead of the re-read), --control nofree (a dropped access keeps
+// its cycle) and --control order (a miss presented past the bank's waiter)
+// must fail.
 //===----------------------------------------------------------------------===//
 #include "Vdcu_bctl.h"
 #include "verilated.h"
@@ -49,6 +60,15 @@ constexpr unsigned kSlots = 4, kNB = 3, kWS = 9, kWays = 8, kWI = 6, kWF = ccv::
 constexpr unsigned kSets = 1u << kWR, kQD = 16, kAge = 16, kBank = 0, kWWY = 3, kLines = 24;
 
 uint64_t g_seed = 0x5eed;
+constexpr unsigned kWl = 41;
+
+template <typename W> void setBits(W &w, unsigned lsb, unsigned width, uint64_t v) {
+  for (unsigned i = 0; i < width; ++i) {
+    const unsigned bit = lsb + i, word = bit / 32, off = bit % 32;
+    const uint32_t m = uint32_t(1) << off;
+    w[word] = (v >> i) & 1 ? (w[word] | m) : (w[word] & ~m);
+  }
+}
 int g_argc;
 char **g_argv;
 
@@ -65,6 +85,11 @@ struct Look {
   unsigned slot = 0, set = 0, rid = 0, line = 0, fold = 0;
   bool drop = false, hit = false, won = false, anym = false;
   unsigned way = 0, pway = 0;   // indices (pway valid when anym)
+  uint64_t pa = 0;              // the line, PA[47:7]
+  unsigned coh = 0, op = 0;
+  bool excl = false;
+  bool dvp = false;             // presented to dcu_mshr at D2 (no waiter ahead)
+  bool dvx = false;             // what the check expects (--control order: dvp, waiters ignored)
 };
 
 enum class GK { None, New, Wait, RR, Fix };
@@ -84,8 +109,27 @@ struct Bench {
   std::unique_ptr<VerilatedVcdC> vcd;
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0;
-  bool flat = false, nofree = false;
+  bool flat = false, nofree = false, order = false;
   std::map<std::string, unsigned> cov;
+
+  // Slice 2: the miss-wait FIFO (oldest first), the head's stamp, the
+  // offer, the retry's grants (this cycle, one and two back) and dcu_mshr's
+  // outcomes, which the bench plays.
+  struct Wt { uint64_t pa = 0; unsigned rid = 0, op = 0, fold = 0, cause = 0; bool excl = false; };
+  std::deque<Wt> W;
+  uint64_t hstamp = 0;
+  bool rovM = false, g0 = false, g1 = false, g2 = false, rovPrev = false;
+  bool stampK = false;
+  uint64_t stampOff = 0;
+  unsigned wmax = 0;
+  struct Out { bool v = false, wait = false; unsigned why = 0; };
+  std::map<uint64_t, Out> outAt;
+  struct D3 { bool v = false, miss = false, pres = false; Wt w; } d3;
+  uint64_t lastPa = 0, lastCoh = 0;
+  uint32_t lastFold1 = 0, lastExcl = 0;
+  static uint64_t paOf(unsigned line, unsigned set) {
+    return (uint64_t((line * 0x9E3779B1u) & 0xFFFFFFFFu) << 9) | uint64_t(set) << kNB | kBank;
+  }
 
   // The bench's tags and folds: per set, each way's line (-1 invalid).
   std::array<std::array<int, kWays>, kSets> tags{};
@@ -99,7 +143,7 @@ struct Bench {
   unsigned owed = 0, qmax = 0;
   std::map<uint64_t, bool> wantEr;
   struct Ans { bool v = false; unsigned rid = 0, slot = 0; bool late = false; };
-  std::map<uint64_t, Ans> wantAv, wantMv;
+  std::map<uint64_t, Ans> wantAv;
   std::array<std::array<uint8_t, kWays - 1>, kSets> pl{};
   std::map<uint64_t, std::pair<unsigned, unsigned>> plTouch;   // visible-from cycle -> set, way
   std::map<uint64_t, unsigned> wantPv;
@@ -149,6 +193,9 @@ struct Bench {
     dut->rv_cc01h = 0;
     dut->fwe_cc00h = 0;
     dut->fxv_cc03h = 0;
+    dut->ov_cc04h = 0;
+    dut->owait_cc04h = 0;
+    dut->rgv_cc04h = 0;
   }
   void reset() {
     dut->rst_n = 0;
@@ -215,6 +262,11 @@ struct Bench {
       n.line = unsigned(line);
       n.fold = foldOf(n.line, n.set);
       n.drop = rnd && g.below(16) == 0;
+      n.pa = paOf(n.line, n.set);
+      static const unsigned cohs[6] = {0, 0, 0, 2, 1, 3};
+      n.coh = cohs[g.below(6)];
+      n.op = n.coh == 0 ? 0 : n.coh == 2 ? 1 : 2;
+      n.excl = g.below(2);
       n.hit = false;
       for (unsigned w = 0; w < kWays; ++w)
         if (ts[w] == line) { n.hit = true; n.way = w; }
@@ -257,6 +309,47 @@ struct Bench {
     dut->drop_cc02h = drop;
     lastRid = rid;
     lastFold = fold;
+    // D1's payload from the slots' dcu_cap flops.
+    {
+      const bool l1v0 = c >= 1 && l1.valid;
+      uint32_t f1 = 0, ex = 0;
+      uint64_t co = 0;
+      for (unsigned s = 0; s < kSlots; ++s) {
+        uint64_t pa = rnd ? (g.bits() & ((uint64_t(1) << kWl) - 1)) : lastPa;
+        uint32_t f = rnd ? g.below(1u << kWF) : lastFold1 >> (s * kWF) & ((1u << kWF) - 1);
+        uint64_t ch = rnd ? g.below(16) : lastCoh >> (s * 4) & 15;
+        uint32_t e = rnd ? g.below(2) : lastExcl >> s & 1;
+        if (l1v0 && l1.slot == s) { pa = l1.pa; f = l1.fold; ch = l1.coh; e = l1.excl; }
+        setBits(dut->pa_cc03h, s * kWl, kWl, pa);
+        f1 |= f << (s * kWF);
+        co |= ch << (s * 4);
+        ex |= e << s;
+      }
+      dut->fold_cc03h = f1;
+      dut->coh_cc03h = uint32_t(co);
+      dut->excl_cc03h = ex;
+      lastFold1 = f1;
+      lastCoh = co;
+      lastExcl = ex;
+    }
+    // dcu_mshr: this cycle's outcome for the bank, and the retry's grant
+    // (the bank offered last cycle and was not granted then).
+    Out o;
+    {
+      auto it = outAt.find(c);
+      if (it != outAt.end()) { o = it->second; outAt.erase(it); }
+      dut->ov_cc04h = o.v;
+      dut->owait_cc04h = o.v ? o.wait : rnd ? g.below(2) : 0;
+      dut->owhy_cc04h = o.v ? o.why : rnd ? g.below(4) : 0;
+      g0 = rovPrev && !g1 && g.below(3) != 0;
+      if (g0) {
+        dut->rgv_cc04h = 1;
+        dut->rgb_cc04h = kBank;
+      } else {
+        dut->rgv_cc04h = rnd && g.below(2);
+        dut->rgb_cc04h = 1 + g.below(7);
+      }
+    }
     if (l2.valid && c >= 2) {
       dut->hit_cc04h = l2.hit;
       dut->way_cc04h = l2.hit ? 1u << l2.way : 0;
@@ -313,14 +406,24 @@ struct Bench {
         chk("alate", dut->alate_cc04h, a.late);
       }
       if (it != wantAv.end()) wantAv.erase(it);
-      auto im = wantMv.find(c);
-      const Ans m = im != wantMv.end() ? im->second : Ans{};
-      chk("mv", dut->mv_cc04h, m.v);
-      if (m.v) {
-        chk("mrid", dut->mrid_cc04h, m.rid);
-        chk("mslot", dut->mslot_cc04h, m.slot);
+      const bool d2 = c >= 2 && l2.valid && !l2.drop;
+      chk("dv", dut->dv_cc04h, d2 && l2.dvx);
+      if (d2 && l2.dvp) chk("mslot", dut->mslot_cc04h, l2.slot);
+      chk("rov", dut->rov_cc04h, rovM);
+      if (rovM) {
+        const Wt &h = W.front();
+        const uint64_t k = (dut->rstp_cc04h - hstamp) & 1023;
+        if (!stampK) { stampK = true; stampOff = k; }
+        chk("rstp", k, stampOff);
+        if (c - hstamp >= 512) fail("bench: an offered stamp 512 cycles old");
+        chk("rpa", dut->rpa_cc04h, h.pa);
+        chk("rrid", dut->rrid_cc04h, h.rid);
+        chk("rop", dut->rop_cc04h, h.op);
+        chk("rexcl", dut->rexcl_cc04h, h.excl);
+        chk("rfold", dut->rfold_cc04h, h.fold);
+        chk("rsti", dut->rsti_cc04h, 0);
       }
-      if (im != wantMv.end()) wantMv.erase(im);
+      rovPrev = dut->rov_cc04h;
       auto ip = wantPv.find(c);
       if (ip != wantPv.end()) {
         chk("pvw", dut->pvw_cc05h, ip->second);
@@ -376,8 +479,72 @@ struct Bench {
     if (l2v && !l2.drop && !l2.hit && l2.anym) ++cov["fold_match_miss"];
     if (l2v && !l2.drop && !l2.hit && !l2.anym) ++cov["no_match_miss"];
     // Credits.
-    const bool e1 = (G.k == GK::New && !l1.drop) || G.k == GK::Wait;
-    const bool e2 = lq2 && !l2.hit;
+    // Slice 2's D3: the D2 lookup of last cycle leaves, or waits; the retry's
+    // outcome; the head's stamp; the next offer; the D1 lookup presented?
+    bool e2 = false;
+    {
+      const size_t n0 = W.size();
+      if (d3.v && d3.miss) {
+        if (d3.pres && !o.v) fail("bench: no outcome for a presented miss");
+        if (d3.pres && o.v && !o.wait) {
+          e2 = true;
+          ++cov["placed"];
+        } else {
+          Wt w = d3.w;
+          w.cause = d3.pres ? o.why : 3;
+          W.push_back(w);
+          ++cov[d3.pres ? (o.why == 3 ? "wait_order" : "wait_mshr") : "wait_held"];
+        }
+      }
+      if (g2) {
+        if (W.empty()) fail("model: a retry's outcome with no waiter");
+        else if (!o.wait) {
+          W.pop_front();
+          e2 = true;
+          ++cov["retry_placed"];
+        } else {
+          W.front().cause = o.why;
+          ++cov["retry_again"];
+        }
+      }
+      if (g2 || (d3.v && d3.miss && n0 == 0)) hstamp = c;
+      if (W.size() > wmax) wmax = unsigned(W.size());
+      if (W.size() >= 3) ++cov["waiters_deep"];
+      rovM = !W.empty() && !g0 && !g1;
+      if (g0) ++cov["retry_grant"];
+      const bool held = (wn2 || lq2) && !l2.dvp && !l2.hit;
+      if (l1v) {
+        L[c - 1].dvp = !l1.drop && W.empty() && !held;
+        L[c - 1].dvx = order ? !l1.drop : L[c - 1].dvp;
+      }
+      // dcu_mshr's outcome for a miss presented now, a cycle on (a miss
+      // behind this cycle's wait waits too: its bank order).
+      if ((wn2 || lq2) && l2.dvp && !l2.hit) {
+        Out n;
+        n.v = true;
+        if (o.v && o.wait) n.wait = true, n.why = 3;
+        else if (g.below(3) == 0) n.wait = true, n.why = g.below(3);
+        if (outAt.count(c + 1)) fail("bench: two outcomes in a cycle");
+        outAt[c + 1] = n;
+      }
+      if (g0) {
+        Out n;
+        n.v = true;
+        if (g.below(3) == 0) n.wait = true, n.why = g.below(3);
+        if (outAt.count(c + 2)) fail("bench: two outcomes in a cycle");
+        outAt[c + 2] = n;
+      }
+      d3 = D3{};
+      if (wn2 || lq2) {
+        d3.v = true;
+        d3.miss = !l2.hit;
+        d3.pres = l2.dvp;
+        d3.w = Wt{l2.pa, l2.rid, l2.op, l2.fold, 0, l2.excl};
+      }
+      g2 = g1;
+      g1 = g0;
+    }
+    const bool e1 = G.k == GK::Wait || (wn2 && l2.hit);
     owed += e1 + e2;
     if (e1 && e2) ++cov["two_credits"];
     if (owed) {
@@ -389,7 +556,6 @@ struct Bench {
     // Answers and misses.
     if (wn2 && l2.hit && !mp) wantAv[c + 1] = Ans{true, l2.rid, l2.slot, false};
     if (G.k == GK::Wait || G.k == GK::RR) wantAv[c + 2] = Ans{true, G.rid, G.slot, true};
-    if ((wn2 || lq2) && !l2.hit) wantMv[c + 1] = Ans{true, l2.rid, l2.slot, false};
     if ((wn2 || lq2) && l2.hit) plTouch[c + 2] = {l2.set, l2.way};
     // dcu_fix sees its access and lets go.
     if (G.k == GK::Fix) {
@@ -401,10 +567,11 @@ struct Bench {
   }
 };
 
-int run(const std::string &scenario, const char *vcd, bool flat, bool nofree) {
+int run(const std::string &scenario, const char *vcd, bool flat, bool nofree, bool order) {
   Bench b(vcd);
   b.flat = flat;
   b.nofree = nofree;
+  b.order = order;
   Gen g(g_seed);
   b.reset();
   const bool rnd = scenario.empty();
@@ -437,16 +604,17 @@ int run(const std::string &scenario, const char *vcd, bool flat, bool nofree) {
   if (rnd) {
     for (const char *k : {"reread", "aged", "fix", "new", "waiter", "bypass", "queue_deep",
                           "drop_freed", "nomatch_freed", "mispredict", "fold_match_miss",
-                          "no_match_miss", "two_credits"})
+                          "no_match_miss", "two_credits", "placed", "wait_mshr", "wait_order",
+                          "wait_held", "retry_grant", "retry_placed", "retry_again", "waiters_deep"})
       if (!b.cov[k]) {
         std::fprintf(stderr, "bctl: coverage: %s never happened\n", k);
         ++b.fails;
       }
     std::fprintf(stderr, "bctl: coverage:");
     for (auto &kv : b.cov) std::fprintf(stderr, " %s=%u", kv.first.c_str(), kv.second);
-    std::fprintf(stderr, " queue_max=%u\n", b.qmax);
+    std::fprintf(stderr, " queue_max=%u waiters_max=%u\n", b.qmax, b.wmax);
   }
-  const char *ctl = flat ? " control flat:" : nofree ? " control nofree:" : ":";
+  const char *ctl = flat ? " control flat:" : nofree ? " control nofree:" : order ? " control order:" : ":";
   std::printf("bctl%s %s: %llu cycles, %u values checked, %u mismatches: %s\n", ctl,
               rnd ? "random" : scenario.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
               b.fails ? "FAIL" : "PASS");
@@ -460,11 +628,12 @@ int main(int argc, char **argv) {
   g_argv = argv;
   std::string scenario;
   const char *vcd = nullptr;
-  bool flat = false, nofree = false;
+  bool flat = false, nofree = false, order = false;
   for (int i = 1; i + 1 < argc; ++i) {
     if (!std::strcmp(argv[i], "--control")) {
       if (!std::strcmp(argv[i + 1], "flat")) flat = true;
       else if (!std::strcmp(argv[i + 1], "nofree")) nofree = true;
+      else if (!std::strcmp(argv[i + 1], "order")) order = true;
       else {
         std::fprintf(stderr, "bctl: unknown control %s\n", argv[i + 1]);
         return 2;
@@ -481,5 +650,5 @@ int main(int argc, char **argv) {
         return 2;
       }
     }
-  return run(scenario, vcd, flat, nofree);
+  return run(scenario, vcd, flat, nofree, order);
 }
