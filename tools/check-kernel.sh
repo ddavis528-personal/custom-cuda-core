@@ -1236,9 +1236,13 @@ fi
 # Memop credits against their own watchdog (AR 349/350). A memop credit is
 # held from landing to its MIU queue entry's release (MA-5), and behind the
 # stub's in-order queue coremark128's outlive CCV_P_TIMEOUT_BP (8192), so the
-# channel's is CCV_P_TIMEOUT_MEMOP (20480, CCV_MEMOP_CREDITS x
-# CCV_P_TIMEOUT_MEM); ccv_dec_ooe_uop's, whose credits wait on memop's,
-# derives from it (CCV_P_TIMEOUT_UOP, AR 352). coremark128 is run 45000 cycles, over twice that bound,
+# channel's is CCV_P_TIMEOUT_MEMOP (40960: CCV_MEMOP_CREDITS x CCV_WARP_LANES
+# lines / 16 fills in flight, rounds of CCV_P_TIMEOUT_MEM; AR-410);
+# ccv_dec_ooe_uop's, whose credits wait on memop's, derives from it
+# (CCV_P_TIMEOUT_UOP, AR 352). The holds come from a stated stress, the
+# testbench's memory at CCV_TB_LATENCY=1000 (AR-410, TI-531): at the
+# placeholder's 10 cycles coremark128 holds a memop about 1,500 cycles, too
+# short for the controls below. coremark128 is run 45000 cycles,
 # from a partial oracle (PARTIAL=1, tools/gen-oracle.sh: 10000 records a
 # warp, where 45000 cycles retire about 1300 in all). It must raise no
 # response_within_n and no CHECK but the operand lines a bounded run's
@@ -1256,7 +1260,7 @@ cbl=$B/kernel_cm128-bounded.log
 if ! CCV_ORACLE_DIR="$cb/o" tools/gen-oracle.sh "$cb/coremark128" >"$cb/oracle.log" 2>&1; then
   bad "coremark128, 45000 cycles: memop watchdog" "no partial oracle: $(grep -m1 FAIL "$cb/oracle.log")"
 else
-  "$SKEL" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cbl" 2>&1
+  CCV_TB_LATENCY=1000 "$SKEL" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cbl" 2>&1
   rwn=$(grep -c 'response_within_n' "$cbl")
   other=$(grep '^CHECK' "$cbl" | grep -vc '^CHECK lane [0-9]*: seq [0-9]* operand ')
   asrt=$(grep '%Error' "$cbl" | grep -vc 'quiesced_at_end')
@@ -1275,7 +1279,7 @@ else
     elif ! tools/build-skel.sh "$B/skel-memop8192" "$cb/bank-memop8192.sv"; then
       bad "coremark128: memop watchdog control" "the 8192 bank does not build ($B/skel-memop8192.log)"
     else
-      "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
+      CCV_TB_LATENCY=1000 "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
       # Both narrowed must fire (AR 352 (3)): memop's at 8192, and
       # dec_ooe_uop's, whose credits wait on memop's (CCV_P_TIMEOUT_UOP), at
       # 4096: since CCV_LAT_L1_CMPL 15 (AR 368) the run's longest uop hold is
@@ -1288,7 +1292,7 @@ else
       elif ! grep -q 'u_dec_ooe_uop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
         bad "coremark128: uop watchdog control" "with the uop watchdog at 4096, no response_within_n on ccv_dec_ooe_uop (hold ${uh:-none})"
       else
-        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of 20480; memop at 8192 and uop at 4096 fire)"
+        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of $(sed -n 's/^BPAGE ccv_ooe_miu_memop .*watchdog=\([0-9]*\).*/\1/p' "$cbl"), at CCV_TB_LATENCY=1000; memop at 8192 and uop at 4096 fire)"
       fi
     fi
     rm -rf "$B/skel-memop8192" "$B/skel-memop8192.log"

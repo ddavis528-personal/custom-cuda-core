@@ -191,6 +191,19 @@ void getBeat(const Bits &b, uint32_t lsb, Line &l, unsigned beat) {
 class Testbench : public Stub {
 public:
   Testbench(int inst, Kernel &k) : Stub(inst, k) {
+    // CCV_TB_LATENCY=N (AR-410): the placeholder DRAM answers after N cycles
+    // instead of kLatency, every line outside the slow regions, page tables
+    // too. A stated stress, never an accident of where a kernel's data sits:
+    // the coremark128 memop watchdog line names it. No latency may pass
+    // CCV_P_TIMEOUT_MEM, the bound CCV_P_TIMEOUT_MEMOP is derived from.
+    if (const char *v = std::getenv("CCV_TB_LATENCY"); v && *v) {
+      char *end = nullptr;
+      const unsigned long n = std::strtoul(v, &end, 10);
+      if (*end || n == 0 || n > ccv::prov::kTimeoutMem)
+        k.fail("testbench: CCV_TB_LATENCY=%s is not a latency in 1..CCV_P_TIMEOUT_MEM (%u)",
+               v, unsigned(ccv::prov::kTimeoutMem));
+      else latency_ = n;
+    }
     // Every warp runs the same code from the same memory: warp 0's record of
     // them stands for all (Kernel::loadOracles holds the others to it).
     for (size_t i = 0; i != k.orcs[0].code.size(); ++i)
@@ -203,9 +216,12 @@ public:
 
 private:
   static constexpr uint64_t kLatency = 10;   // placeholder DRAM
+  uint64_t latency_ = kLatency;              // CCV_TB_LATENCY overrides it
   /// A slow region, for a warp stalled on a miss as long as DRAM's: a line
   /// at kSlowBase or above answers kSlowLatency cycles after it is asked
-  /// for (Daniel, 2026-10-21; the stall kernel). No other kernel reaches it.
+  /// for (Daniel, 2026-10-21; the stall kernel). Only the kernels written
+  /// for it reach it (stall, provswap, atom, cas, atomf), since it ends at
+  /// kSlowEnd.
   static constexpr uint64_t kSlowBase = 0x80000, kSlowLatency = 400;
   /// Two more regions within the slow one's range, for provswap: a line
   /// from kMidBase answers after kMidLatency cycles, and one from kDeepBase
@@ -213,10 +229,13 @@ private:
   /// ready first.
   static constexpr uint64_t kMidBase = 0xA0000, kMidLatency = 250;
   static constexpr uint64_t kDeepBase = 0xC0000, kDeepLatency = 1000;
-  /// The slow regions end at kSlowEnd (MI-5 (1)): above it, the page tables
-  /// (0xF0 << 40) among them, every line is the placeholder DRAM's, so a
-  /// table walk pays kLatency a level, not kDeepLatency.
-  static constexpr uint64_t kSlowEnd = uint64_t(1) << 32;
+  /// The slow regions end at kSlowEnd, 1 MiB (AR-410): above it, the page
+  /// tables (0xF0 << 40) among them (MI-5 (1)), every line is the placeholder
+  /// DRAM's. Up to 4 GB, coremark128's data at 0x110000 took kDeepLatency by
+  /// accident and held its memops past their watchdog (TI-531).
+  static constexpr uint64_t kSlowEnd = uint64_t(1) << 20;
+  static_assert(kDeepLatency <= ccv::prov::kTimeoutMem && kSlowLatency <= ccv::prov::kTimeoutMem,
+                "a testbench latency past CCV_P_TIMEOUT_MEM breaks CCV_P_TIMEOUT_MEMOP's derive");
   struct P { uint64_t due; Bits msg; uint64_t tid; bool first = true; };
   /// D beats, in the order they go: bursts by due cycle, each burst's beats
   /// together and one a cycle. Responses are matched by source, not order,
@@ -260,11 +279,11 @@ private:
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
         std::vector<P> burst;
-        const uint64_t due = now_ + (addr >= kSlowEnd ? kLatency
+        const uint64_t due = now_ + (addr >= kSlowEnd ? latency_
                           : addr >= kDeepBase  ? kDeepLatency
                           : addr >= kMidBase ? kMidLatency
                           : addr >= kSlowBase ? kSlowLatency
-                                              : kLatency);
+                                              : latency_);
         for (unsigned beat = 0; beat != kBeats; ++beat) {
           Bits r = dBeat(kTlAckData, src);
           putBeat(r, kDData, l, beat);
@@ -281,7 +300,7 @@ private:
         if (++p.beats == kBeats) {
           for (unsigned k = 0; k != kLine; ++k)
             if (p.mask[k]) k_.mem[p.addr + k] = p.data[k];
-          enqueue({{now_ + kLatency, dBeat(kTlAck, src), m.tid, true}});
+          enqueue({{now_ + latency_, dBeat(kTlAck, src), m.tid, true}});
           puts_.erase(src);
         }
       } else {
