@@ -2436,33 +2436,72 @@ fi
 
 # Both block models with refill notices on (MA rev 134, re OA-453; MI-9):
 # the DCU model's default sends none, so OA-23's hint contract is held here.
-# vadd4 has DCU send two notices a cycle; the MIU model declines a second
-# promise on a slot taken that cycle (hint_slot_taken) and is otherwise
-# clean, and each control breaking a promise must be caught.
+# The MIU model declines a second promise on a slot taken that cycle
+# (hint_slot_taken) and is otherwise clean, and each control breaking a
+# promise must be caught. vadd4 holds == ccv-sim, cmpl_hint and four of the
+# controls. The slot-taken case is taken from vadd4 OR mload (DI-32): under
+# the spec's miss-wait rule (DCU slice 2, part 1: a merge list of 4, a bank's
+# later misses waiting behind its waiting miss) vadd4's later loads re-look as
+# late hits and DCU never sends two notices a cycle on one slot, while mload
+# reaches it under either DCU model; so the bin, and the hint-same-slot
+# control that needs it, hold before and after.
 MODELS="CCV_MIU_IMPL=model CCV_DCU_IMPL=model CCV_DCU_NOTICE=1"
-log="$B/kernel_vadd4_models.log"
-env $MODELS "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$log" 2>&1
-w=$(ok "$log")
-hs=$(cover "$log" hint_slot_taken); ch=$(cover "$log" cmpl_hint)
-[ "${hs:-0}" -gt 0 ] || w="$w hint_slot_taken=${hs:-0} (want >0)"
-[ "${ch:-0}" -gt 0 ] || w="$w cmpl_hint=${ch:-0} (want >0)"
-if [ -z "$w" ]; then
-  say "vadd4, both models, notices on: == ccv-sim, hints held" "PASS (hint_slot_taken=$hs, cmpl_hint=$ch)"
+hs_sum=0; w_all=""; ch=""
+for k in vadd4 mload; do
+  log="$B/kernel_${k}_models.log"
+  env $MODELS "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  w=$(ok "$log")
+  [ -z "$w" ] || w_all="$w_all $k:$w"
+  hs=$(cover "$log" hint_slot_taken); hs_sum=$((hs_sum + ${hs:-0}))
+  [ "$k" = vadd4 ] && ch=$(cover "$log" cmpl_hint)
+done
+[ "$hs_sum" -gt 0 ] || w_all="$w_all hint_slot_taken=0 on vadd4 and mload (want >0)"
+[ "${ch:-0}" -gt 0 ] || w_all="$w_all vadd4 cmpl_hint=${ch:-0} (want >0)"
+if [ -z "$w_all" ]; then
+  say "vadd4 and mload, both models, notices on: == ccv-sim, hints held" "PASS (hint_slot_taken=$hs_sum, cmpl_hint=$ch)"
 else
-  bad "vadd4, both models, notices on" "${w# }"
+  bad "vadd4 and mload, both models, notices on" "${w_all# }"
 fi
-for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_ntc:same_keys \
-            late-cmpl:miu_ooe_cmpl_hint:on_time hint-wrong-tag:miu_ooe_cmpl_hint:same_keys \
-            hint-same-slot:miu_ooe_cmpl_hint:; do
-  brk=${spec%%:*}; rest=${spec#*:}; chan=${rest%%:*}; prop=${rest#*:}
-  log="$B/kernel_${brk}_models.log"
-  env $MODELS "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break "$brk" >"$log" 2>&1
-  n=$(grep -c "u_${chan}_notice_s[0-9]*\.g_${prop:-[a-z_]*}_as" "$log")
-  f=$(field "$log" check_failures)
-  if [ "$n" -gt 0 ] || [ "${f:-0}" -gt 0 ]; then
-    say "--break $brk, both models: caught" "PASS ($n notice violations, ${f:-0} checks)"
+for spec in late-refill:dcu_miu_fill_ntc:on_time:vadd4 notice-wrong-id:dcu_miu_fill_ntc:same_keys:vadd4 \
+            late-cmpl:miu_ooe_cmpl_hint:on_time:vadd4 hint-wrong-tag:miu_ooe_cmpl_hint:same_keys:vadd4 \
+            hint-same-slot:miu_ooe_cmpl_hint::vadd4,mload; do
+  brk=${spec%%:*}; rest=${spec#*:}; chan=${rest%%:*}; rest=${rest#*:}; prop=${rest%%:*}; ks=${rest#*:}
+  caught=""
+  for k in ${ks//,/ }; do
+    log="$B/kernel_${brk}_${k}_models.log"
+    env $MODELS "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break "$brk" >"$log" 2>&1
+    n=$(grep -c "u_${chan}_notice_s[0-9]*\.g_${prop:-[a-z_]*}_as" "$log")
+    f=$(field "$log" check_failures)
+    if [ "$n" -gt 0 ] || [ "${f:-0}" -gt 0 ]; then caught="$k: $n notice violations, ${f:-0} checks"; break; fi
+  done
+  if [ -n "$caught" ]; then
+    say "--break $brk, both models: caught" "PASS ($caught)"
   else
-    bad "--break $brk, both models" "went unnoticed: $(grep '^KERNEL' "$log")"
+    bad "--break $brk, both models" "went unnoticed on ${ks//,/ and }"
+  fi
+done
+# DCU model slice 2 (DI-32; DCU spec tab rev 104): miss buffers, fills,
+# eviction and writeback, each broken on a kernel that reaches it. The
+# model must be caught every time: a CHECK, a mismatch, a violation or a
+# run that does not finish. dcu-miss-reorder needs notices on (both
+# models); dcu-wb-drop is drop-writeback's spec name. Parts 3-4 (DI-33):
+# a store writing a line it does not own (dcu-st-shared) and a store hit
+# leaving the line clean (dcu-st-dirty). dcu-fill-nostale, dcu-wb-store,
+# dcu-st-noorder, dcu-st-mergeall, dcu-ue-* and dcu-prb-* reach no kernel
+# here (MIU holds a load behind its older store; no probe or UE injection
+# yet): DI's unit tests hold them (sim/dcu/dcu_test.cpp).
+for spec in dcu-fill-early:vadd4:dcu dcu-mshr-nomerge:lnorm1:dcu dcu-miss-reorder:vadd4:models \
+            dcu-wb-early:slotform:dcu dcu-wb-refetch:slotform:dcu dcu-wb-drop:slotform:dcu \
+            dcu-st-shared:narrowadd:dcu dcu-st-dirty:rope:dcu; do
+  brk=${spec%%:*}; rest=${spec#*:}; k=${rest%%:*}; set=${rest#*:}
+  envs="CCV_DCU_IMPL=model"; [ "$set" = models ] && envs=$MODELS
+  log="$B/kernel_${brk}_dcu.log"
+  env $envs "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break "$brk" >"$log" 2>&1
+  why=$(ok "$log")
+  if [ -n "$why" ]; then
+    say "--break $brk ($k, DCU model): caught" "PASS ($why)"
+  else
+    bad "--break $brk ($k, DCU model)" "went unnoticed: $(grep '^KERNEL' "$log")"
   fi
 done
 bad_k=""
@@ -2569,10 +2608,15 @@ fi
 # warp 0, restored on a 1,000-cycle line, demotes again when warp 1's
 # 250-cycle line lands first. OOE's thresholds are raised for provswap (a
 # model setting), so only those two lines trigger, not the cold misses.
+# CCV_RAU_CONCURRENT=1 since the walk became the default (demote_walk=1,
+# OA 466): warp 0's walked demotion is still in flight when warp 1's
+# trigger comes at cycle 351, and a one-at-a-time RAU declines it, so the
+# scenario never forms; overlapped, the counts are the same at either
+# walk setting.
 CCV_RAU_READY=0 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl \
   >"$B/kernel_stall_prov.log" 2>&1
 w=$(ok "$B/kernel_stall_prov.log" provisional=1 prov_demote=0)
-pv() { CCV_RAU_READY=0 CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
+pv() { CCV_RAU_CONCURRENT=1 CCV_RAU_READY=0 CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
          --kernel build/oracle/provswap/oracle.jsonl "$@"; }
 pv >"$B/kernel_provswap_prov.log" 2>&1
 w2=$(ok "$B/kernel_provswap_prov.log" provisional=2 prov_demote=1 restored=3)
@@ -2693,6 +2737,28 @@ for spec in "corrupt-map:CHECK parked warp 0 R1 lane" "mig-row-order:CHECK parke
     bad "--break $brk" "PCA's copy was not refused: $(grep '^KERNEL' "$B/kernel_demote_$brk.log")"
   fi
 done
+# A narrow register parks at its width (O-38; OI-200, OA 469): narrowadd
+# demoted at cycle 100 has R2 at 16 bits, so PCA holds its element with zeros
+# above, while ccv-sim keeps the slice's old upper half. The parked check
+# compares within ccv-sim's width. parked-full-width compares all 32 bits.
+log="$B/kernel_narrowadd_park100.log"
+CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:100 "$SKEL" --kernel build/oracle/narrowadd/oracle.jsonl \
+  --cycles 20000 >"$log" 2>&1
+w=$(ok "$log")
+if [ -z "$w" ]; then
+  say "narrowadd parked at 100, R2 narrow == ccv-sim" "PASS"
+else
+  bad "narrowadd parked at 100" "$w"
+fi
+log="$B/kernel_narrowadd_park100_full.log"
+CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:100 "$SKEL" --kernel build/oracle/narrowadd/oracle.jsonl \
+  --cycles 20000 --break parked-full-width >"$log" 2>&1
+n=$(grep -c "^CHECK parked warp 0 R2 lane" "$log")
+if [ "$n" -gt 0 ]; then
+  say "--break parked-full-width: R2 above its width" "PASS ($n)"
+else
+  bad "--break parked-full-width" "went unnoticed: $(grep '^KERNEL' "$log")"
+fi
 
 # DEC's decode fields (A-75, TI-1): OOE renames and waits on the sources
 # src_valid marks, and nothing else, so a real read DEC hides is read stale.

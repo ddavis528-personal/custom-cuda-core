@@ -69,6 +69,7 @@ struct Req {
   Line wdata{};      ///< a store's data
   uint64_t tid = 0;  ///< trace identity, carried to the response
   bool reread = false;   ///< pipe C: the true way's read after a mispredict
+  uint64_t born_p = 0;   ///< a store hit's P, its identity in stp_ (model only)
 };
 
 /// A response launched on ccv_dcu_miu_rsp.
@@ -85,6 +86,10 @@ struct Rsp {
   /// any free slot, lowest bank first, and holds its bank until it leaves
   /// (slice 1, response slots); -1 for a contracted answer, on its own slot.
   int bank = -1;
+  /// A fill's answer (slice 2, part 1): its miss buffer entry, which stays
+  /// valid until every answer has left; -1 for any other.
+  int fid = -1;
+  uint64_t born = 0;   ///< the cycle it was owed (a late answer's age)
 };
 
 /// A request launched on ccv_dcu_mlc_req.
@@ -135,6 +140,22 @@ struct Ports {
   std::array<unsigned, kSlots> rsp_credits{};///< its credits held, per slot
   std::array<bool, kSlots> ntc_can{};       ///< ccv_dcu_miu_fill_ntc may launch
   bool mlc_can = false;                     ///< ccv_dcu_mlc_req may launch
+  bool prb_can = true;                      ///< ccv_dcu_mlc_probe_ack may launch
+};
+
+/// A probe landed from ccv_mlc_dcu_probe (slice 2, part 4).
+struct Probe {
+  unsigned id = 0;     ///< req_id: its probe buffer (4)
+  uint64_t pa = 0;     ///< the line
+  bool inval = true;   ///< invalidate (else downgrade)
+};
+
+/// An ack launched on ccv_dcu_mlc_probe_ack: ack = 1 iff dirty_data carries
+/// the line (DCU's reading of the field until MLC's session states it).
+struct ProbeAck {
+  unsigned id = 0;
+  bool data = false;
+  Line line{};
 };
 
 struct Out {
@@ -144,6 +165,11 @@ struct Out {
   std::optional<MlcReq> mlc;
   bool ue_raise = false;           ///< ccv_dcu_cru_err's sticky ue, launched now
   uint8_t ent_ret = 0, std_ret = 0;///< MA-25's credit-return vectors, a bit a bank
+  /// Fill buffers freed now (slice 2, part 1): each returns its
+  /// ccv_mlc_dcu_rsp credit (written and every answer gone; an
+  /// acknowledgement's at once).
+  unsigned fill_release = 0;
+  std::optional<ProbeAck> prb_ack;   ///< its payload launch returns the probe's credit
 };
 
 struct Hooks {
@@ -168,11 +194,13 @@ public:
   /// May the block take new requests this cycle? False while a missing
   /// request waits for a miss buffer, or for room in its line's merge list:
   /// the hold TI-22 and MA-12 allow, and the only one.
-  bool accepting() const { return stalled_.empty(); }
+  /// DCU never refuses the channel (MA-12): a miss with no entry waits in
+  /// its bank's queue on its entry credit (slice 2, part 1).
+  bool accepting() const { return true; }
   /// One cycle: `in` the requests whose payload lands now, in slot order;
   /// `fill` MLC's response landing now.
   Out cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill> &fill,
-            const Ports &p);
+            const Ports &p, const std::optional<Probe> &prb = std::nullopt);
   bool busy() const;
 
   enum class Pipe { A, B, C };
@@ -182,6 +210,8 @@ public:
   unsigned bankOf(uint64_t pa) const;
   /// The line's way, or -1 (tests).
   int wayOf(uint64_t pa) const;
+  /// pa's set's PLRU victim way (tests).
+  unsigned victimWay(uint64_t pa) const { return plruVictim(size_t((pa / kLineBytes) % c_.sets)); }
   bool dirtyLine(uint64_t pa) const;
   bool ownedLine(uint64_t pa) const;
 
@@ -207,6 +237,8 @@ private:
     bool ecc_wr = false;   ///< its corrected line's rewrite is queued
     uint64_t line = 0, used = 0;
     Line data{};
+    int rsv = -1;   ///< the fill entry that chose it as victim, until its write (W)
+    bool fvalid = false;   ///< dcu_bctl's fold valid bit (tracks valid; part 4's CHECK)
   };
   std::vector<Way> l1_;
   uint64_t tick_ = 0;
@@ -223,6 +255,15 @@ private:
     plruTouch(i / c_.ways, unsigned(i % c_.ways));
   }
   void plruTouch(size_t set, unsigned way);
+  /// A lookup's hit touches its way a cycle after its D2 (D + 3), winner or
+  /// bank-conflict loser alike, and only then (dcu_bctl: pu_q, MA's DI-26
+  /// answer): a queued serve and a mispredict's re-read touch nothing more.
+  /// Kept by way, as the RTL's update is: (cycle, way index). Only the PLRU
+  /// bits wait: a way's recency (`used`, the wp-mru predictor's) moves at
+  /// serve, as before.
+  std::multimap<uint64_t, size_t> touch_at_;
+  void touchLater(const Way &w) { touch_at_.emplace(now_ + 3, size_t(&w - l1_.data())); }
+  void plruTouchWay(size_t i) { plruTouch(i / c_.ways, unsigned(i % c_.ways)); }
   unsigned plruVictim(size_t set) const;
   unsigned fold(uint64_t pa) const;
   /// The way the predictor names for pa (nullptr with no fold match);
@@ -239,11 +280,13 @@ private:
 
   // ---- the banks and their queues (MA-7, MA-24, MA-25, AR 364) -------------
   struct Acc {
-    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW } k;
+    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW, MissW, Prb } k;
     uint64_t born, ready, line;
     Req req;           ///< Look, StoreR
     unsigned fb = 0;   ///< FillW: its fill buffer
     Line data{};       ///< EvictR: the victim
+    int tway = -1;     ///< Look: the way its tag result named, a hit (tag-stale marking)
+    bool stale = false;   ///< Look: a fill wrote that way since: it reads its tags again
   };
   std::vector<uint64_t> bfree_;            ///< the first cycle each bank is free
   std::vector<std::deque<Acc>> bq_;        ///< deferred work, oldest first
@@ -255,7 +298,18 @@ private:
   void schedule();
   void claim(unsigned b);
   bool eligible(unsigned b, size_t i) const;
-  bool olderLook(unsigned b, size_t upto, uint64_t line) const;
+  /// An older lookup of `line` ahead of position `upto` that this one may
+  /// not pass (slice 2, part 3): a store ahead of anything, or anything
+  /// ahead of a store (`store`); loads pass loads.
+  bool olderLook(unsigned b, size_t upto, uint64_t line, bool store = true) const;
+  static bool storeLike(const Acc &x) { return x.k == Acc::StoreR || (x.k == Acc::Look && x.req.op == Op::Store); }
+  /// Store hits' writes, booked at their read (part 3): cycle -> the write.
+  std::vector<std::multimap<uint64_t, Acc>> book_;
+  bool bookable(unsigned b) const;
+  /// Stores between arrival and write, by line: their P (part 3's CHECK).
+  std::multimap<uint64_t, uint64_t> stp_;
+  /// Merged stores' store-data credits, due back at their merge (part 3).
+  std::multimap<uint64_t, unsigned> std_at_;
   void serve(const Acc &a, uint64_t born);
   void serveLook(const Req &r, uint64_t born);
   void entLeave(unsigned b) { ++ent_owed_[b]; --ent_used_[b]; }
@@ -271,21 +325,56 @@ private:
     uint64_t line;
     std::vector<Req> reqs;   ///< the primary first, then merged, in order
     Line wb{};               ///< Evict, RmwRead's write: the line out
+    // Slice 2, parts 1-2: a fill held in its fill buffer from F until its
+    // write (W) and its last answer; then, for a dirty victim, the entry
+    // turns into the victim's writeback until MLC acknowledges it.
+    bool filled = false, written = false, fb = false;
+    uint64_t f_at = 0;       ///< F: the fill's payload landed
+    unsigned owed = 0;       ///< answers not yet launched
+    int way = -1;            ///< the way chosen at F+1 (index into l1_)
+    Line fl{};               ///< the fill buffer's line
+    bool fown = false, fdirty = false;
+    uint64_t vline = 0;      ///< the dirty victim's line, written back at W
+    bool vdirty = false, vread = false, acked = false;
+    std::vector<Req> relook; ///< merged requests that look up again after W
+    unsigned kst = 0;        ///< stores merged into the fill buffer (part 3)
   };
+  static Miss newMiss(MK k, uint64_t line, std::vector<Req> reqs, const Line &wb) {
+    Miss m;
+    m.k = k;
+    m.line = line;
+    m.reqs = std::move(reqs);
+    m.wb = wb;
+    return m;
+  }
   std::map<unsigned, Miss> miss_;
   std::set<unsigned> free_ids_;
-  std::deque<Req> stalled_;            ///< missing requests with no buffer yet
-  std::deque<MlcReq> to_mlc_;
-  std::deque<std::pair<uint64_t, Line>> wbq_;   ///< victims read, waiting for an id
+  std::deque<std::pair<uint64_t, MlcReq>> to_mlc_;   ///< (its D2, the request), oldest first
   std::set<uint64_t> wb_lines_;        ///< lines written back, not yet acked
-  unsigned wb_pending_ = 0;            ///< victims booked (EvictR queued, or in wbq_)
-  bool startMiss(const Req &r);        ///< false: no buffer, the request stalls
+  unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
+  std::deque<unsigned> wbsend_;        ///< writeback entries unsent, oldest first
+  std::deque<unsigned> vpend_;         ///< fills whose victim is not chosen yet
+  unsigned fill_release_ = 0;          ///< this cycle's freed fill buffers
+  bool pickVictim(unsigned id);        ///< F+1: choose, reserve and touch; false if none
+  void fillWrite(unsigned id);         ///< W
+  void answered(unsigned id);          ///< one of its answers launched
+  void maybeFree(unsigned id);
+  /// Merge or allocate; false (and why) if the miss must wait.
+  bool startMiss(const Req &r, uint64_t d2, const char **why = nullptr);
+  /// A miss whose entry credit has gone home: merge or allocate now, or wait
+  /// in its bank's queue (MissW), taking the credit back until it leaves.
+  void missOrWait(const Req &r, uint64_t d2);
+  void retryWaits();                   ///< each bank's oldest waiting miss, one a cycle
   bool needsMlc(const Req &r) const;
-  void mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid);
+  /// A dirty victim a fill has reserved (slice 2, part 2): its stores wait.
+  bool rsvDirty(const Way *w) const;
+  /// A line whose writeback awaits MLC's ack: its lookups wait (part 2);
+  /// dcu-wb-refetch, the control, lets them miss and fetch it again.
+  bool inWb(uint64_t line) const { return wb_lines_.count(line) && c_.brk != "dcu-wb-refetch"; }
+  Way *stale_way_ = nullptr;   ///< dcu-fill-nostale: the way a stale lookup reads
+  void mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid, uint64_t d2);
   void onFill(const Fill &f);
   Way *install(uint64_t pa, const Line &l, bool owned, bool dirty);
-  bool canInstall(uint64_t pa);
-  std::deque<Fill> fills_;   ///< fills landed, waiting for a victim
   static bool fullLine(const Req &r, const std::string &brk);
   void merge(Line &l, const Req &r) const;
 
@@ -310,6 +399,25 @@ private:
   // ---- machine errors (AR 370, MA-19) -------------------------------------
   unsigned ue_hits_ = 0;
   std::vector<uint64_t> ue_loc_;
+  /// Recovered UEs' req_ids awaiting their second answer, from a fill
+  /// (part 4): (slot, req_id) -> the cycle of the first.
+  std::map<std::pair<unsigned, unsigned>, uint64_t> ue_open_;
+  static constexpr uint64_t kUeAnswerBound = 2000;
+  // ---- probes (slice 2, part 4) ----
+  static constexpr unsigned kPrbBufs = 4;   ///< ccv_mlc_dcu_probe's credits
+  struct PrbBuf {
+    Probe p;
+    enum S { Start, WaitW, Queued, Done } s = Start;
+    int wfid = -1;          ///< WaitW: the entry whose fill write it waits for
+    bool dirty = false;     ///< the line was dirty: the ack must carry it
+    bool wb = false;        ///< its data holds a writeback buffer until the ack
+    ProbeAck ack;
+  };
+  std::map<unsigned, PrbBuf> prb_;
+  std::deque<unsigned> prb_done_;   ///< acks, in the order their probes finished
+  void probeStart(unsigned id);
+  void probeServe(unsigned id);
+  void probeDone(unsigned id, const char *bin);
   bool ue_raised_ = false, ue_sent_ = false;
   unsigned ecc_hits_ = 0;
   /// dcu_fix (slice 1, DI-18): one rewrite in flight (its read, then its
