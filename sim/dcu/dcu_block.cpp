@@ -71,6 +71,7 @@ private:
     c.ways = envU("CCV_DCU_WAYS", c.ways);
     if (!c.ways || c.ways > 16) c.ways = ccv::prov::kDcuWays;
     c.age = envU("CCV_DCU_BANK_AGE", c.age);
+    c.wb_ack_delay = envU("CCV_DCU_WB_ACK_DELAY", c.wb_ack_delay);
     c.qdepth = envU("CCV_DCU_BANK_QDEPTH", c.qdepth);
     c.stdata = envU("CCV_DCU_BANK_STDATA", c.stdata);
     c.wp_bits = envU("CCV_DCU_WAYPRED_BITS", c.wp_bits);
