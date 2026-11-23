@@ -445,6 +445,10 @@ static constexpr uint32_t kDcuSets = 512;
 /// PROVISIONAL -- decided by: MA rev 68 (MA-16, AR 364): a start; MA's Phase 1 model sets it against AR's 729-cycle starvation case
 static constexpr uint32_t kDcuBankAge = 16;
 
+/// DCU's age bound on a fill's bank write, in cycles: once a ready fill write, or its dirty victim's read, has waited this long, it takes its bank's next free access cycle ahead of new lookups and queued store reads (the losing lookup queues as a bank-conflict loser), though never ahead of a booked store write or an older queued store to the same (set, way). The write then lands within this + 5 cycles of ready, so ccv_mlc_dcu_rsp's credit returns well inside its 32-cycle check (DI-37). Less than CCV_DCU_BANK_AGE.  Requires: (CCV_DCU_FILL_AGE >= 1) * (CCV_DCU_FILL_AGE < CCV_DCU_BANK_AGE) == 1.
+/// PROVISIONAL -- decided by: MA re:DI-37 (MA tab rev 171): option (a), K = 4; DCU tab rev 114, part 1's fill write paragraph
+static constexpr uint32_t kDcuFillAge = 4;
+
 /// Lookup entries in each DCU bank's queue, and MIU's entry credits for that bank (MA-25): a hard reservation, so DCU never refuses a request and never holds more. MIU's counters reset full, a request to the bank spends one at send, and DCU returns one on ccv_dcu_miu_cred's ent_ret as an entry leaves the queue (answered, or gone to MLC as a miss; a fill uses its fill buffer, not an entry). The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_QDEPTH overrides it in both for a test of the hold.  Requires: CCV_DCU_BANK_QDEPTH >= 1.
 /// PROVISIONAL -- decided by: MA-25 (MA-24 under AR 382; Phase 1 cm128 at gap 5, 5,130,918 cycles with credits)
 static constexpr uint32_t kDcuBankQdepth = 16;
