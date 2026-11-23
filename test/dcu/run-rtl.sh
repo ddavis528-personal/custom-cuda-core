@@ -11,6 +11,10 @@
 #            grants, wait queue, aging, fix, PLRU, entry returns), and its
 #            controls flat (the model puts a new lookup ahead of the re-read)
 #            and nofree (a dropped access keeps its entry), which must fail
+#   dcu_mshr: test/dcu/mshr_tb.cpp, the miss buffers (merge, allocate, wait,
+#            bank order, the request to MLC, a fill's entry read), and its
+#            controls nomerge (dcu-mshr-nomerge) and order (dcu-miss-reorder),
+#            which must fail
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/dcu-rtl; mkdir -p "$B"
@@ -48,4 +52,9 @@ for seed in 1 2 3; do
 done
 control dcu_bctl flat
 control dcu_bctl nofree
+for seed in 1 2 3; do
+  bench "dcu_mshr seed $seed" test/dcu/cg-build.sh dcu_mshr "$B/dcu_mshr" -- "$B/dcu_mshr/tb" --seed $seed
+done
+control dcu_mshr nomerge
+control dcu_mshr order
 exit $fail

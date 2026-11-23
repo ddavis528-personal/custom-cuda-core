@@ -51,6 +51,22 @@
     "run": "{dir}/tb --cg {scenario} {vcd}",
     "scope": "dcu_bctl"
    }
+  },
+  {
+   "name": "dcu_mshr",
+   "module": "dcu_mshr",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/dcu/dcu_mshr.sv"
+   ],
+   "params": {},
+   "clock": "dcu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/dcu/cg-build.sh dcu_mshr {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "dcu_mshr"
+   }
   }
  ]
 }
