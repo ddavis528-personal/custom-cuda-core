@@ -64,6 +64,8 @@ struct Bench {
   std::vector<Launch> rsps;
   std::vector<std::pair<uint64_t, Out::Notice>> notices;
   std::vector<std::pair<uint64_t, MlcReq>> mlc;
+  std::map<uint64_t, Probe> probes;   ///< ccv_mlc_dcu_probe landings, by cycle
+  std::vector<std::pair<uint64_t, ProbeAck>> acks;
   /// Answer MLC's requests itself, `mlc_lat` cycles after launch.
   bool auto_mlc = true;
   unsigned mlc_lat = 20;
@@ -87,7 +89,11 @@ struct Bench {
         p.ntc_can[s] = true;
       }
       p.mlc_can = true;
-      Out o = core.cycle(t, in, f, p);
+      std::optional<Probe> pr;
+      auto pi = probes.find(t);
+      if (pi != probes.end()) pr = pi->second;
+      Out o = core.cycle(t, in, f, p, pr);
+      if (o.prb_ack) acks.push_back({t, *o.prb_ack});
       for (const Rsp &r : o.rsps) rsps.push_back({t, r});
       for (const auto &n : o.notices) notices.push_back({t, n});
       if (o.mlc) {
@@ -910,6 +916,137 @@ int main(int argc, char **argv) {
         return;
       }
       EXPECT(b.rsp(2) && b.rsp(2)->line[0] == 0x11, "the load sees the store");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // ---- Slice 2, part 4 -----------------------------------------------------
+
+  // A probe's outcomes (part 4's table): an ack carries data iff the line
+  // was dirty; an invalidate leaves the line absent (the next read misses),
+  // a downgrade leaves it shared (a store then upgrades).
+  test("probe-outcomes", [&] {
+    Bench b(cfg(9));
+    const uint64_t sh = bank0(1), ow = bank0(2), dt = bank0(3), ab = bank0(4), dd = bank0(5);
+    warm(b, sh, 60);
+    own(b, ow, 61);
+    b.reqs[b.t] = {st(0, 62, dt, 0, 0x44)};
+    b.run(b.t + 60);
+    b.reqs[b.t] = {st(0, 63, dd, 0, 0x55)};
+    b.run(b.t + 60);
+    uint64_t T = b.t;
+    b.probes[T] = Probe{0, sh, true};
+    b.probes[T + 1] = Probe{1, ow, false};
+    b.probes[T + 2] = Probe{2, dt, true};
+    b.probes[T + 3] = Probe{3, ab, true};
+    b.run(T + 20);
+    b.probes[b.t] = Probe{0, dd, false};
+    b.run(b.t + 20);
+    EXPECT(b.acks.size() == 5, "five acks (%zu)", b.acks.size());
+    for (const auto &a : b.acks) {
+      const bool want = (a.second.id == 2 && a.first < T + 20) || (a.second.id == 0 && a.first >= T + 20);
+      EXPECT(a.second.data == want, "probe %u's ack %s data", a.second.id, want ? "with" : "without");
+      if (want) EXPECT(a.second.line[0] == (a.second.id == 2 ? 0x44 : 0x55), "the dirty line");
+    }
+    b.reqs[b.t] = {rd(0, 1, sh), rd(1, 2, dt)};   // invalidated: misses
+    b.reqs[b.t + 1] = {st(2, 3, ow, 0, 1)};          // downgraded: an upgrade
+    b.run(b.t + 80);
+    EXPECT(b.rsp(1) && !b.rsp(1)->hit && b.rsp(2) && !b.rsp(2)->hit, "invalidated lines miss");
+    EXPECT(b.h.bins["dcu_upgrade_data"] == 1, "a downgraded line's store upgrades");
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+
+  // A probe of a line whose miss is sent and not filled acks at once with no
+  // data; one whose fill is in its buffer, not written, waits for W.
+  test("probe-vs-miss-buffers", [&] {
+    Bench b(cfg(9));
+    b.mlc_lat = 30;
+    b.reqs[0] = {rd(0, 1, 0x2000)};
+    b.probes[10] = Probe{0, 0x2000, true};
+    b.run(40);
+    EXPECT(b.acks.size() == 1 && b.acks[0].first <= 12 && !b.acks[0].second.data, "acked at once, no data");
+    EXPECT(b.h.bins["dcu_prb_ack_sent"] == 1, "against a sent entry");
+    const uint64_t F = b.mlc[0].first + b.mlc_lat;
+    b.reqs[b.t] = {rd(0, 2, 0x4000)};
+    b.run(b.t + 3);
+    const uint64_t F2 = b.mlc.back().first + b.mlc_lat;
+    b.probes[F2 + 1] = Probe{1, 0x4000, true};
+    b.run(F2 + 30);
+    EXPECT(b.h.bins["dcu_prb_wait_fill"] == 1 && b.h.bins["dcu_prb_inval_shared"] == 1,
+           "waited for W, then invalidated the line");
+    (void)F;
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+
+  // A probe waits behind an older store to its line (part 3's order), so the
+  // acked store's bytes leave with the ack; dcu-prb-nostore passes it.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-prb-nostore-control" : "probe-behind-store", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-prb-nostore";
+      Bench b(c);
+      own(b, 0x2000, 60);
+      const uint64_t P = b.t;
+      b.reqs[P] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.probes[P + 1] = Probe{0, 0x2000, true};
+      b.run(P + 30);
+      if (ctl) {
+        EXPECT(refused(b, "before an acked store's write"), "the control is refused");
+        return;
+      }
+      EXPECT(b.acks.size() == 1 && b.acks[0].second.data && b.acks[0].second.line[0] == 0x11,
+             "the ack carries the store's bytes");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // dcu-prb-nodirty acks a dirty line without its data, refused.
+  test("dcu-prb-nodirty-control", [&] {
+    Config c = cfg(9);
+    c.brk = "dcu-prb-nodirty";
+    Bench b(c);
+    b.reqs[0] = {st(0, 1, 0x2000, 0, 0x11)};
+    b.run(60);
+    b.probes[b.t] = Probe{0, 0x2000, false};
+    b.run(b.t + 20);
+    EXPECT(refused(b, "without data for a dirty line"), "the control is refused");
+  });
+
+  // dcu-prb-stale: an invalidate leaves the way's fold valid bit set, which
+  // the next lookup of its set (pipe C) refuses.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-prb-stale-control" : "probe-clears-fold", [&] {
+      Config c = cfg(8);
+      if (ctl) c.brk = "dcu-prb-stale";
+      Bench b(c);
+      warm(b, 0x2000);
+      b.probes[b.t] = Probe{0, 0x2000, true};
+      b.run(b.t + 20);
+      b.reqs[b.t] = {rd(0, 1, 0x2000)};
+      b.run(b.t + 60);
+      if (ctl) {
+        EXPECT(refused(b, "fold valid bit"), "the control is refused");
+        return;
+      }
+      EXPECT(b.rsp(1) && !b.rsp(1)->hit, "a miss after the invalidate");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A recovered UE's second answer comes from a fill (part 4).
+  // dcu-ue-noanswer drops the refetch; dcu-ue-stale looks the bad line up
+  // again: both refused.
+  for (const char *ctl : {"", "dcu-ue-noanswer", "dcu-ue-stale"})
+    test(*ctl ? ctl : "ue-second-answer", [&] {
+      Config c = cfg(9);
+      c.ue_every = 1;
+      if (*ctl) c.brk = ctl;
+      Bench b(c);
+      warm(b, 0x7000);
+      b.reqs[b.t] = {rd(0, 1, 0x7000)};
+      b.run(b.t + 2200);
+      if (*ctl) {
+        EXPECT(!b.h.fails.empty(), "the control is refused");
+        return;
+      }
+      EXPECT(b.rsp(1) && b.rsp(1)->fid >= 0, "answered from a fill");
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 

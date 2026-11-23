@@ -175,6 +175,7 @@ Core::Way *Core::install(uint64_t pa, const Line &l, bool owned, bool dirty) {
       h_.fail(fmt("dcu: write-through's install of line %llx found a dirty victim", pa));
   }
   w->valid = true;
+  w->fvalid = true;
   w->flip = -1;   // a fill writes good check bits
   w->ecc_wr = false;
   w->line = pa;
@@ -332,6 +333,14 @@ bool Core::eligible(unsigned b, size_t i) const {
     return true;
   case Acc::MissW:
     return false;   // no bank access: retryWaits() takes it
+  case Acc::Prb: {
+    // Behind every older store to its line, queued or between read and
+    // write (part 3's order; dcu-prb-nostore, the control, passes them); a
+    // dirty line's read needs a writeback buffer (DI-21).
+    if (c_.brk != "dcu-prb-nostore" && (held(a.line) || olderLook(b, i, a.line, false))) return false;
+    const Way *w = find(a.line);
+    return !(w && w->dirty) || wb_used_ < c_.wb;
+  }
   }
   return true;
 }
@@ -405,6 +414,14 @@ void Core::serveLook(const Req &r, uint64_t born) {
   // miss reads the predicted way's word and discards it. A tag hit always
   // has a fold match (the CHECK).
   const bool fm = c_.wp_bits && !r.reread && !c_.wp_mru && foldMatch(r.pa);
+  // CHECK (part 4): a way's fold valid bit tracks its tag's valid bit, so
+  // after an invalidate no fold match names it (dcu-prb-stale, the control).
+  if (c_.wp_bits) {
+    const Way *set = setOf(r.pa);
+    for (unsigned k = 0; k != c_.ways; ++k)
+      if (set[k].fvalid && !set[k].valid)
+        h_.fail(fmt("dcu: way %llu of line %llx's set has its fold valid bit set, invalid", k, r.pa));
+  }
   if (c_.wp_bits && !r.reread && !c_.wp_mru) {
     if (hit && !fm) h_.fail(fmt("dcu: a tag hit on line %llx without a fold match", r.pa));
     if (!hit && fm) {
@@ -454,6 +471,18 @@ void Core::serveLook(const Req &r, uint64_t born) {
   }
   const int ue = ueOnHit(*w);
   if (ue == 1) {   // recovered: the line is gone, the read refetches it
+    // Part 4: the refetch merges or allocates under the same req_id; the
+    // fill's answer is the second. dcu-ue-noanswer drops the refetch;
+    // dcu-ue-stale keeps the line and looks it up again (no fill).
+    ue_open_[{r.slot, r.req_id}] = now_;
+    if (c_.brk == "dcu-ue-noanswer") return;
+    if (c_.brk == "dcu-ue-stale") {
+      w->valid = true;
+      ++ent_used_[b];
+      --ent_owed_[b];
+      bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, r, 0, {}});
+      return;
+    }
     missOrWait(r, now_ - dOff() + 1);
     return;
   }
@@ -605,6 +634,9 @@ void Core::serve(const Acc &a, uint64_t born) {
   }
   case Acc::MissW:
     h_.fail("dcu: a waiting miss was served as a bank access");
+    break;
+  case Acc::Prb:
+    probeServe(a.fb);
     break;
   case Acc::EvictR: {
     // The dirty victim's read (slice 2, part 2) into a writeback buffer;
@@ -1107,6 +1139,7 @@ void Core::fillWrite(unsigned id) {
   if (m.vdirty && !m.vread)
     h_.fail(fmt("dcu: the fill of line %llx wrote over dirty victim %llx before its read", m.line, m.vline));
   w.valid = true;
+  w.fvalid = true;
   w.flip = -1;   // a fill writes good check bits
   w.ecc_wr = false;
   w.line = m.line;
@@ -1261,6 +1294,7 @@ int Core::ueOnHit(Way &w) {
       (c_.brk == "ue-no-track" || (!hard && !full))) {
     if (c_.brk != "ue-no-track") ue_loc_.push_back(loc);
     w.valid = false;
+    w.fvalid = false;
     h_.hit("ue_recover");
     return 1;
   }
@@ -1274,10 +1308,102 @@ int Core::ueOnHit(Way &w) {
   return 2;
 }
 
+// ---- probes (slice 2, part 4) -------------------------------------------------
+
+/// A probe checks the miss buffers before its lookup: an entry sent and not
+/// filled acks at once (DCU does not hold the line; waiting could deadlock
+/// against an MLC holding the grant for the ack); one filled and not written,
+/// or a reserved dirty victim, waits for the fill's write; one in writeback
+/// acks with no data, since the writeback carries the line. Else it looks
+/// up, a queue entry of its bank.
+void Core::probeStart(unsigned id) {
+  PrbBuf &x = prb_.at(id);
+  const uint64_t pa = x.p.pa;
+  for (const auto &m : miss_) {
+    if (m.second.line != pa) continue;
+    if (m.second.k == MK::Evict) return probeDone(id, "dcu_prb_ack_wb");
+    if (m.second.filled && !m.second.written) {
+      x.s = PrbBuf::WaitW;
+      x.wfid = int(m.first);
+      h_.hit("dcu_prb_wait_fill");
+      return;
+    }
+    return probeDone(id, "dcu_prb_ack_sent");
+  }
+  if (const Way *w = find(pa))
+    if (w->rsv >= 0 && w->dirty && miss_.count(unsigned(w->rsv)) && miss_.at(unsigned(w->rsv)).line != pa) {
+      x.s = PrbBuf::WaitW;
+      x.wfid = w->rsv;
+      h_.hit("dcu_prb_wait_fill");
+      return;
+    }
+  x.s = PrbBuf::Queued;
+  const unsigned b = bankOf(pa);
+  for (const Acc &a : bq_[b])
+    if (a.line == pa && storeLike(a)) {
+      h_.hit("dcu_prb_wait_store");
+      break;
+    }
+  bq_[b].push_back(Acc{Acc::Prb, now_, now_ + 1, pa, Req{}, id, {}});
+}
+
+/// The probe's lookup (the tag RF's read-modify-write) and its outcome:
+/// absent, ack; invalidate, the way invalid (fold valid and dirty cleared);
+/// downgrade, an owned line shared; a dirty line's data read into a
+/// writeback buffer and carried by the ack. Lookups that named its way are
+/// tag-stale (part 1's rule).
+void Core::probeServe(unsigned id) {
+  PrbBuf &x = prb_.at(id);
+  const uint64_t pa = x.p.pa;
+  // CHECK (part 4): no acked store is lost to a probe (dcu-prb-nostore).
+  if (stp_.count(pa)) h_.fail(fmt("dcu: probe %llu read line %llx before an acked store's write", id, pa));
+  Way *w = find(pa);
+  if (!w) return probeDone(id, x.p.inval ? "dcu_prb_inval_absent" : "dcu_prb_down_absent");
+  const bool dirty = w->dirty;
+  if (dirty) {
+    x.dirty = true;
+    x.wb = true;
+    ++wb_used_;
+    h_.peak("dcu_wb_max", wb_used_);
+    h_.hit("dcu_prb_data_read");
+    if (w->flip >= 0) h_.hit("dcu_prb_read_ce");
+    if (c_.brk != "dcu-prb-nodirty") {
+      x.ack.data = true;
+      x.ack.line = w->data;
+    }
+    h_.clean(pa);   // its line leaves with the ack
+  }
+  const char *bin;
+  if (x.p.inval) {
+    bin = dirty ? "dcu_prb_inval_dirty" : w->owned ? "dcu_prb_inval_owned" : "dcu_prb_inval_shared";
+    w->valid = w->owned = w->dirty = false;
+    if (c_.brk != "dcu-prb-stale") w->fvalid = false;
+  } else {
+    bin = dirty ? "dcu_prb_down_dirty" : w->owned ? "dcu_prb_down_owned" : "dcu_prb_down_shared";
+    w->owned = w->dirty = false;
+  }
+  const int way = int(w - l1_.data());
+  for (Acc &a : bq_[bankOf(pa)])
+    if (a.k == Acc::Look && a.tway == way && !a.stale) {
+      a.stale = true;
+      h_.hit("dcu_tag_stale");
+      h_.hit("dcu_prb_relook");
+    }
+  probeDone(id, bin);
+}
+
+void Core::probeDone(unsigned id, const char *bin) {
+  PrbBuf &x = prb_.at(id);
+  x.s = PrbBuf::Done;
+  x.ack.id = id;
+  h_.hit(bin);
+  prb_done_.push_back(id);
+}
+
 // ---- the cycle ----------------------------------------------------------------
 
 Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill> &fill,
-                const Ports &p) {
+                const Ports &p, const std::optional<Probe> &prb) {
   now_ = t;
   ports_ = &p;
   notices_.clear();
@@ -1296,6 +1422,22 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     else ++k;
   }
   if (fill) onFill(*fill);
+  // Probes (part 4): a landed one takes its buffer; those waiting on a
+  // fill's write look again once it is done.
+  if (prb) {
+    if (prb_.count(prb->id) || prb_.size() >= kPrbBufs)
+      h_.fail(fmt("dcu: probe req_id %llu landed with no free buffer", prb->id));
+    else {
+      prb_[prb->id].p = *prb;
+      h_.hit(prb->inval ? "dcu_prb_inval" : "dcu_prb_down");
+      probeStart(prb->id);
+    }
+  }
+  for (auto &x : prb_)
+    if (x.second.s == PrbBuf::WaitW) {
+      auto it = miss_.find(unsigned(x.second.wfid));
+      if (it == miss_.end() || it->second.written) probeStart(x.first);
+    }
   retryWaits();
   // dcu_wb_full (DI-21): cycles a victim read waited for a writeback buffer.
   if (wb_used_ >= c_.wb) {
@@ -1336,6 +1478,18 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     if (to_mlc_.front().first + 1 == t) h_.hit("dcu_mlc_straight");
     o.mlc = to_mlc_.front().second;
     to_mlc_.pop_front();
+  }
+  // Probe acks, one a cycle, in the order their probes finished; the
+  // payload's launch frees the buffer, its credit and a writeback buffer.
+  if (!prb_done_.empty() && p.prb_can) {
+    const unsigned id = prb_done_.front();
+    prb_done_.pop_front();
+    PrbBuf &x = prb_.at(id);
+    if (x.dirty != x.ack.data)
+      h_.fail(fmt("dcu: probe %llu acked ", id) + (x.ack.data ? "with data for a clean line" : "without data for a dirty line"));
+    if (x.wb) --wb_used_;
+    o.prb_ack = x.ack;
+    prb_.erase(id);
   }
   // Responses: promised refills first (a promise never slips), then those
   // due now, then those owed, one a slot a cycle.
@@ -1402,6 +1556,18 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     }
   }
   // Fill answers that launched: their entries owe one fewer.
+  // CHECKs (part 4): a recovered UE's second answer comes from a fill, and
+  // comes (within kUeAnswerBound cycles).
+  for (const Rsp &r : o.rsps) {
+    auto it = ue_open_.find({r.slot, r.req_id});
+    if (it == ue_open_.end() || it->second == t) continue;
+    if (r.fid < 0) h_.fail(fmt("dcu: a recovered UE's second answer (req_id %llu) is not a fill's", r.req_id));
+    ue_open_.erase(it);
+  }
+  for (const auto &u : ue_open_)
+    if (t - u.second == kUeAnswerBound)
+      h_.fail(fmt("dcu: a recovered UE (req_id %llu) has no second answer after %llu cycles", u.first.second,
+                  kUeAnswerBound));
   // CHECK (slice 2, part 1): no fill answer's valid reaches MIU before
   // F+4, so none launches before F+3 (dcu-fill-early, the control).
   for (const Rsp &r : o.rsps)
@@ -1456,7 +1622,7 @@ bool Core::busy() const {
     if (!q.empty()) return true;
   for (const auto &q : book_)
     if (!q.empty()) return true;
-  if (!std_at_.empty()) return true;
+  if (!std_at_.empty() || !prb_.empty()) return true;
   return false;
 }
 

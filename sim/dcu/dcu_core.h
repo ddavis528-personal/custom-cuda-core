@@ -140,6 +140,22 @@ struct Ports {
   std::array<unsigned, kSlots> rsp_credits{};///< its credits held, per slot
   std::array<bool, kSlots> ntc_can{};       ///< ccv_dcu_miu_fill_ntc may launch
   bool mlc_can = false;                     ///< ccv_dcu_mlc_req may launch
+  bool prb_can = true;                      ///< ccv_dcu_mlc_probe_ack may launch
+};
+
+/// A probe landed from ccv_mlc_dcu_probe (slice 2, part 4).
+struct Probe {
+  unsigned id = 0;     ///< req_id: its probe buffer (4)
+  uint64_t pa = 0;     ///< the line
+  bool inval = true;   ///< invalidate (else downgrade)
+};
+
+/// An ack launched on ccv_dcu_mlc_probe_ack: ack = 1 iff dirty_data carries
+/// the line (DCU's reading of the field until MLC's session states it).
+struct ProbeAck {
+  unsigned id = 0;
+  bool data = false;
+  Line line{};
 };
 
 struct Out {
@@ -153,6 +169,7 @@ struct Out {
   /// ccv_mlc_dcu_rsp credit (written and every answer gone; an
   /// acknowledgement's at once).
   unsigned fill_release = 0;
+  std::optional<ProbeAck> prb_ack;   ///< its payload launch returns the probe's credit
 };
 
 struct Hooks {
@@ -183,7 +200,7 @@ public:
   /// One cycle: `in` the requests whose payload lands now, in slot order;
   /// `fill` MLC's response landing now.
   Out cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill> &fill,
-            const Ports &p);
+            const Ports &p, const std::optional<Probe> &prb = std::nullopt);
   bool busy() const;
 
   enum class Pipe { A, B, C };
@@ -221,6 +238,7 @@ private:
     uint64_t line = 0, used = 0;
     Line data{};
     int rsv = -1;   ///< the fill entry that chose it as victim, until its write (W)
+    bool fvalid = false;   ///< dcu_bctl's fold valid bit (tracks valid; part 4's CHECK)
   };
   std::vector<Way> l1_;
   uint64_t tick_ = 0;
@@ -262,7 +280,7 @@ private:
 
   // ---- the banks and their queues (MA-7, MA-24, MA-25, AR 364) -------------
   struct Acc {
-    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW, MissW } k;
+    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW, MissW, Prb } k;
     uint64_t born, ready, line;
     Req req;           ///< Look, StoreR
     unsigned fb = 0;   ///< FillW: its fill buffer
@@ -381,6 +399,25 @@ private:
   // ---- machine errors (AR 370, MA-19) -------------------------------------
   unsigned ue_hits_ = 0;
   std::vector<uint64_t> ue_loc_;
+  /// Recovered UEs' req_ids awaiting their second answer, from a fill
+  /// (part 4): (slot, req_id) -> the cycle of the first.
+  std::map<std::pair<unsigned, unsigned>, uint64_t> ue_open_;
+  static constexpr uint64_t kUeAnswerBound = 2000;
+  // ---- probes (slice 2, part 4) ----
+  static constexpr unsigned kPrbBufs = 4;   ///< ccv_mlc_dcu_probe's credits
+  struct PrbBuf {
+    Probe p;
+    enum S { Start, WaitW, Queued, Done } s = Start;
+    int wfid = -1;          ///< WaitW: the entry whose fill write it waits for
+    bool dirty = false;     ///< the line was dirty: the ack must carry it
+    bool wb = false;        ///< its data holds a writeback buffer until the ack
+    ProbeAck ack;
+  };
+  std::map<unsigned, PrbBuf> prb_;
+  std::deque<unsigned> prb_done_;   ///< acks, in the order their probes finished
+  void probeStart(unsigned id);
+  void probeServe(unsigned id);
+  void probeDone(unsigned id, const char *bin);
   bool ue_raised_ = false, ue_sent_ = false;
   unsigned ecc_hits_ = 0;
   /// dcu_fix (slice 1, DI-18): one rewrite in flight (its read, then its
