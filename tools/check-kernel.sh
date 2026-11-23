@@ -2220,6 +2220,19 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
+# The testbench's latency, CCV_TB_LATENCY +- CCV_TB_JITTER drawn per answer
+# from CCV_TB_SEED (DA rev 132, AR 412 (1)): with jitter on, a later Get's
+# answer overtakes an earlier one's (tb_overtaken) and transp4 still ends as
+# ccv-sim does; the control is the same run at jitter 0, where none may.
+tbo=$(cover "$B/kernel_transp4.log" tb_overtaken)
+tbl="$B/kernel_transp4_jitter0.log"
+CCV_TB_JITTER=0 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl >"$tbl" 2>&1
+w=$(ok "$tbl" tb_overtaken=0)
+if [ "${tbo:-0}" -gt 0 ] 2>/dev/null && grep -q "^TESTBENCH latency=20 jitter=5 seed=1" "$B/kernel_transp4.log" && [ -z "$w" ]; then
+  say "testbench 20+-5: answers reorder, and not at jitter 0" "PASS (transp4 tb_overtaken=$tbo; 0 at jitter 0)"
+else
+  bad "testbench 20+-5: answers reorder, and not at jitter 0" "tb_overtaken=${tbo:-none} at 20+-5; jitter 0: ${w:-clean} $(grep -m1 '^TESTBENCH' "$B/kernel_transp4.log")"
+fi
 # MA-25: DCU's per-bank credits. MIU holds CCV_DCU_BANK_QDEPTH entry credits
 # and CCV_DCU_BANK_STDATA store-data credits a bank, sends a lookup only with
 # its entry credit and a store only with both, and DCU returns them on
