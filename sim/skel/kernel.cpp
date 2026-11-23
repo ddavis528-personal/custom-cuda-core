@@ -1334,6 +1334,7 @@ private:
   }
   std::deque<unsigned> order_;               ///< memops, as OOE issued them
   std::map<unsigned, Job> stores_;           ///< awaiting commit, by rob tag
+  std::set<unsigned> ue_pending_;             ///< req_ids past a UE's first answer (MI-20)
   std::deque<Job> committed_;
   /// A load's fault, held to its L1 contract cycle (V-44).
   std::vector<std::pair<uint64_t, Q>> late_faults_;
@@ -1585,6 +1586,26 @@ private:
         // Matched by req_id, not by slot or arrival order: DCU may answer
         // four outstanding requests in any order.
         const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
+        // A recovered UE's two answers under one req_id (MI-20; MIU spec rev
+        // 163, ECC; DCU slice 2 part 4): a first answer whose line has a
+        // double-bit syndrome on any word is no answer. Its completion is
+        // withheld and the id stays live, whatever owns it, while DCU
+        // invalidates and refetches; the second answer, a miss with a clean
+        // line, is the id's one answer. ue-close-first: the first is taken
+        // as the answer, so the second finds its id not outstanding.
+        {
+          const Line raw = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+          const uint32_t cb = field(c.dcu_miu, "check_bits").lsb;
+          if (ue_pending_.count(id)) {
+            if (get(m.payload, c.dcu_miu, "hit") || !lineClean(raw, m.payload, cb))
+              k_.fail("miu: req_id %u's second answer after a UE is not a clean miss", id);
+            ue_pending_.erase(id);
+            k_.hit("ue_second_answer");
+          } else if (lineUe(raw, m.payload, cb) && k_.brk != "ue-close-first") {
+            ue_pending_.insert(id);
+            continue;
+          }
+        }
         auto fl = fills_.find(id);
         if (fl != fills_.end()) {
           // A window fill: every slot its line holds (TI-31).
@@ -2872,7 +2893,7 @@ private:
   }
 
   bool busy() const override {
-    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() || !ue_pending_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
