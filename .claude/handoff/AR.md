@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-21 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-22 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -98,15 +98,21 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 409, OA 466, TI 516, MA 155, DI 33,
-  MI 29, RA 157, RI 91, IS 201, CP 160, OI 400, DA 128, Conventions 20. TI,
-  MA, DI, MI and OI were read only for named rows past the last sweep's revs
-  (TI 496, MA 135, DI 12, MI 18, OI 395): the next sweep reads them from
-  those. Specs: FET tab rev 54, DCU tab rev 64, MIU tab rev 148.
+- **Bookmarks** (revs read through): AR 409, OA 468, TI 517, MA 157, DI 41,
+  MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
+  sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
+  tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
+- **Sweep 2026-11-22 (Sunday, no pings):** register: nothing for AR; DA
+  129-131 recorded by OA in Daniel's session (ooe_mempl 21-flop CG waiver;
+  OOE redirect lag option D; CCV-L23 "table" form with OA's 7 conditions).
+  Merged clcw9s 7, doowtf 73, 5tdecg 17, n6402z 10, lecnjf 5, 1vzyjg 2,
+  664pgr 3; no conflicts; regen clean; full gate PASS on 4bc5e708 (~2.7 h);
+  pushed 124. Session home --check exit 0. TI-518 (63579fce, MA-30 landed:
+  pa_fold, one fold both sides, CHECK) arrives next sweep.
 - **Sweep 2026-11-21 (10:03Z trigger):** pass 1 merged doowtf 214, n6402z
   19, 0ch1hh 2; 5tdecg conflicted in OI's files, aborted, AR 402 to OI. Full
   gate PASS on 6ba64602; pushed 238. OI fixed 5tdecg (893f2eed, OI-196);

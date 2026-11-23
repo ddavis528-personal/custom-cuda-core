@@ -12,6 +12,7 @@
 
 #include "kernel.h"
 #include "secded.h"
+#include "wayfold.h"
 
 #include "ccv/event.h"
 #include "ccv_params.h"
@@ -50,7 +51,8 @@ struct Ch {
            ooe_ret = chanId("ccv_ooe_miu_retire"), ooe_fet = chanId("ccv_ooe_fet_redirect"),
            ooe_free = chanId("ccv_ooe_fet_ckpt_free"), miu_dcu = chanId("ccv_miu_dcu_req"),
            dcu_miu = chanId("ccv_dcu_miu_rsp"), dcu_mlc = chanId("ccv_dcu_mlc_req"),
-           mlc_dcu = chanId("ccv_mlc_dcu_rsp"), fet_mlc = chanId("ccv_fet_mlc_ifill"),
+           mlc_dcu = chanId("ccv_mlc_dcu_rsp"), mlc_dcu_probe = chanId("ccv_mlc_dcu_probe"),
+           dcu_mlc_probe_ack = chanId("ccv_dcu_mlc_probe_ack"), fet_mlc = chanId("ccv_fet_mlc_ifill"),
            mlc_fet = chanId("ccv_mlc_fet_ifill_rsp"), miu_fet = chanId("ccv_miu_fet_itlb"),
            fet_miu = chanId("ccv_fet_miu_itlb_req"), mlc_exb = chanId("ccv_mlc_exb_req"),
            exb_mlc = chanId("ccv_exb_mlc_rsp"), exb_ext = chanId("ccv_exb_ext_out"),
@@ -156,6 +158,34 @@ inline bool fixLine(Line &l, const Bits &r, uint32_t lsb) {
   }
   return any;
 }
+/// Whether any word of the line has a double-bit syndrome: a recovered UE's
+/// first answer (MIU spec rev 163, ECC; DCU slice 2 part 4; MI-20).
+inline bool lineUe(const Line &l, const Bits &r, uint32_t lsb) {
+  for (unsigned w = 0; w != kLineWords; ++w)
+    if (secdedL1().decode(lineWord(l, w), uint32_t(r.get(lsb + eccR() * w, eccR()))).ded) return true;
+  return false;
+}
+/// Whether every word's syndrome is zero.
+inline bool lineClean(const Line &l, const Bits &r, uint32_t lsb) {
+  for (unsigned w = 0; w != kLineWords; ++w)
+    if (secdedL1().decode(lineWord(l, w), uint32_t(r.get(lsb + eccR() * w, eccR()))).syn) return false;
+  return true;
+}
+
+// ---- The way predictor's fold (MA-30, AR 405 (3)) -------------------------------
+// wayfold.h's fold of PA[47:16], k = CCV_DCU_WAYPRED_BITS (the environment's
+// overrides it, the same on both sides); 0 when off. The tag starts above the
+// set index at its built size.
+static_assert(kWayFoldLo == 7 + ccv::prov::kWDcuSet, "the fold's tag is above the set index");
+static_assert(kWayFoldLo + kWayFoldW == ccv::prov::kWPa, "the fold's tag ends at the PA's top");
+inline unsigned wayPredBits() {
+  static const unsigned k = [] {
+    const char *v = std::getenv("CCV_DCU_WAYPRED_BITS");
+    return v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : unsigned(ccv::prov::kDcuWaypredBits);
+  }();
+  return k;
+}
+inline unsigned paFold(uint64_t pa) { return wayFold(pa, wayPredBits()); }
 
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------
 //
