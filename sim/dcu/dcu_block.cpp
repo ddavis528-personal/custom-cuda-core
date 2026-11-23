@@ -143,6 +143,13 @@ private:
 
   void work() override {
     const Ch &c = ch();
+    // Slice 2, part 1: a fill's ccv_mlc_dcu_rsp credit is its fill buffer,
+    // home when the line is written and its last answer has left (an
+    // acknowledgement's at once).
+    if (!armed_) {
+      armed_ = true;
+      creditAtRelease(c.mlc_dcu);
+    }
     std::vector<D::Req> in;
     // Requests whose payload lands now, in slot order, unless DCU holds the
     // channel; a held one is taken the first cycle DCU accepts again. One a
@@ -177,6 +184,16 @@ private:
       f.own = get(m.payload, c.mlc_dcu, "ownership") != 0;
       fill = f;
     }
+    // Slice 2, part 4: an inbound probe (MLC's own req_id: its probe buffer).
+    std::optional<D::Probe> prb;
+    if (has(prb_in_, 0)) {
+      Receiver::Msg m = take(prb_in_, 0);
+      D::Probe q;
+      q.id = unsigned(get(m.payload, prb_in_, "req_id"));
+      q.pa = get(m.payload, prb_in_, "phys_addr");
+      q.inval = get(m.payload, prb_in_, "invalidate_or_downgrade") != 0;
+      prb = q;
+    }
     D::Ports p;
     for (unsigned s = 0; s != D::kSlots; ++s) {
       p.rsp_can[s] = can(c.dcu_miu, s);
@@ -184,7 +201,16 @@ private:
       p.ntc_can[s] = can(c.fill_ntc, s);
     }
     p.mlc_can = can(c.dcu_mlc, 0);
-    const D::Out o = core_.cycle(now_, in, fill, p);
+    p.prb_can = can(prb_ack_, 0);
+    const D::Out o = core_.cycle(now_, in, fill, p, prb);
+    if (o.prb_ack) {
+      Bits b = msgOf(prb_ack_);
+      put(b, prb_ack_, "req_id", o.prb_ack->id);
+      put(b, prb_ack_, "ack", o.prb_ack->data);
+      if (o.prb_ack->data) putLine(b, field(prb_ack_, "dirty_data").lsb, o.prb_ack->line);
+      send(prb_ack_, 0, b, makeUid(IdClass::kNone, 0));
+    }
+    for (unsigned k = 0; k != o.fill_release; ++k) release(c.mlc_dcu, 0);
     for (const auto &n : o.notices) {
       Bits b = msgOf(c.fill_ntc);
       put(b, c.fill_ntc, "req_id", n.req_id);
@@ -261,6 +287,10 @@ private:
     }
   }
   bool ue_owed_ = false;
+  bool armed_ = false;
+  // The probe channels, which stub.h's Ch does not name yet.
+  const unsigned prb_in_ = chanId("ccv_mlc_dcu_probe");
+  const unsigned prb_ack_ = chanId("ccv_dcu_mlc_probe_ack");
   bool extra_sent_ = false;
   std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
   bool credOwed() const {

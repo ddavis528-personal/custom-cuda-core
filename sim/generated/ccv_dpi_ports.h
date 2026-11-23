@@ -438,7 +438,7 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {32, -1, 0, DpiSig::STALL, 1, true},  // rau_ooe_demote_stall
   {32, -1, 0, DpiSig::TID, 64, false},  // rau_ooe_demote_tid
   {33, -1, 0, DpiSig::VALID, 1, true},  // ooe_rau_drained_valid
-  {33, -1, 0, DpiSig::PAYLOAD, 71, true},  // ooe_rau_drained_payload
+  {33, -1, 0, DpiSig::PAYLOAD, 72, true},  // ooe_rau_drained_payload
   {33, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_rau_drained_credit
   {33, -1, 0, DpiSig::STALL, 1, false},  // ooe_rau_drained_stall
   {33, -1, 0, DpiSig::TID, 64, true},  // ooe_rau_drained_tid
@@ -1418,7 +1418,7 @@ inline constexpr DpiPort kDpiPorts_rau[] = {
   {32, -1, 0, DpiSig::STALL, 1, false},  // rau_ooe_demote_stall
   {32, -1, 0, DpiSig::TID, 64, true},  // rau_ooe_demote_tid
   {33, -1, 0, DpiSig::VALID, 1, false},  // ooe_rau_drained_valid
-  {33, -1, 0, DpiSig::PAYLOAD, 71, false},  // ooe_rau_drained_payload
+  {33, -1, 0, DpiSig::PAYLOAD, 72, false},  // ooe_rau_drained_payload
   {33, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_rau_drained_credit
   {33, -1, 0, DpiSig::STALL, 1, true},  // ooe_rau_drained_stall
   {33, -1, 0, DpiSig::TID, 64, false},  // ooe_rau_drained_tid
@@ -1592,14 +1592,14 @@ inline constexpr DpiPort kDpiPorts_ext[] = {
 inline constexpr DpiType kDpiTypes[] = {
   {"fet", kDpiPorts_fet, 120, 6596, 3200},
   {"dec", kDpiPorts_dec, 75, 3688, 1825},
-  {"ooe", kDpiPorts_ooe, 265, 10185, 5768},
+  {"ooe", kDpiPorts_ooe, 265, 10186, 5769},
   {"rcu", kDpiPorts_rcu, 461, 42097, 28190},
   {"lane", kDpiPorts_lane, 10, 551, 140},
   {"miu", kDpiPorts_miu, 250, 41123, 17376},
   {"spm", kDpiPorts_spm, 45, 10630, 4411},
   {"dcu", kDpiPorts_dcu, 90, 13770, 7363},
   {"mlc", kDpiPorts_mlc, 40, 6974, 3465},
-  {"rau", kDpiPorts_rau, 75, 1805, 1197},
+  {"rau", kDpiPorts_rau, 75, 1806, 1197},
   {"syu", kDpiPorts_syu, 30, 589, 249},
   {"pca", kDpiPorts_pca, 35, 4637, 2300},
   {"cru", kDpiPorts_cru, 15, 449, 143},

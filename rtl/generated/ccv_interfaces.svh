@@ -536,6 +536,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_VA-1:0]           resume_pc;
   logic                                          arch_state_ready;
   logic                                          refused;
+  logic                                          pc_kept;
 } ccv_ooe_rau_drained_t;
 
 typedef struct packed {

@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 #include "dcu_core.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -48,6 +49,8 @@ struct H : Hooks {
     if (g_verbose) std::fprintf(stderr, "  core fail: %s\n", m.c_str());
   }
   void hit(const char *b, uint64_t n) override { bins[b] += n; }
+  std::map<std::string, uint64_t> peaks;
+  void peak(const char *b, uint64_t v) override { peaks[b] = std::max(peaks[b], v); }
 };
 
 /// A bench: the core, its inputs by cycle, and what it launched, by cycle.
@@ -61,9 +64,12 @@ struct Bench {
   std::vector<Launch> rsps;
   std::vector<std::pair<uint64_t, Out::Notice>> notices;
   std::vector<std::pair<uint64_t, MlcReq>> mlc;
+  std::map<uint64_t, Probe> probes;   ///< ccv_mlc_dcu_probe landings, by cycle
+  std::vector<std::pair<uint64_t, ProbeAck>> acks;
   /// Answer MLC's requests itself, `mlc_lat` cycles after launch.
   bool auto_mlc = true;
   unsigned mlc_lat = 20;
+  bool mlc_block = false;   ///< hold ccv_dcu_mlc_req's credit back
   std::vector<Req> held;   ///< requests the core did not accept yet
   std::array<bool, kSlots> can{{true, true, true, true}};   ///< each rsp slot's rsp_can
   explicit Bench(Config c) : core(c, h) {}
@@ -83,8 +89,12 @@ struct Bench {
         p.rsp_credits[s] = 8;
         p.ntc_can[s] = true;
       }
-      p.mlc_can = true;
-      Out o = core.cycle(t, in, f, p);
+      p.mlc_can = !mlc_block;
+      std::optional<Probe> pr;
+      auto pi = probes.find(t);
+      if (pi != probes.end()) pr = pi->second;
+      Out o = core.cycle(t, in, f, p, pr);
+      if (o.prb_ack) acks.push_back({t, *o.prb_ack});
       for (const Rsp &r : o.rsps) rsps.push_back({t, r});
       for (const auto &n : o.notices) notices.push_back({t, n});
       if (o.mlc) {
@@ -145,6 +155,13 @@ Config cfg(unsigned hit) {
 void warm(Bench &b, uint64_t pa, unsigned id = 60) {
   b.reqs[b.t].push_back(rd(0, id, pa));
   b.run(b.t + 60);
+}
+
+/// Whether the core refused something with a message containing `what`.
+bool refused(const Bench &b, const char *what) {
+  for (const std::string &f : b.h.fails)
+    if (f.find(what) != std::string::npos) return true;
+  return false;
 }
 
 void test(const char *name, const std::function<void()> &f) {
@@ -293,26 +310,30 @@ int main(int argc, char **argv) {
     EXPECT(b.h.bins["dcu_merged"] == 1, "one merged");
   });
 
-  // Holding (TI-22, MA-12): a fifth request to a line whose merge list is
-  // full, and a miss with every buffer in use, stall the channel.
-  test("hold-merge-full", [] {
+  // Waiting (MA-12; slice 2, part 1): a fifth request to a line whose merge
+  // list is full, and a miss with every entry in use, wait in their bank's
+  // queue as miss-wait, keeping their entry credit; the channel is never
+  // held. Each is answered once its fill is written or an entry frees.
+  test("wait-merge-full", [] {
     Bench b(cfg(9));
     b.mlc_lat = 40;
     for (unsigned k = 0; k != 6; ++k) b.reqs[k] = {rd(k % 4, k, 0x5000)};
-    b.run(5);
-    b.run(10);
-    EXPECT(!b.core.accepting(), "held with the merge list full");
+    b.run(15);
+    EXPECT(b.core.accepting() && b.h.bins["dcu_miss_wait_list"], "waits with the merge list full, channel open");
     b.run(150);
-    EXPECT(b.core.accepting() && b.rsp(5), "released after the fill");
+    EXPECT(b.rsp(4) && b.rsp(5), "both answered after the fill");
+    EXPECT(b.mlc.size() == 1, "one MLC request: the waiters hit the written line, not %zu", b.mlc.size());
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
   });
-  test("hold-buffers-full", [] {
+  test("wait-entries-full", [] {
     Bench b(cfg(9));
     b.mlc_lat = 60;
     for (unsigned k = 0; k != 17; ++k) b.reqs[k] = {rd(0, k, 0x10000 + uint64_t(k) * 0x80000)};
     b.run(45);
-    EXPECT(!b.core.accepting() && b.h.bins["dcu_buffers_full"], "held with 16 buffers in use");
+    EXPECT(b.core.accepting() && b.h.bins["dcu_miss_wait_entry"], "waits with 16 entries in use, channel open");
     b.run(200);
     EXPECT(b.rsp(16) != nullptr, "the 17th answered");
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
   });
 
   // Replacement is tree-PLRU (MA-30), not true LRU. Ways 0-7 of one set fill
@@ -586,6 +607,485 @@ int main(int argc, char **argv) {
       }
       EXPECT(b.rsp(1) && b.rsp(1)->slot == 0, "the winner on its own slot");
       EXPECT(b.rsp(2) && b.rsp(2)->slot == 0, "the loser on slot 0, the free one");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // ---- Slice 2, parts 1-2 -------------------------------------------------
+
+  // The request to MLC: a miss's tag result is flopped at D2 (H+4 = P+1)
+  // under every pipe, and a request picked straight from D2 launches its
+  // valid at H+5 (P+2). A second miss the same cycle, in another bank, is
+  // the oldest unsent one next cycle: one a cycle.
+  for (unsigned hit : {7u, 8u, 9u})
+    test(hit == 7 ? "mlc-h5-A" : hit == 8 ? "mlc-h5-C" : "mlc-h5-B", [&] {
+      Bench b(cfg(hit));
+      b.reqs[3] = {rd(0, 1, 0x2000), rd(1, 2, 0x2080)};
+      b.run(60);
+      EXPECT(b.mlc.size() == 2, "two requests");
+      EXPECT(b.mlc.size() == 2 && b.mlc[0].first == 5 && b.mlc[1].first == 6,
+             "valids at P+%lld and P+%lld, want P+2 and P+3",
+             (long long)(b.mlc.empty() ? 0 : b.mlc[0].first - 3),
+             (long long)(b.mlc.size() < 2 ? 0 : b.mlc[1].first - 3));
+      EXPECT(b.h.bins["dcu_mlc_straight"] == 1, "one straight from D2");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A second miss to a line merges into its entry; dcu-mshr-nomerge, the
+  // control, allocates it an entry of its own, which the CHECK refuses.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-mshr-nomerge-control" : "mshr-merge", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-mshr-nomerge";
+      Bench b(c);
+      b.reqs[0] = {rd(0, 1, 0x2000)};
+      b.reqs[1] = {rd(1, 2, 0x2000)};
+      b.run(80);
+      if (ctl) {
+        EXPECT(refused(b, "second miss buffer entry"), "the control is refused");
+        return;
+      }
+      EXPECT(b.mlc.size() == 1 && b.h.bins["dcu_merged"] == 1, "one request, merged");
+      EXPECT(b.rsp(1) && b.rsp(2), "both answered");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // Fill answers launch at F+3 at the earliest (valid at MIU at F+4);
+  // dcu-fill-early answers at F+2, which the CHECK refuses.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-fill-early-control" : "fill-answer-floor", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-fill-early";
+      Bench b(c);
+      b.reqs[0] = {rd(0, 1, 0x2000)};
+      b.run(80);
+      const uint64_t F = b.mlc.empty() ? 0 : b.mlc[0].first + b.mlc_lat;
+      if (ctl) {
+        EXPECT(refused(b, "fill answer launched at F+2"), "the control is refused");
+        return;
+      }
+      EXPECT(b.at(1) == F + 3, "answered at F+%lld", (long long)(b.at(1) - F));
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A full merge list makes the fifth request to its line wait in its
+  // bank's queue; a sixth to the line waits behind it, in order.
+  // dcu-miss-reorder lets the sixth pass, which the CHECK refuses.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-miss-reorder-control" : "miss-wait-order", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-miss-reorder";
+      Bench b(c);
+      b.mlc_lat = 40;
+      for (unsigned k = 0; k != 4; ++k) b.reqs[k] = {rd(0, k, 0x2000)};
+      b.reqs[4] = {rd(0, 4, 0x2000)};
+      b.reqs[6] = {rd(0, 5, 0x2000)};
+      b.run(120);
+      if (ctl) {
+        EXPECT(refused(b, "passed a waiting one"), "the control is refused");
+        return;
+      }
+      EXPECT(b.h.bins["dcu_miss_wait_list"] >= 1, "the fifth waits for room in the list");
+      EXPECT(b.rsp(4) && b.rsp(5) && b.at(4) <= b.at(5), "answered in order");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // Tag-stale (slice 2, part 1): a lookup that lost its bank with a hit on
+  // a clean victim's way, and reads after the fill's write, looks up again
+  // and misses. dcu-fill-nostale reads the fill's line under the victim's
+  // tag. One way a set, so the victim is the set's only line.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-fill-nostale-control" : "tag-stale-relook", [&] {
+      Config c = cfg(9);
+      c.ways = 1;
+      if (ctl) c.brk = "dcu-fill-nostale";
+      Bench b(c);
+      const uint64_t v = bank0(1), n = v + uint64_t(c.sets) * kLineBytes, o = bank0(2);
+      warm(b, v, 60);
+      warm(b, o, 61);
+      const uint64_t P = b.t;
+      b.reqs[P] = {rd(0, 1, n)};
+      b.run(P + 3);
+      const uint64_t F = b.mlc.back().first + b.mlc_lat;
+      // Under B, D = P + 1: both lookups' D is F + 2, after the victim's
+      // choice (F + 1); the victim's lookup loses the bank to o's.
+      b.reqs[F + 1] = {rd(0, 2, o), rd(1, 3, v)};
+      b.run(F + 80);
+      const Rsp *r = b.rsp(3);
+      if (ctl) {
+        EXPECT(r && r->hit && r->line[0] != pat(v, 0), "the control reads the fill's line");
+        return;
+      }
+      EXPECT(b.h.bins["dcu_tag_stale"] == 1 && b.h.bins["dcu_tag_stale_relook"] == 1,
+             "marked stale (%llu), looked up again (%llu)",
+             (unsigned long long)b.h.bins["dcu_tag_stale"],
+             (unsigned long long)b.h.bins["dcu_tag_stale_relook"]);
+      EXPECT(r && !r->hit && r->line[0] == pat(v, 0), "a miss, refilled with its own line");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // Part 2's controls on one dirty eviction: one way a set, a store makes
+  // the line dirty, a read of another line of its set evicts it.
+  struct Evict {
+    Config c;
+    Bench b;
+    uint64_t F = 0;
+    static Config conf(const char *brk) {
+      Config c = cfg(9);
+      c.ways = 1;
+      if (brk) c.brk = brk;
+      return c;
+    }
+    explicit Evict(const char *brk) : c(conf(brk)), b(c) {
+      b.reqs[0] = {st(0, 1, 0x6000, 0, 0x11)};
+      b.run(60);
+      b.reqs[60] = {rd(0, 2, 0x6000 + uint64_t(c.sets) * kLineBytes)};
+      b.run(63);
+      F = b.mlc.back().first + b.mlc_lat;
+    }
+    bool wroteBack() const {
+      for (const auto &m : b.mlc)
+        if (m.second.op == MlcOp::Write && m.second.pa == 0x6000 && m.second.line[0] == 0x11) return true;
+      return false;
+    }
+  };
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-wb-drop-control" : "wb-sent", [&] {
+      Evict e(ctl ? "dcu-wb-drop" : nullptr);
+      e.b.run(200);
+      EXPECT(e.wroteBack() != ctl, ctl ? "the control drops the line" : "the line written back");
+      if (!ctl) EXPECT(e.b.h.fails.empty(), "%s", e.b.h.fails.empty() ? "" : e.b.h.fails[0].c_str());
+    });
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-wb-early-control" : "wb-read-first", [&] {
+      Evict e(ctl ? "dcu-wb-early" : nullptr);
+      e.b.run(200);
+      if (ctl) {
+        EXPECT(refused(e.b, "before its read"), "the control is refused");
+        return;
+      }
+      EXPECT(e.b.h.bins["dcu_fill_wait_victim"] == 1 && e.wroteBack(), "read, then written");
+      EXPECT(e.b.h.fails.empty(), "%s", e.b.h.fails.empty() ? "" : e.b.h.fails[0].c_str());
+    });
+  // A miss to the line in writeback waits for MLC's ack (its own request
+  // after the writeback's); dcu-wb-refetch fetches it at once, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-wb-refetch-control" : "wb-then-refetch", [&] {
+      Evict e(ctl ? "dcu-wb-refetch" : nullptr);
+      e.b.run(e.F + 8);
+      e.b.reqs[e.b.t] = {rd(0, 3, 0x6000)};
+      e.b.run(e.b.t + 150);
+      if (ctl) {
+        EXPECT(refused(e.b, "second miss buffer entry"), "the control is refused");
+        return;
+      }
+      EXPECT(e.b.h.bins["dcu_miss_wait_wb"] >= 1, "it waited for the writeback");
+      EXPECT(e.b.rsp(3) && e.b.mlc.back().second.op == MlcOp::Read && e.b.mlc.back().second.pa == 0x6000,
+             "answered, from a read sent after the writeback");
+      EXPECT(e.b.h.fails.empty(), "%s", e.b.h.fails.empty() ? "" : e.b.h.fails[0].c_str());
+    });
+  // A store hitting the reserved dirty victim waits (miss-wait) and looks
+  // up again after the fill's write, then after the writeback's ack;
+  // dcu-wb-store lets it write the reserved victim, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-wb-store-control" : "wb-store-waits", [&] {
+      Evict e(ctl ? "dcu-wb-store" : nullptr);
+      e.b.run(e.F + 3);   // after the victim's read (F+3), before W (F+5)
+      e.b.reqs[e.b.t] = {st(0, 3, 0x6000, 1, 0x22)};
+      e.b.run(e.b.t + 200);
+      if (ctl) {
+        EXPECT(!e.b.h.fails.empty(), "the control is refused");
+        return;
+      }
+      EXPECT(e.b.h.bins["dcu_store_rsv_wait"] >= 1, "the store waited");
+      EXPECT(e.wroteBack() && e.b.rsp(3), "written back, the store answered");
+      EXPECT(e.b.h.fails.empty(), "%s", e.b.h.fails.empty() ? "" : e.b.h.fails[0].c_str());
+    });
+
+  // ---- Slice 2, part 3 -----------------------------------------------------
+
+  // An exclusive read (an atomic's A1) misses with AcquireData: an owned,
+  // clean line.
+  auto excl = [](unsigned slot, unsigned id, uint64_t pa) {
+    Req r = rd(slot, id, pa);
+    r.op = Op::AtomRead;
+    return r;
+  };
+  auto own = [&](Bench &b, uint64_t pa, unsigned id) {
+    b.reqs[b.t].push_back(excl(0, id, pa));
+    b.run(b.t + 60);
+  };
+
+  // Store hits book their writes at the read: exactly the gap on, at most
+  // two a bank between read and write. Three store hits in one bank: reads
+  // at R and R+2, the third once the first write is done.
+  test("store-hit-bookings", [&] {
+    Bench b(cfg(9));
+    for (unsigned i = 1; i != 4; ++i) own(b, bank0(i), 60 + i);
+    const uint64_t P = b.t;
+    b.reqs[P] = {st(0, 1, bank0(1), 0, 1)};
+    b.reqs[P + 1] = {st(0, 2, bank0(2), 0, 2)};
+    b.reqs[P + 2] = {st(0, 3, bank0(3), 0, 3)};
+    b.run(P + 40);
+    EXPECT(b.rsp(1) && b.rsp(2) && b.rsp(3) && b.rsp(1)->hit && !b.rsp(1)->data, "three acks, hit, no data");
+    EXPECT(b.h.peaks["dcu_store_booked_max"] == 2, "two bookings at most (%llu)",
+           (unsigned long long)b.h.peaks["dcu_store_booked_max"]);
+    EXPECT(b.h.bins["dcu_store_write"] == 3, "three writes");
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+
+  // A store miss with a load and a store merged behind it (part 3): the
+  // fill takes the leading store only, so the load sees it and not the
+  // younger store, which looks up again after W. Answers at F+k+4 (k = 1).
+  // dcu-st-mergeall merges the younger store too, refused by the CHECK.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-mergeall-control" : "fill-merge-leading-stores", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-st-mergeall";
+      Bench b(c);
+      b.reqs[0] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.reqs[1] = {rd(1, 2, 0x2000)};
+      b.reqs[2] = {st(2, 3, 0x2000, 1, 0x33)};
+      b.run(120);
+      if (ctl) {
+        EXPECT(refused(b, "merged a store behind a load"), "the control is refused");
+        return;
+      }
+      const uint64_t F = b.mlc.empty() ? 0 : b.mlc[0].first + b.mlc_lat;
+      EXPECT(b.mlc.size() == 1 && b.mlc[0].second.op == MlcOp::AcquireData, "one AcquireData");
+      EXPECT(b.at(1) == F + 5 && b.rsp(1) && !b.rsp(1)->hit && !b.rsp(1)->data,
+             "the merged store answered at F+%lld, hit 0, no data", (long long)(b.at(1) - F));
+      EXPECT(b.at(2) == F + 5 && b.rsp(2) && b.rsp(2)->line[0] == 0x11 && b.rsp(2)->line[1] == pat(0x2000, 1),
+             "the load at F+%lld sees the older store only", (long long)(b.at(2) - F));
+      EXPECT(b.rsp(3) && b.h.bins["dcu_st_relook"] == 1, "the younger store looked up again");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A store hit on a shared line is an upgrade (AcquireData, its own way);
+  // dcu-st-shared writes the shared line in place, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-shared-control" : "store-upgrade", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-st-shared";
+      Bench b(c);
+      warm(b, 0x2000);   // a read miss: shared
+      const size_t n = b.mlc.size();
+      b.reqs[b.t] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.run(b.t + 60);
+      if (ctl) {
+        EXPECT(refused(b, "not owned"), "the control is refused");
+        return;
+      }
+      EXPECT(b.mlc.size() == n + 1 && b.mlc.back().second.op == MlcOp::AcquireData, "an upgrade");
+      EXPECT(b.h.bins["dcu_upgrade_data"] == 1 && b.h.bins["dcu_evict"] == 0, "its own way, no victim");
+      EXPECT(b.rsp(1) != nullptr, "the store answered");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A store hit's write sets the dirty bit, so the line goes back to MLC at
+  // eviction; dcu-st-dirty leaves it clear, and the line is lost.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-dirty-control" : "store-sets-dirty", [&] {
+      Config c = cfg(9);
+      c.ways = 1;
+      if (ctl) c.brk = "dcu-st-dirty";
+      Bench b(c);
+      own(b, 0x6000, 60);
+      b.reqs[b.t] = {st(0, 1, 0x6000, 0, 0x11)};
+      b.run(b.t + 30);
+      b.reqs[b.t] = {rd(0, 2, 0x6000 + uint64_t(c.sets) * kLineBytes)};
+      b.run(b.t + 80);
+      bool wb = false;
+      for (const auto &m : b.mlc) wb |= m.second.op == MlcOp::Write && m.second.pa == 0x6000;
+      EXPECT(wb != ctl, ctl ? "the control loses the line" : "the dirty line written back");
+      if (!ctl) EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A load behind a store hit to its line waits for the store's write;
+  // dcu-st-noorder lets it read first, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-st-noorder-control" : "load-after-store", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-st-noorder";
+      Bench b(c);
+      own(b, 0x2000, 60);
+      const uint64_t P = b.t;
+      b.reqs[P] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.reqs[P + 1] = {rd(1, 2, 0x2000)};
+      b.run(P + 40);
+      if (ctl) {
+        EXPECT(refused(b, "before an older store's write"), "the control is refused");
+        return;
+      }
+      EXPECT(b.rsp(2) && b.rsp(2)->line[0] == 0x11, "the load sees the store");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // ---- Slice 2, part 4 -----------------------------------------------------
+
+  // A probe's outcomes (part 4's table): an ack carries data iff the line
+  // was dirty; an invalidate leaves the line absent (the next read misses),
+  // a downgrade leaves it shared (a store then upgrades).
+  test("probe-outcomes", [&] {
+    Bench b(cfg(9));
+    const uint64_t sh = bank0(1), ow = bank0(2), dt = bank0(3), ab = bank0(4), dd = bank0(5);
+    warm(b, sh, 60);
+    own(b, ow, 61);
+    b.reqs[b.t] = {st(0, 62, dt, 0, 0x44)};
+    b.run(b.t + 60);
+    b.reqs[b.t] = {st(0, 63, dd, 0, 0x55)};
+    b.run(b.t + 60);
+    uint64_t T = b.t;
+    b.probes[T] = Probe{0, sh, true};
+    b.probes[T + 1] = Probe{1, ow, false};
+    b.probes[T + 2] = Probe{2, dt, true};
+    b.probes[T + 3] = Probe{3, ab, true};
+    b.run(T + 20);
+    b.probes[b.t] = Probe{0, dd, false};
+    b.run(b.t + 20);
+    EXPECT(b.acks.size() == 5, "five acks (%zu)", b.acks.size());
+    for (const auto &a : b.acks) {
+      const bool want = (a.second.id == 2 && a.first < T + 20) || (a.second.id == 0 && a.first >= T + 20);
+      EXPECT(a.second.data == want, "probe %u's ack %s data", a.second.id, want ? "with" : "without");
+      if (want) EXPECT(a.second.line[0] == (a.second.id == 2 ? 0x44 : 0x55), "the dirty line");
+    }
+    b.reqs[b.t] = {rd(0, 1, sh), rd(1, 2, dt)};   // invalidated: misses
+    b.reqs[b.t + 1] = {st(2, 3, ow, 0, 1)};          // downgraded: an upgrade
+    b.run(b.t + 80);
+    EXPECT(b.rsp(1) && !b.rsp(1)->hit && b.rsp(2) && !b.rsp(2)->hit, "invalidated lines miss");
+    EXPECT(b.h.bins["dcu_upgrade_data"] == 1, "a downgraded line's store upgrades");
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+
+  // A probe of a line whose miss is sent and not filled acks at once with no
+  // data; one whose fill is in its buffer, not written, waits for W.
+  test("probe-vs-miss-buffers", [&] {
+    Bench b(cfg(9));
+    b.mlc_lat = 30;
+    b.reqs[0] = {rd(0, 1, 0x2000)};
+    b.probes[10] = Probe{0, 0x2000, true};
+    b.run(40);
+    EXPECT(b.acks.size() == 1 && b.acks[0].first <= 12 && !b.acks[0].second.data, "acked at once, no data");
+    EXPECT(b.h.bins["dcu_prb_ack_sent"] == 1, "against a sent entry");
+    const uint64_t F = b.mlc[0].first + b.mlc_lat;
+    b.reqs[b.t] = {rd(0, 2, 0x4000)};
+    b.run(b.t + 3);
+    const uint64_t F2 = b.mlc.back().first + b.mlc_lat;
+    b.probes[F2 + 1] = Probe{1, 0x4000, true};
+    b.run(F2 + 30);
+    EXPECT(b.h.bins["dcu_prb_wait_fill"] == 1 && b.h.bins["dcu_prb_inval_shared"] == 1,
+           "waited for W, then invalidated the line");
+    (void)F;
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+
+  // A probe waits behind an older store to its line (part 3's order), so the
+  // acked store's bytes leave with the ack; dcu-prb-nostore passes it.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-prb-nostore-control" : "probe-behind-store", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "dcu-prb-nostore";
+      Bench b(c);
+      own(b, 0x2000, 60);
+      const uint64_t P = b.t;
+      b.reqs[P] = {st(0, 1, 0x2000, 0, 0x11)};
+      b.probes[P + 1] = Probe{0, 0x2000, true};
+      b.run(P + 30);
+      if (ctl) {
+        EXPECT(refused(b, "before an acked store's write"), "the control is refused");
+        return;
+      }
+      EXPECT(b.acks.size() == 1 && b.acks[0].second.data && b.acks[0].second.line[0] == 0x11,
+             "the ack carries the store's bytes");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A probe of a line whose dirty victim's writeback has not launched takes
+  // the line from its buffer, with the data, and cancels the writeback, so
+  // the line reaches MLC once (AR-409, rev 108); a miss to it then fetches
+  // it again. dcu-prb-double sends the writeback too, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-prb-double-control" : "probe-cancels-writeback", [&] {
+      Config c = cfg(9);
+      c.ways = 1;
+      if (ctl) c.brk = "dcu-prb-double";
+      Bench b(c);
+      b.reqs[0] = {st(0, 1, 0x6000, 0, 0x11)};
+      b.run(60);
+      const uint64_t y = 0x6000 + uint64_t(c.sets) * kLineBytes;   // same set
+      b.reqs[60] = {rd(0, 2, y)};
+      while (b.t < 200 && (b.mlc.empty() || b.mlc.back().second.pa != y)) b.run(b.t + 1);
+      b.mlc_block = true;   // the victim's writeback waits for a credit
+      b.run(b.t + 60);
+      EXPECT(b.h.bins["dcu_evict_read"] == 1, "the victim was read");
+      const size_t sent = b.mlc.size();
+      b.probes[b.t] = Probe{0, 0x6000, true};
+      b.run(b.t + 20);
+      b.mlc_block = false;
+      b.run(b.t + 40);
+      if (ctl) {
+        EXPECT(refused(b, "sent after a probe took it"), "the control is refused");
+        return;
+      }
+      EXPECT(b.acks.size() == 1 && b.acks[0].second.data && b.acks[0].second.line[0] == 0x11,
+             "the ack carries the dirty line");
+      EXPECT(b.h.bins["dcu_prb_wb_cancel"] == 1, "the writeback cancelled");
+      for (size_t i = sent; i < b.mlc.size(); ++i)
+        EXPECT(b.mlc[i].second.pa != 0x6000, "no writeback of the probed line");
+      b.reqs[b.t] = {rd(0, 3, 0x6000)};
+      b.run(b.t + 80);
+      EXPECT(b.rsp(3) && !b.rsp(3)->hit, "the line is fetched again");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // dcu-prb-nodirty acks a dirty line without its data, refused.
+  test("dcu-prb-nodirty-control", [&] {
+    Config c = cfg(9);
+    c.brk = "dcu-prb-nodirty";
+    Bench b(c);
+    b.reqs[0] = {st(0, 1, 0x2000, 0, 0x11)};
+    b.run(60);
+    b.probes[b.t] = Probe{0, 0x2000, false};
+    b.run(b.t + 20);
+    EXPECT(refused(b, "without data for a dirty line"), "the control is refused");
+  });
+
+  // dcu-prb-stale: an invalidate leaves the way's fold valid bit set, which
+  // the next lookup of its set (pipe C) refuses.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-prb-stale-control" : "probe-clears-fold", [&] {
+      Config c = cfg(8);
+      if (ctl) c.brk = "dcu-prb-stale";
+      Bench b(c);
+      warm(b, 0x2000);
+      b.probes[b.t] = Probe{0, 0x2000, true};
+      b.run(b.t + 20);
+      b.reqs[b.t] = {rd(0, 1, 0x2000)};
+      b.run(b.t + 60);
+      if (ctl) {
+        EXPECT(refused(b, "fold valid bit"), "the control is refused");
+        return;
+      }
+      EXPECT(b.rsp(1) && !b.rsp(1)->hit, "a miss after the invalidate");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A recovered UE's second answer comes from a fill (part 4).
+  // dcu-ue-noanswer drops the refetch; dcu-ue-stale looks the bad line up
+  // again: both refused.
+  for (const char *ctl : {"", "dcu-ue-noanswer", "dcu-ue-stale"})
+    test(*ctl ? ctl : "ue-second-answer", [&] {
+      Config c = cfg(9);
+      c.ue_every = 1;
+      if (*ctl) c.brk = ctl;
+      Bench b(c);
+      warm(b, 0x7000);
+      b.reqs[b.t] = {rd(0, 1, 0x7000)};
+      b.run(b.t + 2200);
+      if (*ctl) {
+        EXPECT(!b.h.fails.empty(), "the control is refused");
+        return;
+      }
+      EXPECT(b.rsp(1) && b.rsp(1)->fid >= 0, "answered from a fill");
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 

@@ -435,13 +435,14 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_rau_ooe_demote", "squash_to_retirement", p.c32_f1, b, 0, 1);
   }
   {
-    const Bits b = randomBits(71, seed ^ 261327u);
+    const Bits b = randomBits(72, seed ^ 261327u);
     put(p.c33, b);
     p.eval();
-    bad += check("ccv_ooe_rau_drained", "warp_id", p.c33_f0, b, 66, 5);
-    bad += check("ccv_ooe_rau_drained", "resume_pc", p.c33_f1, b, 2, 64);
-    bad += check("ccv_ooe_rau_drained", "arch_state_ready", p.c33_f2, b, 1, 1);
-    bad += check("ccv_ooe_rau_drained", "refused", p.c33_f3, b, 0, 1);
+    bad += check("ccv_ooe_rau_drained", "warp_id", p.c33_f0, b, 67, 5);
+    bad += check("ccv_ooe_rau_drained", "resume_pc", p.c33_f1, b, 3, 64);
+    bad += check("ccv_ooe_rau_drained", "arch_state_ready", p.c33_f2, b, 2, 1);
+    bad += check("ccv_ooe_rau_drained", "refused", p.c33_f3, b, 1, 1);
+    bad += check("ccv_ooe_rau_drained", "pc_kept", p.c33_f4, b, 0, 1);
   }
   {
     const Bits b = randomBits(6, seed ^ 269246u);

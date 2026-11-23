@@ -302,11 +302,12 @@ module tb_layout_probe (
   input  logic [5:0] c32,
   output logic [4:0] c32_f0,
   output logic c32_f1,
-  input  logic [70:0] c33,
+  input  logic [71:0] c33,
   output logic [4:0] c33_f0,
   output logic [63:0] c33_f1,
   output logic c33_f2,
   output logic c33_f3,
+  output logic c33_f4,
   input  logic [5:0] c34,
   output logic [4:0] c34_f0,
   output logic c34_f1,
@@ -745,6 +746,7 @@ module tb_layout_probe (
   assign c33_f1 = s33.resume_pc;
   assign c33_f2 = s33.arch_state_ready;
   assign c33_f3 = s33.refused;
+  assign c33_f4 = s33.pc_kept;
   ccv_rau_rcu_mig_t s34;
   assign s34 = c34;
   assign c34_f0 = s34.warp_id;
