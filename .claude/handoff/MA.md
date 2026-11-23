@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 409, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 164, DA 131, MI 35, DI 56.
+Conventions 20, AR 413, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 166, DA 131, MI 35, DI 58.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -90,6 +90,7 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - Sweep 2026-11-22 merged 11 branches (AR's 80102643 by commit-tree: 5 merge bases hung the recursive merge),
   full PASS, pushed. TI-517 landed MA-29 (bc9d61ff), TI-518 landed MA-30 (63579fce); both marked in the tabs.
   Snapshots refreshed: dcu-spec rev 87, miu-spec rev 162. Next: DCU slice 2, then MIU slices 2-4.
+- AR-409 agreed (MA rev 165; DCU tab 107-109: probe takes unlaunched wb buffer line, ack=1, cancels). DI-34 v2 deviations (i)-(iv) accepted with conditions (MA rev 166, DCU tab 110).
 - DI-34 ANSWERED (MA rev 164, DCU tab rev 106): mshr D2 PA staged, D3 writes with forwarding; waiter payload in every bctl queue entry (~75 flops, 1,200/bank). DI notified.
 - DCU SLICE 2 COMPLETE (MA revs 159-162, DCU tab revs 89-96, MIU tab rev 163 UE rule; DI and MI notified;
   snapshots dcu 96 / miu 163; dcu-impl 3a-3d). Part 2 eviction/wb (fill's own entry reused for writeback, 2 wb

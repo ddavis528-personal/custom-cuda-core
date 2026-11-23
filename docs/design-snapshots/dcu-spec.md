@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=106 exported=2026-11-23 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 106 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=110 exported=2026-11-23 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 110 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # DCU — L1 data cache
 
@@ -210,7 +210,7 @@ An entry stays valid from allocation until its fill has written the bank and eve
 
 - **Merges** into its line's entry if the entry is unsent or sent and its list has room. A merged miss sends nothing to MLC.
 - **Allocates** the next free entry if its line has none and a free entry is left. The 4 next free ids are picked a cycle ahead, from flops.
-- **Waits.** It waits if its line's list is full, or its line's entry is filled but not yet written, or no entry is free, or its bank already holds a waiting miss. The miss takes an entry in its bank's queue, marked miss-wait, keeping the entry credit it holds. Its payload lives in that queue entry, in dcu\_bctl's flops (DI-34): every one of the bank's 16 entries carries the fields a retry needs, so that no other store holds a waiter and none can run out. The fields are req\_id (6), slot (2), line PA\[47:7\] (41), pa\_fold (4), op and kind (2), exclusive (1), std index (4), the tag result (way, state, hit: about 5), age (5), the miss-wait flag (1), the cause (2) and tag-stale (1): about 75 flops an entry, 1,200 a bank. Each entry's flops sit behind its own write enable. A store's data stays in dcu\_bstd, named by the std index. On a retry, the line, fold, op, exclusive and std index go to dcu\_mshr straight from these flops (arrival 0). dcu\_mshr stages the D2 PA in its own flops, since dcu\_cap's is overwritten back to back; it writes entries at D3, and forwards those writes to the next cycle's D2 line compare, free-entry pick and merge-list count, so a miss in the cycle after an allocate or merge to its line merges or waits as if the write had landed. The MLC request's valid stays at H+5. This is MA-12's hold: MIU's credits stop the channel, and the request is never refused.
+- **Waits.** It waits if its line's list is full, or its line's entry is filled but not yet written, or no entry is free, or its bank already holds a waiting miss. The miss takes an entry in its bank's queue, marked miss-wait, keeping the entry credit it holds. Its payload lives in that queue entry, in dcu\_bctl's flops (DI-34): every one of the bank's 16 entries carries the fields a retry needs, so that no other store holds a waiter and none can run out. The fields are req\_id (6), slot (2), line PA\[47:7\] (41), pa\_fold (4), op and kind (2), exclusive (1), std index (4), the tag result (way, state, hit: about 5), age (5), the miss-wait flag (1), the cause (2) and tag-stale (1): about 75 flops an entry, 1,200 a bank. Each entry's flops sit behind its own write enable. A store's data stays in dcu\_bstd, named by the std index. Retries are one a cycle across all banks, oldest waiter first by age, so no bank starves (DI-34 (i)). Each bank's dcu\_bctl flops its oldest ready waiter's payload onto its retry output, the entry chosen a cycle ahead (16:1 one-hot); dcu\_mshr's retry port routes the picked bank's 8:1 from those flops (arrival 0) and is served before slots 0 to 3. Free ids go to the requesting ports in port order, retry first, picked a cycle ahead; which free id a miss gets is not architectural (DI-34 (ii)). An entry may turn sent a cycle after its request's valid (DI-34 (iv)), so the request pick excludes an entry whose valid launched the cycle before, and a probe's writeback cancel (part 4) goes by the pick, not by the sent state. dcu\_mshr stages the D2 PA in its own flops, since dcu\_cap's is overwritten back to back; it writes entries at D3, and forwards those writes to the next cycle's D2 line compare, free-entry pick and merge-list count, so a miss in the cycle after an allocate or merge to its line merges or waits as if the write had landed. The MLC request's valid stays at H+5. This is MA-12's hold: MIU's credits stop the channel, and the request is never refused.
 
 The last of those rules keeps every line's requests in arrival order, since one line is always one bank. A bank's miss waiters retry oldest first, one a cycle, ahead of that bank's new misses, whenever an entry or a list place frees.
 
@@ -510,7 +510,7 @@ That is 16 + 2 compares for a new lookup and 120 pairs within the queue, cheap a
 
 - **An entry that is sent but not filled:** DCU acks at once with no data. It does not hold the line, and the fill that follows brings what MLC grants after the probe. DCU waits for nothing here. If it held the probe until the fill, it could deadlock against an MLC that holds the grant until the ack.
 - **An entry that is filled but not written:** the probe waits for that write (W, under the age bound), then looks up.
-- **An entry in writeback** (written back, not yet acknowledged): DCU acks with no data, since the writeback carries the line. That MLC reconciles the two is its session's to state.
+- **An entry in writeback** (written back, not yet acknowledged): DCU acks with no data, since the writeback carries the line (ack = 0 for a writeback already sent; AR-409). If the writeback's request has not launched, its line still sits in a dcu\_wb buffer: the probe takes the line from that buffer with ack = 1, and that writeback is cancelled, so the line reaches MLC exactly once. dcu\_prb's compare with the 2 buffers and dcu\_mshr's request pick are decided in the same cycle from flops, and the probe wins: a cancelled buffer is never picked, and one picked a cycle earlier counts as sent. The cancelled buffer frees when the ack's payload launches, and its entry frees with it, since no MLC acknowledgement will come; misses to the line wait until then.
 - **A reserved dirty victim** (part 2): the probe waits for the fill's write, then finds the writeback entry as above.
 
 **The probe's outcomes.**
@@ -587,7 +587,7 @@ A second UE at a recorded location, or one that finds the table full, is core-fa
   - probes acked against an entry that was sent or in writeback
   - probes that waited behind a store
   - probe data reads, and those that waited for a writeback buffer
-  - re-looks a probe caused
+  - re-looks a probe caused, and writebacks a probe cancelled
   - recovered UEs
   - BIST and repair ports tied off (a count, so a later change to them shows)
 - **CHECKs:**
@@ -598,5 +598,5 @@ A second UE at a recorded location, or one that finds the table full, is core-fa
 - **Controls (must fail):**
   - dcu-prb-nostore: a probe passes an older store to its line
   - dcu-prb-nodirty: a dirty line's probe acks without data
-  - dcu-prb-stale: a probe's invalidate leaves the fold valid bit set
+  - dcu-prb-stale: a probe's invalidate leaves the fold valid bit set; and dcu-prb-double, a writeback a probe cancelled is also sent
   - dcu-ue-noanswer and dcu-ue-stale, above
