@@ -158,6 +158,19 @@ inline bool fixLine(Line &l, const Bits &r, uint32_t lsb) {
   }
   return any;
 }
+/// Whether any word of the line has a double-bit syndrome: a recovered UE's
+/// first answer (MIU spec rev 163, ECC; DCU slice 2 part 4; MI-20).
+inline bool lineUe(const Line &l, const Bits &r, uint32_t lsb) {
+  for (unsigned w = 0; w != kLineWords; ++w)
+    if (secdedL1().decode(lineWord(l, w), uint32_t(r.get(lsb + eccR() * w, eccR()))).ded) return true;
+  return false;
+}
+/// Whether every word's syndrome is zero.
+inline bool lineClean(const Line &l, const Bits &r, uint32_t lsb) {
+  for (unsigned w = 0; w != kLineWords; ++w)
+    if (secdedL1().decode(lineWord(l, w), uint32_t(r.get(lsb + eccR() * w, eccR()))).syn) return false;
+  return true;
+}
 
 // ---- The way predictor's fold (MA-30, AR 405 (3)) -------------------------------
 // wayfold.h's fold of PA[47:16], k = CCV_DCU_WAYPRED_BITS (the environment's
