@@ -361,7 +361,12 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 466, RA 157, RI 91, TI 511, AR 406, DA 128, OI 399, Conventions 20, CP 160, IS 201, MA 145, MI 29, DI 29.
+Bookmarks: OA 468, RA 157, RI 91, TI 516, AR 409, DA 131, OI 401, Conventions 20, CP 160, IS 201, MA 157, MI 35, DI 41.
+Sweep 11-22: nothing for RA. DA 129-131 (OOE: mempl waiver, redirect lag D, L23 table form). AR 403-405: CE corrected
+by MIU as a later ccv_miu_rcu_data write then completion; way mispredict = AR 368 miss then late completion at due+2,
+same req_id; L1_HIT 8 and L1_ECC 1 unchanged. Merged 183cc441 (126), 5e4d6c70 (10), 9eb50716 (5), c22116ce (2),
+miu-dcu-spec (3), 80102643 (resolve; main.cpp brk list: ours is the superset). Skipped OI's 57eff422 (893f2eed):
+10 merge bases; every single-base trial conflicts in many owners' files; no other branch holds it yet.
 Sweep 11-21: nothing for RA. MI-18/MA: new CCV_LAT_MIU_PAIR_LAG (3) derives from CCV_LAT_RCU_ADDR and the
 ooe_rcu_issue/rcu_miu_addr stages, so moving either moves it (require >= 1). Merged 183cc441, 58815650, 5e4d6c70,
 80102643; skipped ccr-57eff422 (OI's, real conflicts in OI files, AR 402: OI resolves).

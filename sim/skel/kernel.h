@@ -265,7 +265,7 @@ struct Kernel {
       "l1_first_pass", "l1_bank_loser", "l1_first_held", "l1_first_late", "l1_held_lost",
       "ld_pass_held", "fence_hold", "drain_guard", "drain_guard_withheld", "st_wide_hold",
       "tlb_miss", "tlb_walk", "itlb_walk", "tlb_two_page", "walk_reads", "tlb_two_page_lost",
-      "hint_slot_taken", "l1_dcu_late",
+      "hint_slot_taken", "l1_dcu_late", "ue_second_answer",
       // Lookups the MIU model launched and then dropped (drop on
       // ccv_miu_dcu_req; MA-27, AR 400; MI-19), all and by cause.
       "dcu_drops", "drop_tlb", "drop_fault", "drop_split", "drop_line", "drop_bank", "drop_dup", "drop_held",
@@ -274,7 +274,7 @@ struct Kernel {
       // A uop DEC held past a demotion's walk (AR 395).
       "dec_hold",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
-      "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
+      "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote", "pc_kept_launch", "pc_kept_restore",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
       "pred_xfer", "pred_merge", "pred_copy", "crack_split",
