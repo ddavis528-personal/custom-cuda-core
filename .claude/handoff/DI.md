@@ -29,6 +29,32 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
+-2. SLICE 2 parts 1+2 landed (DCU tab rev 89 "Slice 2, part 1: miss buffers
+   and fills", rev 91 "part 2: eviction and writeback"; spec doc
+   DJeg9Hh8rkPDecq4hrAz35, DCU tab node c18a112b-d2c6; MA rev 159-160, answers
+   DI-21). Parts 3 (stores) and 4 (probes, UE) follow with notices. Plan:
+   MODEL FIRST (task #6), then RTL (task #7). Model gaps found:
+   (1) MSHR freed at fill receipt -> keep until W and all answers; wait cause
+       filled-not-written; at W a dirty victim turns the entry into the
+       writeback's (kind wb, unsent) until MLC's ack (ack: no fill buffer,
+       credit at once, entry freed F+1).
+   (2) install at fill -> victim chosen+reserved+MRU at F+1, line written at W
+       (>= F+3 clean, >= F+5 dirty: victim read first, 2 cycles ahead), a
+       queue waiter under BANK_AGE; tag-stale re-look for lookups reading
+       after W; stores hitting a reserved dirty victim wait (miss-wait).
+   (3) channel stall (stalled_/accepting) -> per-bank miss-wait in the bank
+       queue holding the entry credit; a bank's waiters retry oldest first
+       ahead of new misses; a new miss waits if its bank has a waiter.
+   (4) MLC fill credit at take -> creditAtRelease on ccv_mlc_dcu_rsp: 4 fill
+       buffers, credit back when written and last answer left. 2 wb buffers;
+       wb full: victim read waits, fill buffer (credit) held (DI-21).
+   (5) MLC req order: writebacks oldest first, then oldest unsent miss;
+       straight-from-D2 (valid H+5) only when neither waits.
+   (6) late answer slots: aged bank answer > fill answers oldest first >
+       other late lowest bank; fill answers take any slot.
+   Controls: dcu-mshr-nomerge, dcu-fill-nostale, dcu-fill-early,
+   dcu-miss-reorder, dcu-wb-drop (= drop-writeback), dcu-wb-early,
+   dcu-wb-refetch, dcu-wb-store. Bins/CHECKs per the tab.
 -1. Phase 2a slice 1 RTL pushed at 3b6b66f2 (full PASS): dcu_cap, dcu_btag,
    dcu_bctl (k=4 after TI-518; budgets by MA rev 157, DI-26 closed).
    DI-27 (rev 44) to TI: TI-518 done in the model; DI-24 (4) run-rtl.sh and
