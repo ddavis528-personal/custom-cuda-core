@@ -53,6 +53,8 @@ control miu_mq discard
 bench miu_agu8 test/miu/cg-build.sh miu_agu8 "$B/miu_agu8" -- "$B/miu_agu8/tb"
 control miu_agu8 xfer
 control miu_agu8 sext
+control miu_agu8 lane0
+control miu_agu8 nohi1
 bench miu_cred test/miu/cg-build.sh miu_cred "$B/miu_cred" -- "$B/miu_cred/tb"
 control miu_cred early
 control miu_cred norefund
