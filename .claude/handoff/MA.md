@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 415, TI 530, OA 474, IS 201, CP 160, OI 405, RA 158, RI 91, MA 173, DA 131, MI 41, DI 74.
+Conventions 20, AR 417, TI 535, OA 475, IS 201, CP 160, OI 405, RA 158, RI 91, MA 179, DA 132, MI 41, DI 75.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -93,6 +93,12 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - Sweep 2026-11-22 merged 11 branches (AR's 80102643 by commit-tree: 5 merge bases hung the recursive merge),
   full PASS, pushed. TI-517 landed MA-29 (bc9d61ff), TI-518 landed MA-30 (63579fce); both marked in the tabs.
   Snapshots refreshed: dcu-spec rev 87, miu-spec rev 162. Next: DCU slice 2, then MIU slices 2-4.
+- TI-533: CCV_DCU_FILL_AGE=4 landed 608f8711 (closes MA's ask). Bookmark TI 531.
+- DI-39 ack (DI rev 75): built; model knob CCV_DCU_VICTIM_AT default 1, RTL 2 -> after pricing, default must match RTL (2) unless fallback taken.
+- AR 412 (4) TAKEN (MA rev 178; DA row .133923 rev 132: DRAM 1000 cyc, read target 1 line/8 cyc, ~125 in flight; default TB latency 20+/-5). First cut: RT ~1030 -> ~130 lines; candidates 160/192: dcu_mshr 16->160 (RF read at F, CAM merge, FIFO unsent), bank queues 16->24, MIU park table ~160 x 200b RF (MQ stays 40/credits 10; changes MA-14), W_REQ_MIU_DCU 6->8, W_REQ_DCU_MLC 4->8 (schema rows after Daniel's area). NEXT: p1 model read class at CCV_TB_LATENCY=1000 after ti-tblat + AR412(1); sweep 128/160/192; then MA-31 row with area to Daniel. Waiting AR/OA on (d) MLC_HIT_MAX term vs THRESHOLD_MLC=50. Bookmarks AR 416, DA 132.
+- AR 413 (AR rev 417): (d) resolved, MLC_HIT_MAX's queue term becomes FET's 4 ifill ids (HIT_MAX 28); 8-bit DCU->MLC ids leave THRESHOLD_MLC=50 standing. Bookmark AR 417.
+- OA-475 (OA rev 475): THRESHOLD_MLC re-sweep (35/50/75/100) waits on MA's read-path sizes being in the stub -> after MA-31, ask TI to carry the sizes into the stub and notify OA.
+- TI-537 (DA: common RTL credit modules in rtl/common by TI) confirmed with corrections (MA rev 179): cr_dst rel_n count (MIU REL_MAX 3), land+release per message (mlc_dcu_rsp), cr_src LATE_COUNT (dcu_mshr MLC req); CG-5 note. MI/DI migrate once it lands. Bookmark TI 535.
 - DI-39 ANSWERED (MA rev 177, DCU tab 116-120): fill keeps lead-then-payload (one-cycle form = enable from input, CG-5):
   lead F+1 from dcu_mshr's F read (valid + bank one-hot), payload F+2 (mshr + fill flops), victim F+2, write waiter from F+4.
   DI prices model pickVictim F+2 after ti-tblat; >=0.5% -> earlier lead on MLC rsp with req_id (schema row).
