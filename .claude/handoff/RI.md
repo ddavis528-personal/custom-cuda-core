@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: c3f77676 (2026-11-22 sweep, PASS full). Earlier: 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: 9f124ce6 (2026-11-23 sweep, PASS full). Earlier: c3f77676 (11-22 sweep); 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,6 +57,11 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-28. DONE (2026-11-23 sweep) PASS full, pushed 9f124ce6 (ri-sweep23 in ri-wt). Merged: infra 154 (carried doowtf,
+   c22116ce, 3868632d, 126afa13, 57eff422), 58815650 (MI) 18, 5e4d6c70 (DI) 8, 80102643 6, 9eb50716 3,
+   miu-dcu-spec 3; no conflicts. Merging the 1-base infra first cut the others' bases to 1-2 (fast). Register:
+   nothing for RI (pc_kept on ccv_ooe_rau_drained is TI/OOE, RA 158: no RCU channel). Bookmarks: Conv 20 AR 414
+   OA 474 IS 201 TI 529 OI 405 CP 160 DA 131 RA 158 RI 91 MA 173 MI 38 DI 69. Still open: Daniel's RCU sign-off.
 -27. DONE (2026-11-22 sweep) PASS full, pushed c3f77676 (ri-sweep22 in ri-wt). Merged: infra 111, 57eff422 (OI,
    AR 402 resolved per OI-196) 17, 5e4d6c70 (DI) 7, 3868632d 6, miu-dcu-spec 6, 9eb50716 5, c22116ce 2,
    80102643 10 (ort ran >2h; -s resolve then conflicted only in sim/skel/main.cpp, a --break list where ours was a
