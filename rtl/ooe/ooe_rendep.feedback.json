@@ -1,31 +1,103 @@
 {
-  "_comment": "CCV-L23's declared bypass for ooe_rendep (OA's ruling on OI-72, rev 210; DA's waiver, DA tab rev 72): G-1's lookups read G-2's registers, a cycle-later copy of G-1's own ports, for the entries the grant gives the group ahead, because ooe_prodmap records them a cycle later. One prodmap-record bypass, names and codes.",
-  "bypass": {
-    "xr2_cq02h": {
-      "from": {
-        "g2gv_cq03h": 1,
-        "g2gn_cq03h": 1
-      },
-      "by": "OA",
-      "date": "2026-10-23",
-      "why": "a GPR source's hit on the group ahead's writers, by G-2's names (OA's rev 210)"
-    },
-    "xp2_cq02h": {
-      "from": {
-        "g2pv_cq03h": 1,
-        "g2pn_cq03h": 1
-      },
-      "by": "OA",
-      "date": "2026-10-23",
-      "why": "a predicate source's hit on the group ahead's writers, by G-2's names (OA's rev 210)"
-    },
-    "g2cv_e_cq02h": {
-      "from": {
-        "g2cv_cq03h": 1
-      },
-      "by": "OA",
-      "date": "2026-10-23",
-      "why": "the codes of the entries the grant gives the group ahead, by G-2's codes (OA's rev 210)"
-    }
+ "_comment": "CCV-L23's declared bypass for ooe_rendep (OA's ruling on OI-72, rev 210; DA's waiver, DA tab rev 72): G-1's lookups read G-2's registers, a cycle-later copy of G-1's own ports, for the entries the grant gives the group ahead, because ooe_prodmap records them a cycle later. One prodmap-record bypass, names and codes. tables: u_map's table, signed by OA (OA-497, re:OI-217).",
+ "bypass": {
+  "xr2_cq02h": {
+   "from": {
+    "g2gv_cq03h": 1,
+    "g2gn_cq03h": 1
+   },
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "a GPR source's hit on the group ahead's writers, by G-2's names (OA's rev 210)"
+  },
+  "xp2_cq02h": {
+   "from": {
+    "g2pv_cq03h": 1,
+    "g2pn_cq03h": 1
+   },
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "a predicate source's hit on the group ahead's writers, by G-2's names (OA's rev 210)"
+  },
+  "g2cv_e_cq02h": {
+   "from": {
+    "g2cv_cq03h": 1
+   },
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "the codes of the entries the grant gives the group ahead, by G-2's codes (OA's rev 210)"
   }
+ },
+ "tables": {
+  "eg_cq01h": {
+   "reader": "xrt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.eg_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "egn_cq01h": {
+   "reader": "xrt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.egn_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "ep_cq01h": {
+   "reader": "xpt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.ep_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "epn_cq01h": {
+   "reader": "xpt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.epn_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "ecv_cq01h": {
+   "reader": "jcv_cq02h",
+   "ahead": -1,
+   "writer": "u_map.ecv_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  }
+ }
 }
