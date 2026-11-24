@@ -635,10 +635,16 @@ stages: its inputs whose every path to an output passes through the table
 register are its table's write, excused at the connection (OI-217): only
 where the input's cone inside the writer ends solely at the declared
 registers' next value or enable, no other register or output the parent
-connects (an output left unconnected reaches nothing, OI-219), and only
-while the table verifies in the same run (OA-497; `reference_ttp.sv`). An
-input reaching anything else, or a writer whose table does not verify,
-keeps its back edge (`bad_conn5.sv`).
+reads (an output left unconnected, or whose net the parent names nowhere
+else, reaches nothing, OI-219), and only while the table verifies in the
+same run (OA-497; `reference_ttp.sv`). The cone may pass through
+write-pipeline registers whose whole fanout ends at the declared
+registers or at another such register; a register that feeds nothing, or
+only an output the parent does not read, is a dead end and counts as one
+(OA-500: u_map's write stage at 02; `reference_pttp.sv`). An input
+reaching anything else, through one extra fanout of a pipeline register
+too, or a writer whose table does not verify, keeps its back edge
+(`bad_conn5.sv`, `reference_xttp` the extra fanout).
 `reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
 `bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
 assertion are refused.
