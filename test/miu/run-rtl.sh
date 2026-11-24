@@ -7,7 +7,8 @@
 #   miu_pair: test/miu/pair_tb.cpp, each address paired with its memop by
 #            arrival cycle and lead pipe, and its controls arrival (paired on
 #            the arrival slot) and lag (a cycle late), each of which must fail
-#   miu_mq: test/miu/mq_tb.cpp, the memop queue, controls slot and discard
+#   miu_mq: test/miu/mq_tb.cpp, the memop queue and its lane map, controls slot, discard,
+#     ilv (an interleaved lane's word as its sum's) and local (a local lane's byte as its sum's)
 #   miu_agu8: test/miu/agu8_tb.cpp, one lane octet's A1 sums and F-ALIGN,
 #            O-83's decision (MI-25 (D)), controls xfer (O-80's size ignored),
 #            sext (disp unsigned), lane0 (lane d taken as 0), noshift (b
@@ -72,6 +73,8 @@ control miu_pair lag
 bench miu_mq test/miu/cg-build.sh miu_mq "$B/miu_mq" -- "$B/miu_mq/tb"
 control miu_mq slot
 control miu_mq discard
+control miu_mq ilv
+control miu_mq local
 bench miu_agu8 test/miu/cg-build.sh miu_agu8 "$B/miu_agu8" -- "$B/miu_agu8/tb"
 control miu_agu8 xfer
 control miu_agu8 sext
