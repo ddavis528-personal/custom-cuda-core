@@ -635,6 +635,21 @@ modules); a register-free one there is a helper like any other (OA 485).
 And the generated design (`rtl/top`, `rtl/generated`), whose
 channels cross repeaters by `params/links.json` and are held there.
 
+Through a register-free helper, a deficit of 1 is exempt only when the
+helper's input reads one parent register and its output feeds, through
+the parent's combinational nets, that register's next value or enable and
+nothing else (OA-488 (1)).
+
+A loop closed by the parent's own registers (OI-207, OA-489) is declared
+with `"from"` naming the parent register the child input reads, and
+`"loop"` listing the reader's output(s), then the parent registers in
+order, the last being `"from"`; each hop is traced (the first register's
+next value or enable reads a listed output's net, each later one the
+register before it, through combinational nets only), and `ahead` is
+`"from"`'s stage less the input's tag. `reference_pp.sv` holds both;
+`bad_conn2.sv`'s untraced hop and helper feeding a second register are
+refused.
+
 A back edge across the boundary, a loop through two children, is declared
 in the parent's `<parent>.feedback.json`: `{"reads": {"<inst>.<input>":
 {"from": "<inst>.<output>", "ahead": N, "loop": ["<inst>", ...],
