@@ -1124,7 +1124,11 @@ depth NGD-1 to NGD-6 and a block's own checks count it, and the 25 includes
 the tree. The paths it put over the stage then sit, each capped at its
 depth, in `rtl/ngd-fanout-baseline.json`; `rtl/ngd-ratchet.json`'s
 `fanout` holds the caps, which only fall, and an entry leaves once its path
-meets the stage. NGD-7, and a block's outputs straight from a flop, are
+meets the stage. One exception, until block-level assembly gives bottom-up
+budgets (Daniel, 2026-11-24, DA tab rev 134): an OOE path already on the
+ratchet may rise up to 30 NGD where needed to move forward, its cap raised
+above its baseline but never past 30. New paths and non-OOE paths keep 25,
+and the caps fall again once assembly rebalances the budgets. NGD-7, and a block's outputs straight from a flop, are
 measured without it. The
 static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
 XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over
