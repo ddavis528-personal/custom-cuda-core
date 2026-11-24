@@ -496,6 +496,9 @@ struct Config {
   /// captured raw, each reader a cycle late unless it bypasses: 1 the
   /// ROB's act (done, status, fault) a cycle late, 2 the RS timer's for a
   /// hit (its confirm), 4 for any other (a restart). Atomics act as they land.
+  /// 8: the first kind with the hit's confirmation bypassed from the capture
+  /// into ooe_rs's free but kept off its rename-row mask: an entry so freed
+  /// is held (allocation and rename's room) through the next cycle.
   unsigned cmpl_split = 0;
   /// The go's run from the tail sees a held entry's release a cycle late
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
@@ -1415,6 +1418,7 @@ private:
     RsCls cls = RsCls::kRcu;
     unsigned slot = 0, rob = 0;    ///< owner
     uint64_t age = 0;              ///< allocation order: the age matrix's order
+    uint64_t hit_at = ~0ull;       ///< cmpl_split 8: the cycle its L1 hit landed
     bool copy = false;             ///< the copy-only half of a masked load
     bool produces = false;         ///< writes a register some entry may wake on
     bool issued = false;
@@ -2022,6 +2026,7 @@ private:
   std::vector<std::array<unsigned, 2>> ceil_room_reg_, ceil_room_use_, ceil_names_prev_;
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rs_prev_free_;       ///< RS entries freed last cycle (rs_free_lag)
+  std::vector<uint8_t> rs_hfree_, rs_prev_hfree_;   ///< cmpl_split 8: freed by a hit's bypassed confirmation
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
   /// fits_stale 6, rename's RS counters as the RTL keeps them: every RS
@@ -2033,7 +2038,8 @@ private:
   std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
   bool free_prompt_ = false;                ///< an RS free now is a confirmation's
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
-  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]); }
+  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]) ||
+                                         ((cfg_.cmpl_split & 8) && e < rs_prev_hfree_.size() && rs_prev_hfree_[e]); }
   bool robHeld(unsigned si, unsigned i) const {
     const size_t k = size_t(si) * cfg_.rob_depth + i;
     return slot_[si].rob[i].valid || rob_late_[k] ||

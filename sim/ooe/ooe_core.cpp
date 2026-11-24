@@ -421,6 +421,8 @@ void Core::cycle(uint64_t now) {
   // rs_free_lag: last cycle's frees (wlog_ is cleared below).
   rs_prev_free_.assign(n_, 0);
   for (unsigned e = 0; e != n_ && e < wlog_.rfree.size(); ++e) rs_prev_free_[e] = wlog_.rfree[e];
+  rs_prev_hfree_ = rs_hfree_;
+  rs_hfree_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   if (cfg_.fits_stale) {
     rob_prompt_prev_ = rob_prompt_;
@@ -966,7 +968,8 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
   // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
-    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e]) && !(cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e])) {
+    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e]) && !(cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]) &&
+        !((cfg_.cmpl_split & 8) && e < rs_prev_hfree_.size() && rs_prev_hfree_[e])) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
@@ -1527,6 +1530,10 @@ void Core::confirmPass() {
     }
     if (x.late && !x.spec) {
       x.confirmed = true;
+      if ((cfg_.cmpl_split & 8) && x.hit_at != ~0ull && x.hit_at + 1 >= now_ && e < rs_hfree_.size()) {
+        rs_hfree_[e] = 1;
+        count("cmpl_split.hit_free_held");
+      }
       if (e < wlog_.fin.size()) wlog_.fin[e] = 1;
       if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
     }
@@ -1770,6 +1777,7 @@ void Core::takeCompletions() {
               c.rob_tag, (unsigned long long)(now_ - late - x.issue_at - cfg_.payload_stages),
               cfg_.lat_l1_cmpl);
         x.spec = false;
+        x.hit_at = now_;
         count("load.l1_hit");
       } else {
         if (r->is_load) count("load.past_l1");
