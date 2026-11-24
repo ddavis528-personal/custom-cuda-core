@@ -2383,9 +2383,15 @@ def only_into(body, ports, i, regs, read=None):
                 continue
             seen.add(u)
             if u in flops:
-                if u not in regs:
+                if u in regs:
+                    hit.add(u)
+                elif ports.get(u) == "output" and read is not None and u not in read:
+                    # An output register the parent leaves unconnected reaches
+                    # nothing outward (OI-219): follow its own users, so any
+                    # reach beyond it still counts.
+                    todo.append(u)
+                else:
                     return False
-                hit.add(u)
             elif ports.get(u) == "output" and (read is None or u in read):
                 # An output the parent leaves unconnected reaches nothing
                 # (OI-219); one it reads is a reach beyond the table.
