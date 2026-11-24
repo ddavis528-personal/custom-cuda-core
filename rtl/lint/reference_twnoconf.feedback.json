@@ -1,0 +1,34 @@
+{
+  "_comment": "bad_table2.sv's reference_twnoconf: refused (OA-479 (b)).",
+  "table": {
+    "ctab_cy03h": {
+      "readers": [
+        "crd_cy02h"
+      ],
+      "writers": [
+        {
+          "name": "lookup",
+          "stage": 2,
+          "loop": true,
+          "enable": [
+            "cle_cy02h"
+          ]
+        },
+        {
+          "name": "fill",
+          "stage": 4,
+          "enable": [
+            "cfe_cy04h"
+          ],
+          "from": [
+            "cfi_cy04h",
+            "cfd_cy04h"
+          ]
+        }
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "a fold table in dcu_bctl's shape: a lookup's read-modify-write loop and a later fill writer at one port (OA-479 (b))"
+    }
+  }
+}

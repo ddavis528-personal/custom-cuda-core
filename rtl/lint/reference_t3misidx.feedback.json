@@ -1,0 +1,35 @@
+{
+  "_comment": "CCV-L23 row-register two-writer table for reference_t3misidx (DI-51).",
+  "table": {
+    "mtab_cy03h": {
+      "readers": [
+        "mrd_cy02h",
+        "mrn_cy02h"
+      ],
+      "writers": [
+        {
+          "name": "lookup",
+          "stage": 2,
+          "loop": true,
+          "enable": [
+            "mpw_cy02h"
+          ]
+        },
+        {
+          "name": "fill",
+          "stage": 4,
+          "enable": [
+            "mfe_cy04h"
+          ],
+          "from": [
+            "mfi_cy04h",
+            "mfd_cy04h"
+          ]
+        }
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "dcu_bctl's fold table as row registers: a generate loop of rows written under a one-hot compare, read by the same compare (DI-51)"
+    }
+  }
+}
