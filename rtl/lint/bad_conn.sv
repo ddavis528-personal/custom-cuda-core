@@ -10,7 +10,8 @@
 // its letter: u (reference_utop) has no declaration, so its back edge is
 // reported; n's reader takes an untagged l0 port; w's declaration says 3
 // stages ahead, not 4; o's writer is fed from an input, so the loop does
-// not close; a's parent holds no conn_l0_fresh assertion.
+// not close; a's parent holds no conn_l0_fresh assertion; c's declaration
+// names a second control no bench names.
 //===----------------------------------------------------------------------===//
 
 `define CCV_CLK reference_core_clk
@@ -238,6 +239,51 @@ module reference_atop (
     .ms_cy03h(ams_cy03h));
   reference_awr u_wr (
     .reference_core_clk, .ref_rst_r00h, .ms_cy03h(ams_cy03h), .l0_cy06h(al0_cy06h));
+endmodule
+
+module reference_crd (
+  input  logic reference_core_clk,
+  input  logic ref_rst_r00h,
+  input  logic a_cy01h,
+  input  logic l0_cy02h,
+  output logic ms_cy03h
+);
+  logic a_cy02h;
+  logic hit_cy02h;
+  always_ff @(posedge reference_core_clk) a_cy02h <= a_cy01h;
+  assign hit_cy02h = a_cy02h & l0_cy02h;
+  always_ff @(posedge reference_core_clk) ms_cy03h <= hit_cy02h;
+endmodule
+
+module reference_cwr (
+  input  logic reference_core_clk,
+  input  logic ref_rst_r00h,
+  input  logic ms_cy03h,
+  output logic l0_cy06h
+);
+  logic q_cy04h;
+  logic q_cy05h;
+  always_ff @(posedge reference_core_clk) begin
+    q_cy04h  <= ms_cy03h;
+    q_cy05h  <= q_cy04h;
+    l0_cy06h <= q_cy05h;
+  end
+endmodule
+
+module reference_ctop (
+  input  logic reference_core_clk,
+  input  logic ref_rst_r00h,
+  input  logic ca_cy01h,
+  input  logic x_cy03h,
+  output logic cms_cy03h,
+  output logic cl0_cy06h
+);
+  reference_crd u_rd (
+    .reference_core_clk, .ref_rst_r00h, .a_cy01h(ca_cy01h), .l0_cy02h(cl0_cy06h),
+    .ms_cy03h(cms_cy03h));
+  reference_cwr u_wr (
+    .reference_core_clk, .ref_rst_r00h, .ms_cy03h(cms_cy03h), .l0_cy06h(cl0_cy06h));
+  `CCV_ASSERT(conn_l0_fresh, !(cms_cy03h && cl0_cy06h))
 endmodule
 
 `undef CCV_CLK

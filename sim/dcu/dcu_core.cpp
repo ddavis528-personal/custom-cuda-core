@@ -840,13 +840,32 @@ void Core::schedule() {
       ++st_.fill_wait;
       h_.hit("dcu_fill_wait");
     }
-    for (const Req &r : in) {
-      if (inWb(r.pa)) h_.hit("dcu_miss_wait_wb");   // its line's writeback awaits MLC's ack
-      if (held(r.pa) || olderLook(b, bq_[b].size(), r.pa, r.op == Op::Store)) h_.hit("dcu_order_first");
+    for (size_t li = 0; li != in.size(); ++li) {
+      const Req &r = in[li];
+      const bool wb = inWb(r.pa);
+      const bool ord = held(r.pa) || olderLook(b, bq_[b].size(), r.pa, r.op == Op::Store);
+      bool earlier = false;   // an earlier lookup of its line this cycle
+      for (size_t j = 0; j != li; ++j) earlier |= in[j].pa == r.pa;
+      if (wb) h_.hit("dcu_miss_wait_wb");   // its line's writeback awaits MLC's ack
+      if (ord) h_.hit("dcu_order_first");
       ++st_.losers;
       h_.hit("dcu_bank_loser");
       h_.hit(r.slot == 0 ? "dcu_bank_loser_s0" : r.slot == 1 ? "dcu_bank_loser_s1"
              : r.slot == 2 ? "dcu_bank_loser_s2" : "dcu_bank_loser_s3");
+      // A loser's tag result is known at its D2 (dcu_bctl: "a lead that lost
+      // the bank waits for its tag result"); a read that misses goes to
+      // dcu_mshr then, on its slot's port, and never waits for the bank:
+      // only hits join the queue (DI-48). One that waits for order (a held
+      // line, an older lookup of its line, its writeback, an earlier lookup
+      // of its line now) keeps the queue's order. dcu-loser-miss-late, the
+      // control, decides it at its access instead, so a slot's two misses
+      // can reach its port in one cycle (the id CHECK in startMiss).
+      if (r.op == Op::Read && !find(r.pa) && !wb && !ord && !earlier &&
+          c_.brk != "dcu-loser-miss-late") {
+        h_.hit("dcu_loser_miss");
+        missOrWait(r, now_ - dOff() + 1);
+        continue;
+      }
       bq_[b].push_back(Acc{Acc::Look, now_ - dOff(), now_, r.pa, r, 0, {}});
       if (const Way *tw = find(r.pa))
         if (r.op == Op::Read || tw->owned) bq_[b].back().tway = int(tw - l1_.data());
@@ -1076,6 +1095,8 @@ bool Core::startMiss(const Req &r, uint64_t d2, unsigned port, const char **why)
   for (auto &m : miss_)
     if (m.second.line == r.pa)
       h_.fail(fmt("dcu: a second miss buffer entry for line %llx", r.pa));
+  if (wb_lines_.count(r.pa))   // dcu-wb-refetch, the control (DI-48)
+    h_.fail(fmt("dcu: line %llx fetched while its writeback awaits MLC's acknowledgement", r.pa));
   const unsigned id = *nf_[port];
   if (!free_ids_.erase(id)) h_.fail(fmt("dcu: miss buffer id %u offered while in use", id));
   ++st_.misses;
@@ -1291,7 +1312,7 @@ bool Core::pickVictim(unsigned id) {
   m.way = int(w - l1_.data());
   touch(*w);
   const unsigned b = bankOf(m.line);
-  const uint64_t ready = m.f_at + 3 + (m.kst ? m.kst + 2 : 0);   // encode F+1, or F+k+3 (part 3)
+  const uint64_t ready = m.f_at + 2 + c_.victim_at + (m.kst ? m.kst + 2 : 0);   // encode F+1, or F+k+3 (part 3)
   if (w->valid && w->line != m.line) {
     h_.hit("dcu_evict");
     ++st_.evicts;
@@ -1338,7 +1359,7 @@ void Core::fillWrite(unsigned id) {
   unhold(m.line);
   m.written = true;
   h_.hit("dcu_fill_write");
-  h_.hit("dcu_fill_write_wait", now_ - (m.f_at + 3));
+  h_.hit("dcu_fill_write_wait", now_ - (m.f_at + 2 + c_.victim_at));
   const unsigned b = bankOf(m.line);
   for (Req r : m.relook) {
     r.ent_gone = true;   // its entry credit went back when it merged; its store data stays
@@ -1616,7 +1637,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   // Victims for the fills that landed before now (F+1), oldest first; a
   // fill whose set has no free way waits in its buffer (its credit held).
   for (size_t k = 0; k != vpend_.size();) {
-    if (miss_.at(vpend_[k]).f_at < now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
+    if (miss_.at(vpend_[k]).f_at + c_.victim_at <= now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
     else ++k;
   }
   while (!wb_ack_due_.empty() && wb_ack_due_.begin()->first <= now_) {

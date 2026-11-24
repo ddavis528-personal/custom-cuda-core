@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <map>
 #include <string>
@@ -69,6 +70,11 @@ struct Bench {
   /// Answer MLC's requests itself, `mlc_lat` cycles after launch.
   bool auto_mlc = true;
   unsigned mlc_lat = 20;
+  /// Hold fills to ccv_mlc_dcu_rsp's credits (CCV_CREDIT_DEPTH fill buffers),
+  /// as MIU does; off, a fill lands when it is answered.
+  bool fill_credits = false;
+  unsigned fcred = ccv::kCreditDepth;
+  std::deque<Fill> fq;
   bool mlc_block = false;   ///< hold ccv_dcu_mlc_req's credit back
   std::vector<Req> held;   ///< requests the core did not accept yet
   std::array<bool, kSlots> can{{true, true, true, true}};   ///< each rsp slot's rsp_can
@@ -83,6 +89,15 @@ struct Bench {
       std::optional<Fill> f;
       auto fi = fills.find(t);
       if (fi != fills.end()) f = fi->second;
+      if (fill_credits) {   // MIU's side of ccv_mlc_dcu_rsp: a fill waits for a credit
+        if (f) fq.push_back(*f);
+        f.reset();
+        if (fcred && !fq.empty()) {
+          f = fq.front();
+          fq.pop_front();
+          --fcred;
+        }
+      }
       Ports p;
       for (unsigned s = 0; s != kSlots; ++s) {
         p.rsp_can[s] = can[s];
@@ -94,6 +109,7 @@ struct Bench {
       auto pi = probes.find(t);
       if (pi != probes.end()) pr = pi->second;
       Out o = core.cycle(t, in, f, p, pr);
+      if (fill_credits) fcred += o.fill_release;
       if (o.prb_ack) acks.push_back({t, *o.prb_ack});
       for (const Rsp &r : o.rsps) rsps.push_back({t, r});
       for (const auto &n : o.notices) notices.push_back({t, n});
@@ -334,6 +350,7 @@ int main(int argc, char **argv) {
   test("wait-entries-full", [] {
     Bench b(cfg(9));
     b.mlc_lat = 60;
+    b.fill_credits = true;   // 16 misses' fills, as MIU sends them (DI-48)
     for (unsigned k = 0; k != 17; ++k) b.reqs[k] = {rd(0, k, 0x10000 + uint64_t(k) * 0x80000)};
     b.run(45);
     EXPECT(b.core.accepting() && b.h.bins["dcu_miss_wait_entry"], "waits with 16 entries in use, channel open");
@@ -680,6 +697,42 @@ int main(int argc, char **argv) {
 
   // A full merge list makes the fifth request to its line wait in its
   // bank's queue; a sixth to the line waits behind it, in order.
+  // A bank loser that misses (DI-48): its tag result is known at its D2,
+  // so its miss goes to the MSHR then, on its slot's port, and its slot's
+  // next miss (another bank, a cycle or more later) has the port to itself.
+  // dcu-loser-miss-late decides the loser's miss at its access, where it
+  // meets the slot's next miss on one port with one id (the id CHECK).
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-loser-miss-late-control" : "loser-miss-at-d2", [&] {
+      unsigned caught = 0, early = 0;
+      for (unsigned d = 1; d != 5; ++d) {
+        Config c = cfg(9);
+        if (ctl) c.brk = "dcu-loser-miss-late";
+        Bench b(c);
+        b.reqs[0] = {rd(0, 1, bank0(1)), rd(3, 2, bank0(2))};   // slot 3 loses bank 0
+        b.reqs[d] = {rd(3, 3, bank0(3) + kLineBytes)};          // its next miss, bank 1
+        b.run(120);
+        if (refused(b, "offered while in use")) ++caught;
+        uint64_t t1 = ~uint64_t(0), t2 = ~uint64_t(0);
+        for (const auto &m : b.mlc) {
+          if (m.second.pa == bank0(1)) t1 = m.first;
+          if (m.second.pa == bank0(2)) t2 = m.first;
+        }
+        if (g_verbose) std::fprintf(stderr, "  d %u: winner's MLC request at %llu, loser's at %llu\n", d,
+                                    (unsigned long long)t1, (unsigned long long)t2);
+        if (t2 <= t1 + 1) ++early;
+        if (!ctl) {
+          EXPECT(b.h.fails.empty(), "d %u: %s", d, b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+          EXPECT(b.rsp(1) && b.rsp(2) && b.rsp(3), "d %u: every read answered", d);
+        }
+      }
+      if (ctl) {
+        EXPECT(caught >= 1, "the control is refused at some spacing");
+        return;
+      }
+      EXPECT(early == 4, "the loser's miss leaves with the winner's (its D2): %u of 4", early);
+    });
+
   // dcu-miss-reorder lets the sixth pass, which the CHECK refuses.
   for (bool ctl : {false, true})
     test(ctl ? "dcu-miss-reorder-control" : "miss-wait-order", [&] {
