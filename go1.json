@@ -1,0 +1,3 @@
+{"u_go.px_cq01h": {"from": {"cone": ["pxn_cq04h","pxr_cq04h"], "ahead": {"pxn_cq04h":3,"pxr_cq04h":3}},
+  "loop": ["u_go.lane_c_cq02h","u_go.lane_v_cq02h","u_ren1.lane_v_cq02h>l_v","tq_g_cq03h","pxn_cq04h"],
+  "assert": ["no_over_grant_names"], "control": ["no-take-q2"]}}

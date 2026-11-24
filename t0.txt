@@ -1,0 +1,81 @@
+FAIL sim/ooe/ooe_test.cpp:1473 [partial taken branch] done(): did not finish by cycle 200020
+FAIL sim/ooe/ooe_test.cpp:1478 [partial taken branch] false: warp 0 retired wrong-path tid 3
+FAIL sim/ooe/ooe_test.cpp:1482 [partial taken branch] ok && i == x.prog.size(): warp 0 retired 2 of 4
+FAIL sim/ooe/ooe_test.cpp:3589 [partial taken branch] n == 1: 0 redirects
+FAIL sim/ooe/ooe_test.cpp:3590 [partial taken branch] e.core.counters["branch.mispredict"] == 1: mispredicts 0
+FAIL sim/ooe/ooe_test.cpp:1473 [partial taken ret] done(): did not finish by cycle 200020
+FAIL sim/ooe/ooe_test.cpp:1478 [partial taken ret] false: warp 0 retired wrong-path tid 3
+FAIL sim/ooe/ooe_test.cpp:1482 [partial taken ret] ok && i == x.prog.size(): warp 0 retired 2 of 4
+FAIL sim/ooe/ooe_test.cpp:3589 [partial taken ret] n == 1: 0 redirects
+FAIL sim/ooe/ooe_test.cpp:3590 [partial taken ret] e.core.counters["branch.mispredict"] == 1: mispredicts 0
+FAIL sim/ooe/ooe_test.cpp:1473 [CAS pair cut] done(): did not finish by cycle 200020
+FAIL sim/ooe/ooe_test.cpp:1482 [CAS pair cut] ok && i == x.prog.size(): warp 0 retired 0 of 13
+FAIL sim/ooe/ooe_test.cpp:1482 [CAS pair cut] ok && i == x.prog.size(): warp 1 retired 1 of 25
+FAIL sim/ooe/ooe_test.cpp:1473 [atomic pairs at four heads] done(): did not finish by cycle 200020
+FAIL sim/ooe/ooe_test.cpp:1482 [atomic pairs at four heads] ok && i == x.prog.size(): warp 0 retired 0 of 7
+FAIL sim/ooe/ooe_test.cpp:1482 [atomic pairs at four heads] ok && i == x.prog.size(): warp 5 retired 0 of 7
+FAIL sim/ooe/ooe_test.cpp:1482 [atomic pairs at four heads] ok && i == x.prog.size(): warp 10 retired 0 of 7
+FAIL sim/ooe/ooe_test.cpp:1482 [atomic pairs at four heads] ok && i == x.prog.size(): warp 15 retired 0 of 7
+  control no-ceil-term     caught
+  control retire-unresolved caught
+  control no-ret-hold      caught
+      idle R (K 4): 31 swaps, 850 rows, 373 row waits, 291 forced idles
+  control no-idle-r        caught
+      R class: 1327 RCU-only ops, 1388 collectives, 2870 cycles, one a cycle
+  control split-r-class    caught
+      pred sources: 358 votes, 367 ballots, every source readable at issue
+  control pq-no-dep        caught
+  control bar-no-hold      caught
+  control beat-unheld      caught
+  control no-bar-fault     caught
+  control fa-youngest      caught
+  control sibling-uncommitted caught
+  control no-width-fault   caught
+  control no-sized-fault   caught
+  control no-converged-fault caught
+  control no-format-fault  caught
+  control late-event       caught
+  control pred-copy-lost   caught
+  control none-row-zero    caught
+  control local-base       caught
+  control atom-demote-mid  caught
+  atomic random: 5043 atomics, 4.31 passes each, hold 42.2 cycles a pass, head wait 197.8, 943121 cycles of held demote triggers, 0 rename port stalls; 5043 CAS pairs, 53 takes cut before a pair the width would split, 385 waits past the warp's heads; 664323 cycles
+  control rewind-order     caught
+  control drain-early      caught
+  control no-refuse        caught
+  control park-layout-lost caught
+  control final-exit-early caught
+  control cta-slot-zero    caught
+  control keep-released-uops caught
+  control no-call-link     caught
+  control width-from-dec   caught
+  control fallback-claims-mlc caught
+  row hold (OI-90): 452 rows past 3 without the hold, 0 with
+  control row-no-hold      caught
+  control atom-off-head    caught
+  control atom-early-wake  caught
+  control a1-base-only     caught
+  control cas-split        caught
+  control pair-split       caught
+  control cas-no-pd        caught
+  control in-group-follows caught
+  control partial-taken    caught
+  control no-first-need    caught
+  control pair-rounds      caught
+  control free-new         caught
+  control shallow-cancel   caught
+  control early-wake       caught
+  control cmpl-wake-delay-ignored caught
+  control bypass-faster-than-contract caught
+  control complete-before-rs-free caught
+  control narrow-footprint caught
+  control no-alloc-lead    caught
+  control no-cogrant       caught
+  control reconv-issues    caught
+  control mcred-sectioned  caught
+  control mcred-unsectioned caught
+  control ignore-nohit     caught
+  control nohit-wake-1     caught
+  control ignore-nohit-base5 caught
+  control nohit-wake-1-base5 caught
+ooe-test: PASS (0 failures)

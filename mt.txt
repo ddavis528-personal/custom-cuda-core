@@ -1,0 +1,22 @@
+912fcfd475f114f837156d8415efc9a6e1e6e535
+100644 0aeb6afa5d5b7ca3329935984703d4f052226601 1	.claude/handoff/MA.md
+100644 955bce82116467e281ce38b883bf5b3f5929c57e 2	.claude/handoff/MA.md
+100644 77a6f106eff3aac8853480448f1e104f76532d41 3	.claude/handoff/MA.md
+100644 df03b674e2070e4f33b822107192511a0a675fa3 1	.claude/handoff/OA.md
+100644 e9b1a3a7c317d083d502b510f17327c67cf90a48 2	.claude/handoff/OA.md
+100644 26d11581001336eed189e240a30c99471fdf1a17 3	.claude/handoff/OA.md
+100644 9ae5a79019b883dfa829673e3d3834929acf36f7 1	docs/design-snapshots/dcu-spec.md
+100644 e4ea1837d48293a2eb788f2bf7975f410b52d6de 2	docs/design-snapshots/dcu-spec.md
+100644 ce0eee84968cb6ed1613a48fa7a6eefe2f5b9cfa 3	docs/design-snapshots/dcu-spec.md
+100644 6e3b1914b7ba6c384cc75871df129ba2ac350804 1	docs/design-snapshots/miu-spec.md
+100644 520eb6239630644a0889f76484bf84d4c26e0383 2	docs/design-snapshots/miu-spec.md
+100644 f0d08940d937a57052b470b66f705b2e7c8caae2 3	docs/design-snapshots/miu-spec.md
+
+Auto-merging .claude/handoff/MA.md
+CONFLICT (content): Merge conflict in .claude/handoff/MA.md
+Auto-merging .claude/handoff/OA.md
+CONFLICT (content): Merge conflict in .claude/handoff/OA.md
+Auto-merging docs/design-snapshots/dcu-spec.md
+CONFLICT (content): Merge conflict in docs/design-snapshots/dcu-spec.md
+Auto-merging docs/design-snapshots/miu-spec.md
+CONFLICT (content): Merge conflict in docs/design-snapshots/miu-spec.md

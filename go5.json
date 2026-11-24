@@ -1,0 +1,4 @@
+{"u_go.pool_en_cq01h": {"from": {"cone": ["u_go.sel_cq02h","rsf_en_cq01h","tq_r_cq03h","tq_m_cq03h","tq_g_cq03h","tq_p_cq03h","u_gfree.fsp_cq03h","u_pfree.fsp_cq03h","nv_cq04h","ur_o_cq02h","ur_f_cq04h"],
+  "ahead": {"u_go.sel_cq02h":1,"rsf_en_cq01h":0,"tq_r_cq03h":2,"tq_m_cq03h":2,"tq_g_cq03h":2,"tq_p_cq03h":2,"u_gfree.fsp_cq03h":2,"u_pfree.fsp_cq03h":2,"nv_cq04h":3,"ur_o_cq02h":1,"ur_f_cq04h":3}},
+  "loop": ["u_go.lane_c_cq02h","u_go.lane_v_cq02h","u_ren1.lane_v_cq02h>l_v","tq_g_cq03h"],
+  "assert": ["no_over_grant_room"], "control": ["no-take-q2"]}}

@@ -1,0 +1,3 @@
+REGISTER-NOTICE v1 from=OI to=OA tab=384bc26c-cef6 rows=OI-189 rev=393
+Stragglers walked in the OOE model (oi-5b 33b2971c), held to beat+delay; TI-493 pair lnorm1 at:328 / --break no-straggler-walk; sleep/chwidth: no assumption; OA 455 trace; please push ti-mi9
+Read the rows in the register (https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5); answer there, in your own tab. This notice is a pointer, not a request: the rows are the record.

@@ -1,0 +1,110 @@
+{
+ "ooe_decrx": {
+  "wqk_cq01h": {
+   "from": {
+    "wq_cq02h": 1
+   },
+   "why": "u_keep (register-free) holds the register: its value forms its own next value"
+  },
+  "wepk_cq01h": {
+   "from": {
+    "wep_cq02h": 1
+   },
+   "why": "u_keep (register-free) holds the register: its value forms its own next value"
+  },
+  "svk_cq01h": {
+   "from": {
+    "sv_cq02h": 1
+   },
+   "why": "u_keep (register-free) holds the register: its value forms its own next value"
+  },
+  "swk_cq01h": {
+   "from": {
+    "swi_cq02h": 1
+   },
+   "why": "u_keep (register-free) holds the register: its value forms its own next value"
+  },
+  "sek_cq01h": {
+   "from": {
+    "sei_cq02h": 1
+   },
+   "why": "u_keep (register-free) holds the register: its value forms its own next value"
+  },
+  "snk_cq01h": {
+   "from": {
+    "sni_cq02h": 1
+   },
+   "why": "u_keep (register-free) holds the register: its value forms its own next value"
+  },
+  "s2k_cq01h": {
+   "from": {
+    "s2i_cq02h": 1
+   },
+   "why": "u_keep (register-free) holds the register: its value forms its own next value"
+  }
+ },
+ "ooe_rename": {
+  "p_vk_cq02h": {
+   "from": {
+    "p_v_cq03h": 1
+   },
+   "why": "u_rd reads the register whose next value it forms"
+  },
+  "p_gkmk_cq02h": {
+   "from": {
+    "p_gkm_cq03h": 1
+   },
+   "why": "u_rd reads the register whose next value it forms"
+  },
+  "p_pkmk_cq02h": {
+   "from": {
+    "p_pkm_cq03h": 1
+   },
+   "why": "u_rd reads the register whose next value it forms"
+  },
+  "gop_cq03h": {
+   "from": {
+    "ufg_cq04h": 1
+   },
+   "why": "the csa free-count accumulator adds to its own register"
+  },
+  "cgop_cq03h": {
+   "from": {
+    "ucg_cq04h": 1
+   },
+   "why": "the csa free-count accumulator adds to its own register"
+  },
+  "pop_cq03h": {
+   "from": {
+    "ufp_cq04h": 1
+   },
+   "why": "the csa free-count accumulator adds to its own register"
+  },
+  "cpop_cq03h": {
+   "from": {
+    "ucp_cq04h": 1
+   },
+   "why": "the csa free-count accumulator adds to its own register"
+  }
+ },
+ "ooe_sched": {
+  "gntk_cq03h": {
+   "from": {
+    "gnt_cq04h": 1
+   },
+   "why": "u_select's one-cycle loop (OA rev 187)"
+  },
+  "holdk_cq03h": {
+   "from": {
+    "hold_cq04h": 1
+   },
+   "why": "u_select's one-cycle loop (OA rev 187)"
+  },
+  "fcpk_cq03h": {
+   "from": {
+    "fcp_cq04h": 1
+   },
+   "why": "u_select's one-cycle loop (OA rev 187)"
+  }
+ }
+}

@@ -1,0 +1,4 @@
+2026-11-09 sweep: bookmarks Conv 17, AR 339, RA 133, IS 190, TI 400, OA 409, OI 336, CP 157, DA 116, RI 66. Nothing for OI. Settings check matches.
+OA-397 done in dc6ba0b8. OA-399 leaves LANE 8/SFU 13 rerun "if OI has not run 8/13" (check vs RI-11 OI-115).
+#34 committed f01ef3d0 in /home/user/wt-rob (detached; bench+24 controls pass); needs NGD/CG + cap lowering after gp10.
+Merge pending after gp10: 126afa13(21) 3868632d(9) 80102643(23) 888218a3(53) 9eb50716(21) c22116ce(2).

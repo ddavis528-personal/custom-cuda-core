@@ -1,0 +1,113 @@
+=== cg ooe_decrx
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_busy_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_cr_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rwsel_o_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: rsc_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: e16_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: quiet_q_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: busy_q_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:162: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qa_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qab_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: ivb_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: dv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: mw_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:124: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: r_v_cr03h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:265: dn_v_cr03h written every cycle, under no enable
+=== cg ooe_rcupl
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_busy_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_cr_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rwsel_o_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: rsc_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: e16_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: quiet_q_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: busy_q_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:162: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qa_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qab_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: ivb_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: dv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: mw_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:124: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: r_v_cr03h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:265: dn_v_cr03h written every cycle, under no enable
+=== cg ooe_mempl
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_busy_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_cr_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rwsel_o_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: rsc_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: e16_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: quiet_q_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: busy_q_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:162: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qa_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qab_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: ivb_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: dv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: mw_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:124: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: r_v_cr03h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:265: dn_v_cr03h written every cycle, under no enable
+=== cg ooe_redir
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_busy_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_cr_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rwsel_o_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: rsc_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: e16_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: quiet_q_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: busy_q_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:162: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qa_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qab_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: ivb_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: dv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: mw_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:124: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: r_v_cr03h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:265: dn_v_cr03h written every cycle, under no enable
+=== ngd rsread
+    in  g_cq01h                      to flops     0.0
+    in  h_cq01h                      to flops     0.0
+    in  q_cq01h                      to flops     0.0
+    thru g_cq01h -> e_cq01h   6.5
+    thru g_cq01h -> v_cq01h   6.2
+    thru h_cq01h -> e_cq01h   5.8
+    thru h_cq01h -> v_cq01h   5.5
+    thru q_cq01h -> e_cq01h   5.1

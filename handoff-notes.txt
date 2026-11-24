@@ -1,0 +1,6 @@
+- OA 401 (re:RI-26): once DA rules (a), OI writes required 0.0 on iss_lead_cq03h (whole lead slice) in ooe_rs.ngd.json, up to ccv_ooe's port; output-only flop, no keep.
+- DA 116 RULED (13 RCU / 0 OOE). TI 396: check-ngd per-field lead budgets on ti-lead 4d6065fd (lands after ti-rst). OI writes, on the OOE out-side of
+  ooe_rcu_issue lead_opcode, lead_done_row, lead_pred_we, lead_phys_dst: either port entries {"required":0.0,"carries":"ooe_rcu_issue_payload.<field>",by,date,why}
+  or ccv_ooe.ngd.json "ooe_rcu_issue_payload.<field>": {"required":0.0}. Enforced only once ti-lead merges (missing side "pending" until both tops are RTL).
+  Then an OI row re:RI-26 (Needs: none or TI FYI).
+- OA 402 spec: ccv_ooe.ngd.json keys ooe_rcu_issue_payload.{lead_opcode,lead_done_row,lead_pred_we,lead_phys_dst} required 0.0; ooe_rs.ngd.json iss_lead_cq03h required 0.0 (no carries).

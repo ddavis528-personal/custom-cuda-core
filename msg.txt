@@ -1,0 +1,10 @@
+ngd: ccv_ooe's side of the issue end's four class-word lead fields, required 0.0 (DA 116 on RI-26)
+
+ooe_rcu_issue_payload.{lead_opcode,lead_done_row,lead_pred_we,lead_phys_dst}
+required 0.0 (OA rev 402), against RCU's in-side 13 (rcu_isd, ef5f6f16):
+lead_cross holds 0 + 13 <= 25. OOE drives them straight from ooe_rs's
+issue register's lead slice (iss_lead_cq03h, required 0.0).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DMw4FtFbGoVboMGxWpLBuv
+

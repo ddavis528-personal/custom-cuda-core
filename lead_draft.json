@@ -1,0 +1,52 @@
+{
+ "u_gfree.sa_l_cq00h": {
+  "from": {
+   "cone": [
+    "u_go.lane_v_cq02h"
+   ],
+   "ahead": {
+    "u_go.lane_v_cq02h": 2
+   }
+  },
+  "loop": [
+   "u_gfree.fsp_cq03h",
+   "ucg_cq04h",
+   "u_go.room_g_cq01h>fitsw_cq02h>lane_v_cq02h"
+  ],
+  "assert": [
+   "sa_led"
+  ],
+  "control": [
+   "sal-late"
+  ],
+  "why": "u_gfree's section-allocation lead (OI-81/82, OA-499): a lane that writes a GPR leads its sections into the free list a cycle ahead; u_go grants the lane at 02 (lane_v_cq02h) and the lead is the free list's 00, two stages ahead by design. The loop closes through the frees by owner: fsp_cq03h into the slot counters (ucg_cq04h), u_go's room_g and its fitsw register, back to lane_v. A late lead leaves an allocation unled: sa_led catches it (control sal-late)."
+ },
+ "u_gfree.rt_l_cq00h": {
+  "from": {
+   "cone": [
+    "u_go.lane_v_cq02h",
+    "u_go.lane_c_cq02h",
+    "u_go.wb_cq02h",
+    "cwt_cq02h"
+   ],
+   "ahead": {
+    "u_go.lane_v_cq02h": 2,
+    "u_go.lane_c_cq02h": 2,
+    "u_go.wb_cq02h": 2,
+    "cwt_cq02h": 2
+   }
+  },
+  "loop": [
+   "u_gfree.fsp_cq03h",
+   "ucg_cq04h",
+   "u_go.room_g_cq01h>fitsw_cq02h>lane_v_cq02h"
+  ],
+  "assert": [
+   "rt_led"
+  ],
+  "control": [
+   "rtl-late"
+  ],
+  "why": "u_gfree's return lead (OI-81/82, OA-499): a narrow lane may return its row next cycle, led into the free list a cycle ahead from u_go's grant at 02 (lane_v, lane_c, wb) and the lane's codes (cwt_cq02h); the lead is the free list's 00, two stages ahead by design. The loop closes as sa_l's, through fsp_cq03h, ucg_cq04h and u_go's room_g/fitsw. A late lead leaves a return unled: rt_led catches it (control rtl-late)."
+ }
+}

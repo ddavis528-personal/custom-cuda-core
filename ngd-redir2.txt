@@ -1,0 +1,30 @@
+  unit ooe_redir        ooe_redir      flop-flop   8.9  in-flop   8.2  flop-out   0.0  in-out   0.0
+    without the fanout term flop-flop   8.2  in-flop   8.2  flop-out   0.0; widest net 92 loads
+    out ckf_m_cq05h                  from flops   0.0
+    out ckf_v_cq04h                  from flops   0.0
+    out rdr_ckpt_cq05h               from flops   0.0
+    out rdr_eo_cq05h                 from flops   0.0
+    out rdr_ep_cq05h                 from flops   0.0
+    out rdr_hl_cq05h                 from flops   0.0
+    out rdr_own_cq05h                from flops   0.0
+    out rdr_rh_cq05h                 from flops   0.0
+    out rdr_rw_cq05h                 from flops   0.0
+    out rdr_stay_cq05h               from flops   0.0
+    out rdr_t1_cq05h                 from flops   0.0
+    out rdr_tgt_cq05h                from flops   0.0
+    out rdr_tmask_cq05h              from flops   0.0
+    out rdr_v_cq04h                  from flops   0.0
+    out rdr_warp_cq05h               from flops   0.0
+    in  ckf_cq03h                    to flops     5.2
+    in  ckf_l_cq02h                  to flops     0.0
+    in  ep1_cq03h                    to flops     0.0
+    in  ntm_cq03h                    to flops     6.4
+    in  ooe_core_clk                 to flops     0.0
+    in  ooe_rst_r00h                 to flops     0.0
+    in  rd_ckpt_cq04h                to flops     2.6
+    in  rd_e_cq02h                   to flops     0.0
+    in  rd_l_cq03h                   to flops     8.2
+    in  rd_stay_cq04h                to flops     2.6
+    in  rd_tgt_cq04h                 to flops     2.6
+    in  rd_tmask_cq04h               to flops     2.6
+    in  wid_cq03h                    to flops     0.0

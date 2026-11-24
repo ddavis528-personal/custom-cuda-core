@@ -1,0 +1,1534 @@
+{
+  "_comment": [
+    "Structural parameters and widths, single source of truth.",
+    "tools/gen-params.py emits TWO packages, and the split is the point:",
+    "",
+    "  ccv_params_pkg   values that follow from decisions already made",
+    "  ccv_prov_pkg     placeholders awaiting a per-block session",
+    "",
+    "A skeleton may reference both. Anything referencing ccv_prov_pkg is known",
+    "to be unfinished, and making that visible AT EVERY USE SITE is what stops",
+    "a placeholder from being believed -- the same argument the fail-open",
+    "register makes about mechanisms that produce confident wrong answers.",
+    "Provisional names also carry a CCV_P_ prefix, so the signal survives being",
+    "read out of context.",
+    "",
+    "STATUS drives the split:",
+    "  isa / arch / target     -> ccv_params_pkg",
+    "  provisional / tunable   -> ccv_prov_pkg",
+    "",
+    "`isa` values are NOT ours to sweep: the compiler is already built against",
+    "them.",
+    "",
+    "THE ROUND TRIP IS 2 EVERYWHERE, by construction rather than by choice.",
+    "Credit depth, rescue depth and drain wait are not three numbers -- they",
+    "are that one number under three names, which is why a future non-abutting",
+    "interface moves all of them together."
+  ],
+  "params": [
+    {
+      "name": "CCV_WARP_LANES",
+      "value": 32,
+      "status": "isa",
+      "source": "ISA v1.6 §1 -- warp width, settled",
+      "doc": "Lanes per warp. A logical GPR holds 32 lanes, one element each, at every chwidth.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Warp width | 32 lanes | settled |", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_GPRS",
+      "value": 16,
+      "status": "isa",
+      "source": "ISA v1.6 §1, O-25",
+      "doc": "Architectural GPRs. 16 x 1024 bit = 2 KB per warp.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Logical GPRs | 16 (`R0`–`R15`), 4-bit field |", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_PREDS",
+      "value": 4,
+      "status": "isa_provisional",
+      "source": "ISA v1.6 §1 -- provisional pending compiler data; measured pressure 1-2 of 4",
+      "doc": "Logical predicates. A performance parameter, not a structural ceiling.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Logical predicates | 4 (`P0`–`P3`) |", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_ADDR_BITS",
+      "value": 48,
+      "status": "isa",
+      "source": "ISA v1.6 §1",
+      "doc": "Global address width.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Address width | 48 bits | settled |", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_DATAPATH_BITS",
+      "value": 1024,
+      "status": "isa",
+      "source": "ISA v1.6 §1 -- 32 lanes x 32 bits",
+      "doc": "Physical datapath width.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "At `chwidth`=32 that is 32×32 = 1024 bits", "value": "q[3]"}
+    },
+    {
+      "name": "CCV_TIER1_WARPS",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Tier-1 resident warps, SMT-4 equivalent. Four slots covering a DRAM latency near 1000 cycles requires that demotion happen only on TRUE misses -- demoting on short stalls would need roughly 84 warps to keep 4 slots busy."
+    },
+    {
+      "name": "CCV_PARKED_WARPS",
+      "value": 28,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Warps parked in PCA. 32 total contexts."
+    },
+    {
+      "name": "CCV_WARP_CONTEXTS",
+      "value": 32,
+      "status": "arch",
+      "source": "arch open A-23 (2026-09-27)",
+      "derive": "CCV_TIER1_WARPS + CCV_PARKED_WARPS",
+      "doc": "Warp contexts the core holds, resident and parked: the width of every per-warp mask (kill_warp_mask, ccv_rau_syu_alloc's warp_mask). One name, so a mask sized by it cannot miss a residency tier added later. Equal to CCV_W_LANE_MASK today by coincidence only (A-12)."
+    },
+    {
+      "name": "CCV_FETCH_PER_WARP",
+      "value": 2,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Instructions fetched per warp per cycle, all 4 tier-1 warps in parallel."
+    },
+    {
+      "name": "CCV_DECODE_WIDTH",
+      "value": 6,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep",
+      "doc": "Decode output per cycle. Sized for burst absorption ahead of OOE; expected to move once the timing model produces event traces."
+    },
+    {
+      "name": "CCV_ISSUE_WIDTH",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23; reread by Daniel's response OI-28 (2026-10-08)",
+      "doc": "Rename and retire width, four uops a cycle. It never meant four ALU ops: 32 lanes x 32 bits is the 1024-bit datapath, so a full-width lane op takes the whole lane array for a cycle (OI-28). Issue is per resource, CCV_ISSUE_RESOURCES slots on ccv_ooe_rcu_issue."
+    },
+    {
+      "name": "CCV_SECTIONS",
+      "value": 4,
+      "status": "arch",
+      "source": "Daniel's response OI-28 (2026-10-08); change doc 'Interface spec changes -- sectioned lanes'",
+      "doc": "8-bit sections per lane, with joinable boundaries: a full-width op gangs all four, and narrow ops co-issue only in disjoint sections (one at 32 bits, two at 16, four at 8). The PRF is CCV_SECTIONS banks, each 256 bits a row, and a register name is a row plus a position."
+    },
+    {
+      "name": "CCV_MIU_PIPES",
+      "value": 4,
+      "status": "arch",
+      "source": "AR's response OI-33 (2026-10-08)",
+      "doc": "MIU's AGU pipes, P0-P3: a memop's footprint is four pipes at 32 bits, two at 16 and one at 8, so the port sustains one full-width memop or four 8-bit ones. Matching CCV_SECTIONS is what keeps the memop operand-read budget the same at every width (CCV_PRF_MEMOP_READ_BITS)."
+    },
+    {
+      "name": "CCV_ISSUE_RESOURCES",
+      "value": 9,
+      "status": "arch",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); OI-31, OI-33",
+      "derive": "CCV_SECTIONS + CCV_MIU_PIPES + 1",
+      "doc": "Slots on ccv_ooe_rcu_issue, one per select resource, in this order: the lane sections S0-S3, the MIU pipes P0-P3, and the RCU unit R. An op takes its lowest resource's slot and marks the rest of its footprint continuation."
+    },
+    {
+      "name": "CCV_ISSUE_SLOT_R",
+      "value": 8,
+      "status": "arch",
+      "source": "RA-31 (OA's rev 307, AR's rev 267)",
+      "derive": "CCV_SECTIONS + CCV_MIU_PIPES",
+      "doc": "The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. The guard lead (lead_guard_used, lead_guard_pred) is defined only on it."
+    },
+    {
+      "name": "CCV_W_PHYS_POS",
+      "value": 2,
+      "status": "arch",
+      "source": "Daniel's response OI-29 (2026-10-08)",
+      "derive": "clog2(CCV_SECTIONS)",
+      "doc": "A register's position in its row, the section its lowest byte sits in: a 32-bit register at 0, a 16-bit one at 0 or 2, an 8-bit one anywhere. A register name is a row (CCV_P_W_PHYS_REG) plus this; the zero register is valid at any position."
+    },
+    {
+      "name": "CCV_PRF_MEMOP_READ_BITS",
+      "value": 3072,
+      "status": "arch",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); AR-12",
+      "derive": "3 * CCV_WARP_LANES * CCV_W_LANE_DATA",
+      "require": "CCV_MIU_PIPES * 3 * (CCV_WARP_LANES * CCV_W_LANE_DATA // CCV_SECTIONS) == CCV_PRF_MEMOP_READ_BITS",
+      "doc": "PRF read bandwidth for memop operands, a budget line kept as a check: base, index and store data, three full rows for one 32-bit memop or three slices each for four 8-bit ones, the same at every width. The requirement fails if the pipes and sections stop matching. Memop reads never use a lane port, or memory serialises with ALU work."
+    },
+    {
+      "name": "CCV_ROB_INSTANCES",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "One ROB per tier-1 warp."
+    },
+    {
+      "name": "CCV_RETIRE_PER_ROB",
+      "value": 2,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Retire per ROB per cycle. 8 peak against 4-wide issue."
+    },
+    {
+      "name": "CCV_AGU_PIPES",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Address generation pipes in MIU, sized for 8-bit coalescing."
+    },
+    {
+      "name": "CCV_TLB_XLAT_PER_CYCLE",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "TLB translations per cycle on the hit path, no page split."
+    },
+    {
+      "name": "CCV_DCACHE_LOOKUPS",
+      "value": 4,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep",
+      "doc": "D-cache lookups per cycle."
+    },
+    {
+      "name": "CCV_SPM_BYTES",
+      "value": 131072,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Scratchpad capacity, 128 KB."
+    },
+    {
+      "name": "CCV_SPM_BANKS",
+      "value": 32,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Scratchpad banks, 32 x 32 bits. Bank conflicts are a first-order GEMM effect, which is why the scratchpad is a design block rather than testbench."
+    },
+    {
+      "name": "CCV_BARRIER_ENTRIES",
+      "value": 64,
+      "status": "isa",
+      "source": "ISA v1.6 §3, Format E -- 6-bit barrier ID",
+      "doc": "Barrier table entries, 4 x 16, epoch-tagged. A §7 formal target.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "64 warps × 64 entries is 512 bytes per SM", "value": "q[1]"}
+    },
+    {
+      "name": "CCV_CORE_ID_BITS",
+      "value": 2,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Up to 4 cores per MLC. Present from day one rather than added when a second core appears, because adding a struct field later regenerates every typedef, header, harness and checker at that boundary."
+    },
+    {
+      "name": "CCV_DEMOTION_THRESHOLD",
+      "value": 50,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep",
+      "doc": "Cycles before the CSR-programmable demotion fallback fires. MLC miss is the primary trigger; this is the backstop."
+    },
+    {
+      "name": "CCV_DEMOTION_THRESHOLD_MLC",
+      "value": 50,
+      "status": "tunable",
+      "require": "CCV_DEMOTION_THRESHOLD_MLC > CCV_LAT_MLC_HIT_MAX",
+      "decided_at": "RAU per-block session (register OA-8)",
+      "source": "AR's response TI-21 (rev 123), from OI's corrected evict sweep (rev 158); first build OI-6",
+      "doc": "Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). 50 (AR's rev 123, which voids rev 118's 100): OI's corrected 48-seed sweep under evict with the replay drain gives 0.588 of swap-off at 50 against 0.603 at 100. Formal sets all three small. Replaces the OOE model's demote_mlc_miss knob."
+    },
+    {
+      "name": "CCV_LAT_MLC_PIPE",
+      "value": 12,
+      "status": "provisional",
+      "source": "AR's response TI-24 (5), OA's rev 151 (2026-10-21)",
+      "doc": "MLC's tag and data pipeline for a hit, from a request accepted at its port to the response leaving it. A placeholder until MLC's session; it bounds CCV_LAT_MLC_HIT_MAX, so a deeper MLC breaks the demotion threshold's require rather than the trigger.",
+      "decided_at": "MLC per-block session"
+    },
+    {
+      "name": "CCV_LAT_MLC_HIT_MAX",
+      "value": 39,
+      "status": "provisional",
+      "derive": "2 * CCV_LAT_HOP + CCV_LAT_MLC_PIPE + (2 ** CCV_P_W_REQ_DCU_MLC - 1) + CCV_LAT_FILL_NOTICE + CCV_LAT_MIU_FILL + CCV_LAT_HOP",
+      "source": "AR's response TI-24 (5) (2026-10-21)",
+      "doc": "MLC's worst hit, counted from the L1 miss to OOE holding the completion: DCU to MLC and back, MLC's pipe, the queue at MLC's rate-1 request port behind every other miss DCU can have in flight, the refill's notice and MIU's pass-through, and the completion's hop. A load that missed L1 and still blocks its warp's ROB head past CCV_DEMOTION_THRESHOLD_MLC, which must exceed this, has missed MLC or is queued as long; either is worth a swap, and nothing shorter is demoted by that trigger (CCV_TIER1_WARPS: true misses only).",
+      "decided_at": "with CCV_LAT_MLC_PIPE"
+    },
+    {
+      "name": "CCV_W_PCA_PLACE",
+      "value": 5,
+      "status": "arch",
+      "derive": "clog2(CCV_PARKED_WARPS)",
+      "source": "AR's response TI-24 (1) (2026-10-21)",
+      "doc": "A place in PCA's parked array: RAU allocates one from a free list of CCV_PARKED_WARPS on a demotion and names it on ccv_rau_pca_mig both ways, so PCA stores by place, not by warp, and holds no table. It replaces CCV_L_W_PCA_BANK's bank_select, which reached only RCU and FET, neither of which stores anything."
+    },
+    {
+      "name": "CCV_W_PC_WINDOW",
+      "value": 32,
+      "status": "arch",
+      "source": "ISA v1.8 section 3 (Format E, F-FETCH); DA's response IS-17 (2026-10-21)",
+      "doc": "Every PC of a warp lies in one aligned window of 2^CCV_W_PC_WINDOW bytes, so a warp's lanes share the PC's bits above it and FET holds only the bits below per lane (IS-17's per-lane PCs)."
+    },
+    {
+      "name": "CCV_W_LANE_PC",
+      "value": 31,
+      "status": "arch",
+      "derive": "CCV_W_PC_WINDOW - 1",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "One lane's PC in FET's divergence state: its bits within the warp's window, less bit 0, which is always 0 (instructions are 16-bit aligned). FET holds one per lane, so a divergent branch never waits for a free group, and groups are the lanes with equal PCs. Replaces CCV_L_PC_GROUPS."
+    },
+    {
+      "name": "CCV_W_PC_UPPER",
+      "value": 16,
+      "status": "arch",
+      "derive": "CCV_ADDR_BITS - CCV_W_PC_WINDOW",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "The PC bits above the warp's window, shared by all its lanes."
+    },
+    {
+      "name": "CCV_FAIR_N",
+      "value": 48,
+      "status": "provisional",
+      "source": "AR's response IS-17 (rev 121), from CP's ccv-sim measurement (CP's revs 64-65); FET spec rev 15",
+      "doc": "FET's fairness rule, refined (AR's rev 121): the warp's picks are min-PC, except that the group holding lane r, the rotating pointer, issues once N picks have gone by without a pick including lane r. The counter restarts whenever a pick includes lane r, by either path, and r then advances to the next live lane not waiting. Every eligible lane's group issues within CCV_WARP_LANES x N of the warp's picks, the forward-progress guarantee (IS-17, O-60). 48 is the smallest N whose cost on every kernel of CP's corpus is within 1% of the rule off (rope +0.46%), with the spin-wait handing over in 314 issue groups; TI's timed sweep at 32, 48 and 64 confirms it. ccv-sim's -fairness takes it (tools/gen-oracle.sh).",
+      "decided_at": "AR's rev 121; TI's timed sweep (IS-17)"
+    },
+    {
+      "name": "CCV_W_FAIR_CNT",
+      "value": 6,
+      "status": "provisional",
+      "derive": "clog2(CCV_FAIR_N)",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "FET's pick counter for the fairness rule, which migrates with the warp's PCs so a swap does not reset it.",
+      "decided_at": "with CCV_FAIR_N"
+    },
+    {
+      "name": "CCV_W_FAIR_PTR",
+      "value": 5,
+      "status": "arch",
+      "derive": "clog2(CCV_WARP_LANES)",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "FET's rotating lane pointer for the fairness rule, which migrates with the warp's PCs."
+    },
+    {
+      "name": "CCV_W_LANE_IDX",
+      "value": 5,
+      "status": "arch",
+      "derive": "clog2(CCV_WARP_LANES)",
+      "source": "TI-40 (AR's rev 161)",
+      "doc": "A lane index, or a lane count less one: ccv_rau_syu_alloc's last_lanes."
+    },
+    {
+      "name": "CCV_DEMOTION_THRESHOLD_BARRIER",
+      "value": 50,
+      "status": "tunable",
+      "decided_at": "RAU per-block session (register OA-8)",
+      "source": "OOE model session, register OI-6 (2026-10-07)",
+      "doc": "Threshold of the barrier-wait demotion trigger: how long a barrier wait may hold the ROB head before the warp demotes. A CSR (Q18). Starts at the fallback's value. Replaces the OOE model's demote_barrier knob."
+    },
+    {
+      "name": "CCV_MIGRATION_CYCLES",
+      "value": 17,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Migration transfer, each way, one 1024-bit row per cycle: the 16 GPR rows plus ceil(CCV_W_PRED_STATE / CCV_W_DATA) rows of predicate state, one. Derived, not chosen (arch open A-22): if the predicate state ever grows past a row this follows, refused by tools/gen-params.py until it does. It was 16, counting GPRs only, while the channel carried the predicate state beside every row (A-1). At one swap per ~125 cycles this uses the single migration path at about 27 percent.",
+      "derive": "CCV_GPRS + cdiv(CCV_W_PRED_STATE, CCV_W_DATA)"
+    },
+    {
+      "name": "CCV_W_MIG_ROW",
+      "value": 5,
+      "status": "arch",
+      "source": "arch opens A-1, A-22 (2026-09-27)",
+      "derive": "clog2(CCV_MIGRATION_CYCLES)",
+      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, row 16 the predicate state alone (CCV_W_PRED_STATE, 128 bits; PCA spec rev 17, AR-25): divergence state migrates through FET. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
+    },
+    {
+      "name": "CCV_W_PRED_STATE",
+      "value": 128,
+      "status": "arch",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; arch open A-50",
+      "derive": "CCV_PREDS * CCV_W_LANE_MASK",
+      "doc": "A warp's migrated predicate state: its 4 architectural predicates of one bit per lane. It was CCV_L_W_PRED_STATE = 1024, preliminary, sized for a reconvergence stack as well; FET now owns divergence (checkpoints and min-PC reconvergence, no stack) and the PC groups migrate through FET, so RCU migrates only the predicates (A-50). One migration row."
+    },
+    {
+      "name": "CCV_NGD_BUDGET",
+      "value": 25,
+      "status": "target",
+      "source": "§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
+      "doc": "Normalized gate delays of combinational logic between two flops in one cycle: NAND equivalents, measured by logical effort. The flop's own clock-to-Q and setup are outside it (Daniel, 2026-10-17): every depth here is measured with the flops cut out, so the whole 25 is logic. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). A path that crosses a module boundary is budgeted per port (CCV_NGD_PORT) and timed whole on the assembled block (tools/check-ngd.py)."
+    },
+    {
+      "name": "CCV_NGD_PORT",
+      "value": 12,
+      "status": "target",
+      "source": "Daniel, 2026-10-17 (module port budgets; floor of half the stage, and nothing straight through a module, 2026-10-18)",
+      "derive": "CCV_NGD_BUDGET // 2",
+      "doc": "Default logic budget on each side of a module port, floor(CCV_NGD_BUDGET / 2), so a path between two modules' flops fits CCV_NGD_BUDGET without anyone having planned it: an output is reached within CCV_NGD_PORT of its module's flops, and an input, arriving at CCV_NGD_BUDGET - CCV_NGD_PORT, reaches its module's flops within the rest. The halves hold because no module has logic on a path from an input to an output, nor a parent between its children (NGD-5): every path between two modules' flops crosses one port, in two segments. A port over this one needs explicit budgets; those come from the architect, in the module's <module>.ngd.json beside its RTL, and must converge, each driver's required time no later than its receiver's arrival, which the assembled block checks from those files. tools/check-ngd.py measures every module at its units' parameters."
+    },
+    {
+      "name": "CCV_NGD_INNER",
+      "value": 16,
+      "status": "target",
+      "source": "Daniel, 2026-10-19 (an inner helper no module instantiates yet: floor(2 * 25 / 3), not the full stage)",
+      "derive": "2 * CCV_NGD_BUDGET // 3",
+      "doc": "Logic depth an inner helper (a combinational module declared inner in its <module>.ngd.json, timed as its parent's logic) is held to, input to output, while no module instantiates it: floor(2 * CCV_NGD_BUDGET / 3). Inside a parent its logic is the parent's and the stage applies; alone, the whole stage would be optimistic, since the parent's own logic will share it. tools/check-ngd.py, NGD-6."
+    },
+    {
+      "name": "CCV_NGD_CG_EN",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_NGD_CG_EN < CCV_NGD_BUDGET",
+      "doc": "Logic depth allowed into a local clock gate's enable, in NGD from the flops and inputs that feed it. An ICG's enable sets up to the rising edge at the root of its clock branch, earlier than the flops behind it, so it gets a fraction of the cycle. tools/check-cg.py measures every enable group Yosys infers (CG-2, docs/rtl-coding-style.md)."
+    },
+    {
+      "name": "CCV_DCGE_MIN_PCT",
+      "value": 75,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_DCGE_MIN_PCT <= 100",
+      "doc": "Minimum dynamic clock-gating efficiency of every enable group, in percent: of the cycles its clock is enabled, the share in which its value changes. Held in each of the idle, medium and high activity scenarios; a scenario with no enabled cycle passes. tools/check-cg.py measures it (CG-3, docs/rtl-coding-style.md)."
+    },
+    {
+      "name": "CCV_CG_MIN_FLOPS",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_CG_MIN_FLOPS >= 1",
+      "doc": "Fewest flops behind one logically distinct enable for it to be a clock gate. A smaller group gets no ICG, which would cost about the clock load it saves: its flops are clocked every cycle and count as ungated (CG-4, docs/rtl-coding-style.md)."
+    },
+    {
+      "name": "CCV_CG_BUDGET_PCT",
+      "value": 2,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_CG_BUDGET_PCT < 100",
+      "doc": "Share of flops that may sit outside the clock-gating rules without a waiver: an automatic waiver for small cases that would otherwise need unnatural RTL. Applied to each module, at each unit's parameters, smallest findings first and before any explicit waiver; what the modules take then counts against the same share of each block's flops, per instance over its whole hierarchy. tools/check-cg.py."
+    },
+    {
+      "name": "CCV_CG_MODULE_FLOPS",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-10-17 (local clock gating)",
+      "require": "CCV_CG_MODULE_FLOPS >= 1",
+      "doc": "A module may leave fewer than this many flops outside the clock-gating rules without a waiver, whatever its size: the floor under CCV_CG_BUDGET_PCT, which gives a small module less than a flop. They still count against the block's CCV_CG_BUDGET_PCT. tools/check-cg.py."
+    },
+    {
+      "name": "CCV_W_WARP_ID",
+      "value": 5,
+      "status": "arch",
+      "doc": "Warp id. 32 total warp contexts.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_TIER1_ID",
+      "value": 2,
+      "status": "arch",
+      "doc": "Tier-1 slot, which also selects the ROB instance.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_ARCH_REG",
+      "value": 4,
+      "status": "isa",
+      "doc": "Architectural GPR index. 16 GPRs (ISA v1.6 §1).",
+      "source": "ports spec 2026-09-23",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Logical GPRs | 16 (`R0`–`R15`), 4-bit field |", "value": "q[3]"}
+    },
+    {
+      "name": "CCV_W_ARCH_PRED",
+      "value": 2,
+      "status": "isa",
+      "doc": "Architectural predicate index. 4 predicates (ISA v1.6 §1). A separate namespace from the GPRs, with its own RAT and count, even while the width happens to be smaller.",
+      "source": "Payload spec response (2026-09-25)",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Predicate destination field | 2 bits (no negate — write side) |", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_W_DISP",
+      "value": 29,
+      "status": "isa",
+      "source": "Skeleton review response (2026-09-25); IS-11 (2026-10-19)",
+      "doc": "Memory displacement, sign-extended at the AGU. The widest memory-format offset is the 48-bit Format D's: a 48-bit instruction is its 32-bit sibling plus [47:32] (ISA v1.7 §3), so D's simm13 becomes 29 bits and D-prime's simm10 26. The 32-bit forms all fit: cas's 16-bit signed field, D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8. Was 16, cas's field, until IS-11 found the 48-bit siblings truncated. (The compiler had declared cas's offset uimm16, which would have needed 17: compiler F-155, fixed.)",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| D (base+offset) | 13 | **29** | `[31:19]` | `[47:32]` |", "value": "q[1]"}
+    },
+    {
+      "name": "CCV_W_CTAID",
+      "value": 32,
+      "status": "isa",
+      "source": "srd response (2026-09-25), Q-38",
+      "doc": "srd #1's %ctaid, the flat CTA index within the grid (ISA v1.6 §5.3). Dispatch state, held by RAU and shadowed in OOE, which substitutes it into srd's immediate at issue. It exactly fills CCV_P_W_IMM, so it sets that parameter's floor.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "At `chwidth`=32 that is 32×32 = 1024 bits", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_W_WARP_IN_CTA",
+      "value": 5,
+      "status": "isa",
+      "source": "srd response (2026-09-25), Q-38",
+      "doc": "A warp's index within its CTA. %ctatid is 10 bits (ISA v1.6 §5.3) and a warp is 32 lanes, so 5. srd #0's warp_base = warp_in_cta << 5 has its low five bits zero, so the lane ORs its hardwired index in without an adder.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| `0` | `%ctatid` — flat thread index within CTA, 10 bits |", "value": "q[1] - clog2(32)"}
+    },
+    {
+      "name": "CCV_W_LANE_MASK",
+      "value": 32,
+      "status": "isa",
+      "doc": "One bit per lane.",
+      "source": "ports spec 2026-09-23",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Warp width | 32 lanes | settled |", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_W_DATA",
+      "value": 1024,
+      "status": "isa",
+      "doc": "Full datapath, 32 lanes x 32 bits.",
+      "source": "ports spec 2026-09-23",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "At `chwidth`=32 that is 32×32 = 1024 bits", "value": "q[3]"}
+    },
+    {
+      "name": "CCV_W_LANE_DATA",
+      "value": 32,
+      "status": "isa",
+      "doc": "Lane datapath.",
+      "source": "ports spec 2026-09-23",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "At `chwidth`=32 that is 32×32 = 1024 bits", "value": "q[0]"}
+    },
+    {
+      "name": "CCV_W_CHWIDTH",
+      "value": 2,
+      "status": "isa",
+      "doc": "Element width code: 32, 16, 8, 4.",
+      "source": "ports spec 2026-09-23",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Width codes | `00`=32b, `01`=16b, `10`=8b, `11`=4b | settled |", "value": "clog2(len(q) // 2)"}
+    },
+    {
+      "name": "CCV_W_CORE_ID",
+      "value": 2,
+      "status": "arch",
+      "doc": "Up to 4 cores per MLC.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_INSTR",
+      "value": 48,
+      "status": "isa",
+      "doc": "Longest instruction form (ISA v1.6: 16/32/48).",
+      "source": "ports spec 2026-09-23",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Instruction length | 16 / 32 / 48 bits, 16-bit granular | settled |", "value": "max(q[0], q[1], q[2])"}
+    },
+    {
+      "name": "CCV_W_ILEN",
+      "value": 2,
+      "status": "isa",
+      "doc": "Instruction length code: three lengths.",
+      "source": "ports spec 2026-09-23",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| Instruction length | 16 / 32 / 48 bits, 16-bit granular | settled |", "value": "clog2(3)"}
+    },
+    {
+      "name": "CCV_W_VA",
+      "value": 64,
+      "status": "arch",
+      "doc": "Address generation is 64-bit, though the ISA's architectural address is 48.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_SPM_ADDR",
+      "value": 17,
+      "status": "arch",
+      "doc": "128 KB scratchpad.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_SPM_BANK",
+      "value": 5,
+      "status": "arch",
+      "doc": "32 banks.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_SPM_WORD",
+      "value": 10,
+      "status": "arch",
+      "doc": "4 KB per bank, 32-bit words.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_BAR_ENTRY",
+      "value": 6,
+      "status": "arch",
+      "doc": "64 barrier entries.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_BAR_ID",
+      "value": 4,
+      "status": "arch",
+      "doc": "16 barriers per CTA.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_FAULT_CAUSE",
+      "value": 4,
+      "status": "arch",
+      "doc": "Fault cause, the ISA's set (v1.9 §12) in its table's order: 0 none, 1 F-FETCH, 2 F-ILLEGAL, 3 F-WIDTH, 4 F-FORMAT, 5 F-ALIGN, 6 F-ADDR, 7 F-SHARED, 8 F-RO, 9 F-BARRIER (O-59); 10-15 spare. The ISA names the causes and their priority; the codes are the schema owner's. Where each is known, by v1.9 §12's stages (OI's question on IS-16): A fetch fault rides DEC's uop to the ROB (ccv_fet_dec_instr), so ccv_dec_ooe_uop carries cause: 1 F-FETCH when FET flagged the instruction, else 2 F-ILLEGAL from DEC's check (AR's response IS-16: a field, not flags). F-WIDTH, F-FORMAT and F-BARRIER (3, 4, 9) are dispatch causes that need chwidth state or the barrier count, which only OOE holds, so OOE detects them itself. The execute causes are all memory causes, F-ALIGN, F-ADDR, F-SHARED and F-RO (5 to 8), and MIU's completion carries them: cause the highest-priority cause among its faulting lanes (§12.5), address the lowest faulting lane's effective address (§12.6). No v1.9 cause originates in RCU or a lane, so neither ccv_rcu_ooe_done nor ccv_lane_rcu_res carries a fault.",
+      "source": "ports spec 2026-09-23; ISA v1.9 §12 and IS-16 (2026-10-20)"
+    },
+    {
+      "name": "CCV_RT_ABUT",
+      "value": 2,
+      "status": "arch",
+      "doc": "Flop-to-flop round trip, abutting. TWO EVERYWHERE BY CONSTRUCTION -- flops on both sides with no exceptions, plus abutment, gives exactly this. It is not a per-interface choice, and the three values below are not independent numbers but the same number under different names. Only a non-abutting interface would differ, and none is known to be until floorplan.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_CREDIT_TURNAROUND",
+      "value": 2,
+      "status": "arch",
+      "doc": "What the endpoints add to the round trip before a credit can be spent again: the payload lands one cycle after its valid, the receiver returns the credit the cycle after that, and a credit that arrives is usable the cycle after (channel.h, credit_smoke.sv). So the credit loop is CCV_RT_ABUT + 2 = 4, not the round trip. Rescue depth and drain wait count only in-flight VALIDS and stay equal to the round trip.",
+      "source": "Q-43, 2026-09-26"
+    },
+    {
+      "name": "CCV_CREDIT_DEPTH",
+      "value": 4,
+      "status": "arch",
+      "doc": "Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2N longer, and its depth with it. Proved in tools/check-formal.sh: full rate at this depth, and not at one less.",
+      "source": "Q-43, 2026-09-26"
+    },
+    {
+      "name": "CCV_RESCUE_DEPTH",
+      "value": 2,
+      "status": "arch",
+      "doc": "Storage a stalling receiver reserves to catch everything already in flight. Equals the round trip: no unwinding, no negative acknowledgement.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_DRAIN_WAIT",
+      "value": 2,
+      "status": "arch",
+      "doc": "Cycles to wait after asserting stall before nothing is in flight. Equals the round trip, which is what lets sleep entry, chwidth change and demotion share one mechanism and one proof.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_WAKE_LAT",
+      "value": 4,
+      "status": "arch",
+      "doc": "Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_common_chk_wake). The receiver's side is ccv_common_clk: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_CG_HYST_W",
+      "value": 6,
+      "status": "tunable",
+      "decided_at": "the CSR map (Q-47)",
+      "doc": "Width of the block clock gate's hysteresis thresholds, which are CSR fields (Q-47): up to 63 cycles. The thresholds are ccv_common_clk inputs; CCV_CG_HYST_QUIESCE and CCV_CG_HYST_STALL are their reset values."
+    },
+    {
+      "name": "CCV_CG_HYST_QUIESCE",
+      "value": 8,
+      "status": "tunable",
+      "decided_at": "power analysis, with the first real block",
+      "doc": "Block clock gate (ccv_common_clk): consecutive quiesced cycles before the gate closes -- the reset value of the block's hysteresis CSR (Q-47). Placeholder. Too short and a block thrashes between sleep and wake on bursty traffic, paying the wake hold each time; too long and it burns clock power idling. A block programs its own through the CSR."
+    },
+    {
+      "name": "CCV_CG_HYST_STALL",
+      "value": 16,
+      "status": "tunable",
+      "decided_at": "power analysis, with the first real block",
+      "doc": "Block clock gate: consecutive stalled cycles before the gate closes. Longer than the quiesce hysteresis by default, because a stall usually ends on its own within a few cycles and a stalled block holds work that sleeping only delays. Placeholder, as CCV_CG_HYST_QUIESCE."
+    },
+    {
+      "name": "CCV_P_ROB_DEPTH",
+      "value": 32,
+      "status": "provisional",
+      "doc": "ROB entries per tier-1 warp. 32, confirmed for the first build by the OOE session.",
+      "decided_at": "OOE per-block session"
+    },
+    {
+      "name": "CCV_P_W_ROB_TAG",
+      "value": 7,
+      "status": "provisional",
+      "doc": "rob_tag: the tier-1 slot's ROB (2 bits) and the entry index in it (CCV_P_W_ROB_IDX). Carries no age, since the ROB is circular (A-41).",
+      "decided_at": "OOE per-block session",
+      "derive": "clog2(CCV_ROB_INSTANCES) + clog2(CCV_P_ROB_DEPTH)"
+    },
+    {
+      "name": "CCV_P_W_ROB_IDX",
+      "value": 5,
+      "status": "provisional",
+      "decided_at": "OOE per-block session, with CCV_P_ROB_DEPTH",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-41",
+      "derive": "clog2(CCV_P_ROB_DEPTH)",
+      "doc": "ROB entry index within one tier-1 warp's ROB: the low part of rob_tag, and the width of a bulk discard's discard_tail (an overlay on displacement[4:0], A-41)."
+    },
+    {
+      "name": "CCV_P_W_RS_IDX",
+      "value": 6,
+      "status": "provisional",
+      "derive": "clog2(CCV_P_RS_RCU + CCV_P_RS_MIU)",
+      "source": "OA's response OA-23 (2026-10-21)",
+      "doc": "An RS entry's index, as ccv_ooe_miu_memop carries it and MIU echoes it on ccv_miu_ooe_cmpl, so a completion names the entry it wakes with no lookup on its path (OA-23). Both RS classes' entries in one index space, the wakeup matrix's.",
+      "decided_at": "OOE per-block session, with CCV_P_RS_RCU and CCV_P_RS_MIU"
+    },
+    {
+      "name": "CCV_P_BR_CKPTS",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "FET per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Branch checkpoints per warp, held in FET: PC-group state saved at each unresolved branch, restored from checkpoint_id plus taken_mask on a mispredict. Fetch stalls a warp when all are in use."
+    },
+    {
+      "name": "CCV_P_W_CKPT_ID",
+      "value": 2,
+      "status": "provisional",
+      "decided_at": "FET per-block session, with CCV_P_BR_CKPTS",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "derive": "clog2(CCV_P_BR_CKPTS)",
+      "doc": "checkpoint_id, on ccv_fet_dec_instr, ccv_dec_ooe_uop and ccv_ooe_fet_redirect. Provisional rather than settled because it follows CCV_P_BR_CKPTS, and a derived width is never more settled than its inputs (tools/gen-params.py refuses it)."
+    },
+    {
+      "name": "CCV_P_RS_RCU",
+      "value": 30,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Reservation-station entries for RCU-class ops (lanes and RCU-executed)."
+    },
+    {
+      "name": "CCV_P_RS_MIU",
+      "value": 15,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Reservation-station entries for MIU-class ops. With CCV_P_RS_RCU it sizes the wakeup dependency matrix, 45 x 45; each entry tracks up to six producers (A-43)."
+    },
+    {
+      "name": "CCV_P_DECQ",
+      "value": 15,
+      "status": "provisional",
+      "decided_at": "DA-106 (2026-11-04)",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; DA's response OA-21",
+      "doc": "Decode queue depth ahead of rename. 15 with decq_free_lag 1, was 13 (DA-106, OA's rev 327): a freed entry's credit returns an edge late, and the two extra entries cover it; DEC's credit pool follows it. 13 was for rename's take popped an edge late (option (c), DA's response OA-21); 12 before that."
+    },
+    {
+      "name": "CCV_P_RS_WARP_CAP",
+      "value": 45,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep (register OA-7)",
+      "source": "OOE model session, register OI-6 (2026-10-07)",
+      "require": "CCV_P_RS_WARP_CAP <= CCV_P_RS_RCU + CCV_P_RS_MIU",
+      "doc": "Reservation-station entries one warp may hold at once, across both classes, so a stalled warp cannot fill the stations. The first-build value is both classes' total, which is no cap; the sweep sets it. Replaces the OOE model's rs_warp_cap knob."
+    },
+    {
+      "name": "CCV_P_DECQ_WARP_MAX",
+      "value": 7,
+      "status": "tunable",
+      "decided_at": "OA's rev 274 (TI-46), on its even-stall condition",
+      "source": "TI's rev 241 credit-sizing set and TI-21's even-stall sweep at each share; OA's revs 271 and 274; earlier OA's responses TI-21 (revs 160 and 166), OI's revs 155-159",
+      "require": "CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ",
+      "doc": "Decode-queue slots one warp may hold at once, now FET's per-warp credits (TI-46, (b), DA tab rev 96): FET picks a warp only while its credits cover the next instruction's slots, counted exactly by predecode, and OOE refuses no uop for a per-warp reason. An instruction needing more slots than this (chwidth.multi) borrows, only from full credits, into a signed counter (OA's rev 263). Measured with (b) built, at r = 2 and a 13-entry queue (TI's rev 241): shares 7, 8 and 10 pass check-ooo's floors and 6 does not; on S1, 7 is +0.04% and 10 +0.02% against the pre-(b) build, and mlp, the lone-warp floor kernel, +5.8% at 7 and +2.5% at 10. OA took 10 (rev 274) on the condition that TI-21's even-stall sweep, where a larger share lets a stalled warp hold more of the queue, not lose more than 0.5% against the best share; its cycles at 5, 6, 7, 8 and 10 are 854, 877, 901, 921 and 967, so 10 is 7.3% and 8 2.2% over 7, and the largest share within 0.5% of the best passing share is 7. The counters and the return field are the same width at 7, 8 and 10. With no limit (the queue's depth), a warp stalled behind a miss held all 13 entries for its whole stall (TI-21's stall_hole). test/ooe/cg-units.json's ooe_decq unit carries the same D, since its bench builds the RTL at this parameter."
+    },
+    {
+      "name": "CCV_P_HELD_AHEAD",
+      "value": 2,
+      "status": "provisional",
+      "decided_at": "DA tab rev 96 (TI-46)",
+      "source": "TI's revs 236-238 and 241 on CP-62's four barrier kernels; OA's revs 265-268, 271 and 274",
+      "require": "CCV_P_DECQ > (CCV_TIER1_WARPS - 1) * CCV_P_HELD_AHEAD",
+      "doc": "r, the held-ahead limit (TI-46, (b)): after FET fetches a converged wait it marks for OOE's hold, the warp fetches at most this many decode-queue slots past it, and never borrows, until the released bit on ccv_ooe_fet_decq_credit or a rewind beat clears it. While held, a warp's slots in the decode queue are only those past its wait, so the held warps hold at most (warps - 1) x r, and the require leaves the working warp at least one slot, which is liveness: unheld warps clear a full queue on their own renames (OA's rev 271; the share term it had was a performance term). At 4 tier-1 warps and 13 entries it allows r <= 4; 2 is set (OA's rev 274). Measured, model-only: against parking at the wait, credits alone (r = 0) are -8.4% on layernorm-128 and -4.8% on cta-reduce-128, and r = 2 adds up to 5% more on barrier-dense code."
+    },
+    {
+      "name": "CCV_W_DECQ_CREDIT",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "DA tab rev 96 (TI-46)",
+      "source": "TI",
+      "derive": "clog2(CCV_P_DECQ + 1)",
+      "doc": "credit_count on ccv_ooe_fet_decq_credit: the decode-queue slots of one warp returned in a cycle, at rename and on a squash, up to the whole queue."
+    },
+    {
+      "name": "CCV_P_REN_SLACK",
+      "value": 16,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-40",
+      "doc": "GPR rename registers deliberately left unreachable by any warp's ceiling, as margin."
+    },
+    {
+      "name": "CCV_P_REN_FLOOR",
+      "value": 16,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-34, A-40",
+      "derive": "(CCV_P_PHYS_REGS - CCV_TIER1_WARPS * CCV_GPRS) // (2 * CCV_TIER1_WARPS)",
+      "doc": "GPR rename registers guaranteed to each tier-1 slot above its 16 architectural ones, reserved whether the slot is occupied or not: half the fair share of the rename pool. The reservation is what lets restore admission never wait (A-49)."
+    },
+    {
+      "name": "CCV_P_REN_CEIL",
+      "value": 64,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-34, A-40",
+      "derive": "CCV_P_PHYS_REGS - CCV_TIER1_WARPS * CCV_GPRS - (CCV_TIER1_WARPS - 1) * CCV_P_REN_FLOOR - CCV_P_REN_SLACK",
+      "require": "CCV_P_REN_CEIL >= CCV_P_REN_FLOOR",
+      "doc": "Most GPR rename registers one warp may hold above its architectural ones. Derived so that one warp at its ceiling and the others at their floors fit the pool with CCV_P_REN_SLACK to spare: ceiling + (warps - 1) x floor <= pool - slack."
+    },
+    {
+      "name": "CCV_P_PRED_REN_SLACK",
+      "value": 0,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-40",
+      "doc": "Predicate rename registers left as margin: none. The exact fit is deliberate; the derivation is what absorbs the risk (A-40)."
+    },
+    {
+      "name": "CCV_P_PRED_REN_FLOOR",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-39, A-40",
+      "derive": "(CCV_P_PRED_REGS - CCV_TIER1_WARPS * CCV_PREDS) // (2 * CCV_TIER1_WARPS)",
+      "doc": "Predicate rename registers guaranteed to each tier-1 slot above its 4 architectural ones, on the same rule as the GPR floor (A-39)."
+    },
+    {
+      "name": "CCV_P_PRED_REN_CEIL",
+      "value": 20,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-39, A-40",
+      "derive": "CCV_P_PRED_REGS - CCV_TIER1_WARPS * CCV_PREDS - (CCV_TIER1_WARPS - 1) * CCV_P_PRED_REN_FLOOR - CCV_P_PRED_REN_SLACK",
+      "require": "CCV_P_PRED_REN_CEIL >= CCV_P_PRED_REN_FLOOR",
+      "doc": "Most predicate rename registers one warp may hold above its architectural ones; as CCV_P_REN_CEIL."
+    },
+    {
+      "name": "CCV_LAT_RCU_BASE",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "RCU per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Pipeline depth of an RCU-executed op, from RCU accepting the issue to the result in the PRF. An assumption until RCU's session confirms it."
+    },
+    {
+      "name": "CCV_LAT_LANE_BASE",
+      "value": 8,
+      "status": "tunable",
+      "decided_at": "LANE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Lane pipeline depth with abutted links, from RCU accepting the issue to the lane result in the PRF. An assumption until LANE's session confirms it as a contract."
+    },
+    {
+      "name": "CCV_LAT_L1_HIT_BASE",
+      "value": 7,
+      "status": "tunable",
+      "decided_at": "MIU per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. An assumption until MIU's session confirms it."
+    },
+    {
+      "name": "CCV_LAT_RCU",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "derive": "CCV_LAT_RCU_BASE",
+      "doc": "Contracted latency of an RCU-executed op. Crosses no link after acceptance: a dependant's issue crosses the same ccv_ooe_rcu_issue link, so that link cancels out of the schedule."
+    },
+    {
+      "name": "CCV_LAT_LANE",
+      "value": 8,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-48",
+      "derive": "CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + link_n('lane_rcu_res')",
+      "doc": "Contracted lane latency: base plus the repeater stages out and back, from params/links.json (A-48). The lane channels are lockstep, so every copy has the same stages."
+    },
+    {
+      "name": "CCV_LAT_LANE_BYP",
+      "value": 4,
+      "status": "tunable",
+      "decided_at": "LANE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and a consumer takes it only if every use it makes of the producer is a lane operand (A-62, Q-55). The lane forwards the value; RCU names it with operand_byp on ccv_rcu_lane_ops (TI-8).",
+      "require": "CCV_LAT_LANE_BYP < CCV_LAT_LANE"
+    },
+    {
+      "name": "CCV_P_W_LANE_BYP_AGE",
+      "value": 2,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
+      "derive": "max(1, clog2(CCV_LAT_LANE - CCV_LAT_LANE_BYP))",
+      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. Ages run from CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 1, after which RCU's register file holds the value. The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
+    },
+    {
+      "name": "CCV_P_W_LANE_BYP_SEL",
+      "value": 5,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
+      "derive": "1 + clog2(CCV_SECTIONS) + CCV_P_W_LANE_BYP_AGE",
+      "doc": "One bypass select on ccv_rcu_lane_ops, per operand port and per section, LSB first: [0] forward, [clog2(CCV_SECTIONS):1] the producer's lead section, then its age less CCV_LAT_LANE_BYP. With [0] clear the section's byte of that port is the value RCU read."
+    },
+    {
+      "name": "CCV_L_PRF_LANE_READ_BITS",
+      "value": 4096,
+      "status": "preliminary",
+      "churn": "high",
+      "decided_at": "RCU/LANE session, with CCV_L_OPERANDS_PER_LANE",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); AR's response OI-28",
+      "derive": "(CCV_L_OPERANDS_PER_LANE + 1) * CCV_WARP_LANES * CCV_W_LANE_DATA",
+      "doc": "PRF read bandwidth into the lanes, a budget line: four operand ports (three sources and the merge source) of 1,024 bits, one byte a section per lane, each byte from its own section bank. Sixteen survives only as a count of slice reads."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_INT",
+      "value": 1,
+      "status": "provisional",
+      "decided_at": "LANE per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "require": "CCV_P_FOOT_MIN_INT <= CCV_SECTIONS",
+      "doc": "CCV_FOOT_MIN for bypass_group 0, integer: the fewest sections an integer op claims. Its footprint is the union of its operands' sections, widened to this."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_FP",
+      "value": 1,
+      "status": "provisional",
+      "decided_at": "Daniel, on IS-7",
+      "source": "AR-12, OA's response AR-12 (2026-10-08); DA's response IS-7 (2026-10-09)",
+      "require": "CCV_P_FOOT_MIN_FP <= CCV_SECTIONS",
+      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines the formats (section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1); the one-section minimum is Daniel's decision (DA's response IS-7), not the ISA's (IS-11). Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measures 1.93x over fp32 at 1 (639 cycles, four warps, at the defaults of 2026-10-19; OI's response IS-9). The run of 2026-10-09 gave 2.04x at 1 against 1.47x at 2. The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS)."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_ADDR",
+      "value": 1,
+      "status": "provisional",
+      "decided_at": "MIU per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "require": "CCV_P_FOOT_MIN_ADDR <= CCV_MIU_PIPES",
+      "doc": "CCV_FOOT_MIN for bypass_group 2, address calculation: counted in MIU pipes, not lane sections. A memop's footprint is the pipes at its data position, widened to this."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_SFU",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "LANE per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "require": "CCV_P_FOOT_MIN_SFU <= CCV_SECTIONS",
+      "doc": "CCV_FOOT_MIN for bypass_group 3, the SFU: every section, so a narrow SFU op runs full width and selects its narrow operand by position (OA-15)."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_COLLECTIVE",
+      "value": 0,
+      "status": "provisional",
+      "decided_at": "RCU per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "doc": "CCV_FOOT_MIN for bypass_group 4, warp-collective: 0, since these execute in RCU and take R only."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_PRED",
+      "value": 0,
+      "status": "provisional",
+      "decided_at": "RCU per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "doc": "CCV_FOOT_MIN for bypass_group 5, predicate: 0, since predicate logic executes in RCU and takes R only."
+    },
+    {
+      "name": "CCV_DONE_SLOTS",
+      "value": 7,
+      "status": "provisional",
+      "decided_at": "LANE per-block session",
+      "source": "OA's response TI-9 (2026-10-09); OA's response IS-7 (2026-10-09)",
+      "derive": "CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2",
+      "doc": "Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7)."
+    },
+    {
+      "name": "CCV_DONE_SLOT_RCU",
+      "value": 5,
+      "status": "provisional",
+      "decided_at": "OOE architect",
+      "source": "AR's RCU spec rev 14; OA's response OI-93 (OA's rev 287, 2026-10-31)",
+      "derive": "CCV_DONE_SLOTS - 2",
+      "doc": "The one slot of ccv_rcu_ooe_done that R's RCU-only latency class completes on (CCV_LAT_RCU: branch, ret, barrier arrive and wait, and the predicate logic, pmov and movi that RCU executes alone), and that no other class takes. R issues one op a cycle and the class has one fixed latency, so at most one such done lands a cycle: one slot, never contended, and one outcome register in OOE rather than one per slot. branch_taken, branch_mask and aux are defined only on it. The other classes take the lowest free of the rest, which CCV_DONE_SLOTS sizes for them: four lane, one SFU, one warp-collective. One name for OOE, the RCU stub and the checks, so none can disagree with a constant (OA's response OI-93)."
+    },
+    {
+      "name": "CCV_P_W_BYP_GROUP",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "med",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08)",
+      "derive": "clog2(CCV_P_BYP_GROUPS)",
+      "doc": "bypass_group's width, on sched_attr and on ccv_ooe_rcu_issue."
+    },
+    {
+      "name": "CCV_P_LAT_CLASSES",
+      "value": 8,
+      "status": "preliminary",
+      "churn": "med",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "OOE model session, register OI-16 (2026-10-07)",
+      "doc": "Latency classes the scheduler distinguishes: the codes of sched_attr's 3-bit lat_class (0 RCU, 1 lane, 2 L1 load, 3 on completion, 4 SFU, 5 warp-collective, 6-7 spare). A class sets a producer's full latency; which consumers it may wake early is its bypass_group's (OI-16, Daniel's responses OA-4)."
+    },
+    {
+      "name": "CCV_P_BYP_GROUPS",
+      "value": 8,
+      "status": "preliminary",
+      "churn": "med",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "OOE model session, register OI-16 (2026-10-07); Daniel's responses OI-16 and OA-4 (2026-10-08)",
+      "doc": "Bypass groups: the codes of sched_attr's 3-bit bypass_group (0 integer, 1 floating point, 2 address calculation, 3 SFU, 4 warp-collective, 5 predicate, 6-7 spare), which index the bypass table both ways, byp[producer group][consumer group] (OI-16). A memop consumes as address calculation. A cell is a penalty in cycles after the producer's fastest bypass point, capped at the PRF read: in-unit CCV_LAT_BYP_PEN_SAME, integer and FP to each other CCV_LAT_BYP_PEN_INT_FP, integer or FP and SFU to each other CCV_LAT_BYP_PEN_SFU. Address-calculation, warp-collective and predicate consumers never bypass, nor does a warp-collective or predicate producer (A-59, A-62, V-48)."
+    },
+    {
+      "name": "CCV_LAT_BYP_PEN_SAME",
+      "value": 0,
+      "status": "tunable",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "Daniel's responses OA-4 (2026-10-08)",
+      "doc": "Bypass penalty within one group (integer to integer, FP to FP, SFU to SFU): cycles after the producer's fastest bypass point, CCV_LAT_LANE_BYP for a lane producer."
+    },
+    {
+      "name": "CCV_LAT_BYP_PEN_INT_FP",
+      "value": 2,
+      "status": "tunable",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "Daniel's responses OA-4 (2026-10-08)",
+      "doc": "Bypass penalty from integer to FP and from FP to integer, in cycles after the producer's fastest bypass point, capped at the PRF read."
+    },
+    {
+      "name": "CCV_LAT_BYP_PEN_SFU",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "Daniel's responses OA-4 (2026-10-08)",
+      "doc": "Bypass penalty from integer or FP to SFU and from SFU to integer or FP, in cycles after the producer's fastest bypass point, capped at the PRF read. With today's values a lane producer's wake for an SFU consumer lands at CCV_LAT_LANE_BYP + 3 = CCV_LAT_LANE, the PRF read (OA's response OI-16). SFU's own fastest bypass point is not yet named (OA proposes CCV_LAT_SFU_BYP, for DA); until it is, an SFU producer wakes every consumer at CCV_LAT_SFU."
+    },
+    {
+      "name": "CCV_LAT_SFU",
+      "value": 13,
+      "status": "tunable",
+      "decided_at": "LANE per-block session",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
+      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. A placeholder until a LANE session confirms it."
+    },
+    {
+      "name": "CCV_LAT_COLLECTIVE",
+      "value": 5,
+      "status": "tunable",
+      "decided_at": "RCU per-block session",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
+      "doc": "Full latency of lat_class 5, the warp-collective ops RCU executes (shfl, vote, ballot, unballot): issue to the result readable in the PRF. Cross-lane, so nothing bypasses from them (A-59). A placeholder until an RCU session confirms it."
+    },
+    {
+      "name": "CCV_LAT_L1_HIT",
+      "value": 7,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48; A-61",
+      "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + link_n('dcu_miu_rsp')",
+      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
+    },
+    {
+      "name": "CCV_LAT_HOP",
+      "value": 2,
+      "status": "arch",
+      "source": "channel protocol (channel.h); made explicit for A-61",
+      "derive": "CCV_RT_ABUT // 2 + 1",
+      "doc": "One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named."
+    },
+    {
+      "name": "CCV_LAT_RCU_ADDR_BASE",
+      "value": 6,
+      "status": "tunable",
+      "decided_at": "RCU per-block session",
+      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08)",
+      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. Tunable: RCU's session confirms or moves it."
+    },
+    {
+      "name": "CCV_LAT_RCU_ADDR",
+      "value": 6,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE session follow-up (2026-10-02), A-61",
+      "derive": "CCV_LAT_RCU_ADDR_BASE",
+      "doc": "RCU's issue-to-address time (A-61). Inside RCU, so no link enters it; the crossings either side are counted where it is used."
+    },
+    {
+      "name": "CCV_LAT_L1_WAKE",
+      "value": 17,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE session follow-up (2026-10-02), A-61",
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue'))",
+      "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels."
+    },
+    {
+      "name": "CCV_LAT_L1_CMPL",
+      "value": 19,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE session follow-up (2026-10-02), A-61",
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl')",
+      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE."
+    },
+    {
+      "name": "CCV_LAT_L1_MISS_WAKE",
+      "value": 1,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE model session, register OI-13 (ratified by OA 2026-10-07); the +1, OA's response OI-26 (2026-10-08)",
+      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1) + 1",
+      "doc": "After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring."
+    },
+    {
+      "name": "CCV_LAT_CMPL_HINT",
+      "value": 2,
+      "status": "arch",
+      "source": "OA's response OA-23 (2026-10-21)",
+      "doc": "A completion hint's lead: its payload lands on ccv_miu_ooe_cmpl_hint exactly this many cycles before its completion's valid on the same slot of ccv_miu_ooe_cmpl. Two, the register stages between OOE's grant and select (the ready and grant registers), so a miss completion's wake rises as early as a timed wake does (OI-45)."
+    },
+    {
+      "name": "CCV_LAT_MIU_FILL",
+      "value": 2,
+      "status": "provisional",
+      "source": "AR's response TI-23 (2026-10-21)",
+      "doc": "MIU's pass-through for a refill: from the valid of the refill's last response on ccv_dcu_miu_rsp to its completion's valid on ccv_miu_ooe_cmpl (and its data's on ccv_miu_rcu_data). Two in the stub: the response's payload lands a cycle after its valid, and the completion launches on it. MIU's spec names it (Mechanisms).",
+      "decided_at": "MIU per-block session"
+    },
+    {
+      "name": "CCV_LAT_FILL_NOTICE",
+      "value": 4,
+      "status": "provisional",
+      "derive": "CCV_LAT_CMPL_HINT + CCV_LAT_MIU_FILL",
+      "source": "AR's responses OA-23 and TI-23 (2026-10-21)",
+      "doc": "A refill notice's lead: its payload lands on ccv_dcu_miu_fill_ntc exactly this many cycles before its refill's valid on the same slot of ccv_dcu_miu_rsp. MIU's pass-through plus the hint's lead, so MIU can hint the completion CCV_LAT_CMPL_HINT cycles ahead of it. DCU reserves the slot and its credit for that cycle (DCU spec, Internals).",
+      "decided_at": "with CCV_LAT_MIU_FILL"
+    },
+    {
+      "name": "CCV_LAT_SPM_BASE",
+      "value": 2,
+      "status": "provisional",
+      "source": "SPM spec rev 2 (AR's rev 227)",
+      "doc": "SPM's time for a memop's first pass: from the request's arrival at SPM to its response leaving, the resolver's bank select and then the array read into the output flop. A pass serves one word a bank; lanes naming one word share it (a broadcast on a read, merged bytes on a write), so only distinct words in a bank cost passes. The resolver issues one pass a cycle into the banks, so each further pass costs 1 more, pipelined behind the first, and conflict_serialization says how many cycles a pass waited for the resolver. The two crossings are counted outside SPM. A .shared load completes only when its data are back, and wakes nothing early (A-46). Provisional: the SPM session confirms.",
+      "decided_at": "SPM per-block session"
+    },
+    {
+      "name": "CCV_P_PHYS_REGS",
+      "value": 192,
+      "status": "provisional",
+      "doc": "Physical GPRs: one global pool, allocated by OOE's free lists (RAU allocates none; A-30). Each tier-1 slot, occupied or not, reserves its 16 architectural registers plus CCV_P_REN_FLOOR, so 64 of the 192 are architectural and 128 rename.",
+      "decided_at": "OOE and RCU per-block sessions",
+      "require": "CCV_P_PHYS_REGS > CCV_TIER1_WARPS * CCV_GPRS"
+    },
+    {
+      "name": "CCV_P_W_PHYS_REG",
+      "value": 8,
+      "status": "provisional",
+      "doc": "Follows CCV_P_PHYS_REGS. One index past the pool is reserved for the hardwired zero register (A-64, A-67), so the width covers CCV_P_PHYS_REGS + 1 entries.",
+      "decided_at": "OOE and RCU per-block sessions",
+      "derive": "clog2(CCV_P_PHYS_REGS + 1)"
+    },
+    {
+      "name": "CCV_P_PRED_REGS",
+      "value": 48,
+      "status": "provisional",
+      "doc": "Physical predicate file depth. The resident warps' architectural predicates alone fill CCV_TIER1_WARPS x 4 = 16 entries, so the file must be deeper or rename has no free register to allocate and the first predicate write never renames (arch open A-21; it was 16). 48 is the GPR file's ratio, 3x architectural (192 against 64), as a placeholder.",
+      "decided_at": "RCU per-block session",
+      "require": "CCV_P_PRED_REGS > CCV_TIER1_WARPS * CCV_PREDS"
+    },
+    {
+      "name": "CCV_P_MAX_CTA",
+      "value": 8,
+      "status": "provisional",
+      "doc": "Resident CTAs, bounded by scratchpad allocation.",
+      "decided_at": "RAU per-block session"
+    },
+    {
+      "name": "CCV_P_W_CTA_SLOT",
+      "value": 3,
+      "status": "provisional",
+      "doc": "Follows CCV_P_MAX_CTA.",
+      "decided_at": "RAU per-block session"
+    },
+    {
+      "name": "CCV_P_W_PA",
+      "value": 48,
+      "status": "provisional",
+      "doc": "Physical address width at the coherent boundary.",
+      "decided_at": "MLC and EXB per-block sessions"
+    },
+    {
+      "name": "CCV_P_LINE_BYTES",
+      "value": 128,
+      "status": "provisional",
+      "doc": "Cache line size.",
+      "decided_at": "DCU and MLC per-block sessions"
+    },
+    {
+      "name": "CCV_P_W_IMM",
+      "value": 32,
+      "status": "provisional",
+      "require": "CCV_P_W_IMM >= max(2 * (CCV_P_W_PHYS_PRED + 1), CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5)",
+      "doc": "Widest immediate after format decode. Floor 32, set by identity rather than inherited: OOE substitutes srd #1's %ctaid (CCV_W_CTAID, 32) into this field at issue (Q-38), so it cannot shrink below that. It must also hold srd #2's %lanectx above the lane, CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5 bits (O-64; OA's response TI-33).",
+      "decided_at": "DEC per-block session"
+    },
+    {
+      "name": "CCV_P_W_DEV_CORE",
+      "value": 2,
+      "status": "provisional",
+      "require": "CCV_P_W_DEV_CORE >= CCV_W_CORE_ID",
+      "doc": "Bits of the core's device-wide index in srd #2's %lanectx (ISA v1.9 O-64): ((core << CCV_W_WARP_ID) | hardware warp context) << 5 | lane, unique across the device, not only the core (IS's response TI-33). At least CCV_W_CORE_ID, one MLC's cores, which is the whole device today. OOE substitutes everything above the lane into the immediate, so the immediate must hold it (OA's response TI-33).",
+      "decided_at": "TI (OA's and IS's responses TI-33)"
+    },
+    {
+      "name": "CCV_P_CORE_ID",
+      "value": 0,
+      "status": "provisional",
+      "require": "CCV_P_CORE_ID < 2 ** CCV_P_W_DEV_CORE",
+      "doc": "This core's index on the device, a per-instance strap OOE composes into srd #2's %lanectx (O-64). The top ties it off; 0 on a one-core build.",
+      "decided_at": "TI (OA's response TI-33)"
+    },
+    {
+      "name": "CCV_LANE_CONTEXTS",
+      "value": 4096,
+      "status": "provisional",
+      "derive": "2 ** (CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5)",
+      "doc": "The device's lane contexts (ISA v1.9 O-64): every %lanectx is below it, so it is %lanectx's range, 2^(CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5). O-64's per-lane frame windows, local_base + %lanectx, are withdrawn by O-84 (IS-25, DA tab rev 97): a thread's O-30 frame now sits at the bottom of its O-83 region. O-69's interleaved spill space occupies windows local_base + CCV_LANE_CONTEXTS up to local_base + 3 * CCV_LANE_CONTEXTS, and O-83's run starts there, at local_base + srd #3 (%privoff = 3 * CCV_LANE_CONTEXTS). MIU forms a local-form address as ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128*(b/4) + 4l + b%4, with ctx = %lanectx >> 5 = (CCV_P_CORE_ID << CCV_W_WARP_ID) | the warp's hardware context. ccv-sim takes it as -lane-contexts (tools/gen-oracle.sh); its own default, 1024, is one core's.",
+      "decided_at": "TI (IS's IS-19, adopted by DA 2026-10-23; OA's response IS-19)"
+    },
+    {
+      "name": "CCV_PRIV_WINDOWS",
+      "value": 1,
+      "status": "provisional",
+      "decided_at": "IS's revs 164 and 170 (IS-24); DA tab rev 95 (option W)",
+      "source": "ISA v1.9 \u00a75.9 (O-83): 'CCV_PRIV_WINDOWS = 2^k, k >= 0, is a device constant'; the ISA states no value, so it is the device's; IS-24 proposed 1 to start, which ccv-sim's -priv-windows defaults to",
+      "require": "2 ** clog2(CCV_PRIV_WINDOWS) == CCV_PRIV_WINDOWS",
+      "doc": "The 64 KiB windows each thread's O-83 region spans: L = CCV_PRIV_WINDOWS * 64 KiB bytes. The run's base window is W = local_base + %privoff, aligned by the runtime to CCV_PRIV_WINDOWS. MIU interleaves a .global access when rbase(d) >> k == W >> k, d the lowest lane of the issue mask, forms each lane's b = ((rbase(l) - W) << 16) + (rindex(l) << scale) + disp, raises F-ADDR for b outside [0, L), and places lane l's byte at R(ctx) + 128 * (b / 4) + 4l + b % 4, R(ctx) = ((W + CCV_PRIV_WINDOWS) << 16) + ctx * 32 * L. The run's own windows [W, W + CCV_PRIV_WINDOWS) name logical offsets only, so an ordinary access there is F-ADDR. A thread's O-30 frame takes the region's bottom F bytes with R15 = W (O-84); F is the compiler's and the runtime's, never MIU's. ccv-sim takes it as -priv-windows (tools/gen-oracle.sh)."
+    },
+    {
+      "name": "CCV_P_TIMEOUT_N",
+      "value": 32,
+      "status": "provisional",
+      "doc": "Outstanding-request timeout for local interfaces. Provisional BY CONSTRUCTION: N cannot be justified before contention data exists, so revising it is an expected Stage 4b output rather than a spec change.",
+      "decided_at": "Stage 4b, from contention data"
+    },
+    {
+      "name": "CCV_P_TIMEOUT_MEM",
+      "value": 2048,
+      "status": "provisional",
+      "doc": "Outstanding-request timeout for the memory path. Must exceed worst-case DRAM latency.",
+      "decided_at": "MLC and EXB per-block sessions"
+    },
+    {
+      "name": "CCV_P_TIMEOUT_BP",
+      "value": 8192,
+      "status": "provisional",
+      "derive": "CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM",
+      "source": "AR's response TI-22 (2026-10-21)",
+      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
+      "decided_at": "with CCV_P_TIMEOUT_MEM"
+    },
+    {
+      "name": "CCV_W_ASID",
+      "value": 8,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Address-space id. 256 address spaces before a rollover forces a flush; with one resident context it exists to make switches cheap."
+    },
+    {
+      "name": "CCV_W_STATUS",
+      "value": 2,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Memory completion status: complete, replay, fault. `cause` carries the detail, so this stays at exactly the three outcomes."
+    },
+    {
+      "name": "CCV_W_ACCESS_SIZE",
+      "value": 3,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Cache access size as a CODE -- powers of two up to a line -- not a byte count. Distinct from CCV_W_CHWIDTH, which is the architectural element width one level up."
+    },
+    {
+      "name": "CCV_W_CONFLICT_SER",
+      "value": 6,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Extra cycles an SPM bank conflict cost, bounded by 32 banks with headroom. A per-lane conflict bitmap belongs in a debug trace, not the datapath."
+    },
+    {
+      "name": "CCV_W_RETIRED_CNT",
+      "value": 8,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Retire count since context restore, SATURATING. The progress guard stops caring well before 256, so this is a saturation choice rather than a true maximum."
+    },
+    {
+      "name": "CCV_W_CSR",
+      "value": 32,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "CSR-programmed policy value. Thresholds are tuning knobs, so they get the full CSR width rather than a tight fit."
+    },
+    {
+      "name": "CCV_P_W_PHYS_PRED",
+      "value": 6,
+      "status": "provisional",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Predicate physical register index, sized by CCV_P_PRED_REGS (it was 8, addressing 256 entries against a 16-deep file). The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split. One index past the pool is reserved for the hardwired zero predicate (A-64, A-67).",
+      "decided_at": "Stage 4a -- OOE rename session sizes the predicate RAT",
+      "derive": "clog2(CCV_P_PRED_REGS + 1)"
+    },
+    {
+      "name": "CCV_P_PHYS_ZERO",
+      "value": 255,
+      "status": "provisional",
+      "decided_at": "generated",
+      "source": "OOE session (2026-10-03), A-64; A-67",
+      "derive": "2 ** CCV_P_W_PHYS_REG - 1",
+      "require": "CCV_P_PHYS_ZERO >= CCV_P_PHYS_REGS",
+      "doc": "The hardwired zero GPR (A-64): the all-ones physical index, outside the pool. It reads zero in every lane and is never written, allocated or freed. At launch OOE maps all 16 architectural GPRs to it, so a launched warp needs no zeroing traffic; a demotion map may name it. Derived from the width, and required outside the pool, so a pool swept to a power of two widens the index instead of colliding with it (A-67)."
+    },
+    {
+      "name": "CCV_P_PRED_ZERO",
+      "value": 63,
+      "status": "provisional",
+      "decided_at": "generated",
+      "source": "OOE session (2026-10-03), A-64; A-67",
+      "derive": "2 ** CCV_P_W_PHYS_PRED - 1",
+      "require": "CCV_P_PRED_ZERO >= CCV_P_PRED_REGS",
+      "doc": "The hardwired zero predicate (A-64): the all-ones predicate index, outside the pool, reading zero and never written. At launch OOE maps all 4 architectural predicates to it (A-67)."
+    },
+    {
+      "name": "CCV_P_W_SCHED_ATTR",
+      "value": 21,
+      "status": "preliminary",
+      "churn": "med",
+      "derive": "15 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS)",
+      "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
+      "source": "OOE session (2026-10-03), A-66",
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: commit_width (1: a chwidth.multi sibling that commits its register's width at retire without serial's hold, which sits on the last sibling only; AR-24 (c), OA's rev 222), ret (1: the branch is a ret, so OOE takes its target from ccv_rcu_ooe_done.aux and sets the redirect's stay; AR-24 (b), OA's rev 223), pair_second and pair_first (1 each: a pair's two decode slots under one ROB entry; TI-39, OA's rev 189. A uop that needs k rows of any RS class, or k names, occupies k slots, at most one row per class and one name a slot: the CAS pair, and every single-slot RMW atomic, which DEC emits as a pair (OI-80 (d), DA tab rev 94)), bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
+    },
+    {
+      "name": "CCV_P_W_REQ_MIU_SPM",
+      "value": 3,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Eight outstanding scratchpad accesses: four slots, two deep.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_MIU_DCU",
+      "value": 4,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen outstanding cache accesses: four slots, four deep, since hits and misses return at different times.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_DCU_MLC",
+      "value": 4,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on DCU -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen fills in flight, i.e. sixteen MSHRs.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_FET_MLC",
+      "value": 2,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on FET -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Four instruction fills in flight.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_MLC_EXB",
+      "value": 6,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MLC -> EXB: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). The TL-C source-id width the tilelink_tlc sizing assumed (6 bits), so EXB maps it without translation.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_MLC_PROBE",
+      "value": 2,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MLC -> DCU probe and its acknowledgement: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Four probes in flight.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_KILL_EPOCH",
+      "value": 2,
+      "status": "provisional",
+      "source": "Skeleton review response 2 (2026-09-25)",
+      "doc": "Kill epoch, broadcast with kill_valid and echoed on every kill ack, so a late ack from a previous kill cannot satisfy the next one. One bit suffices while RAU has one kill in flight; two leaves room.",
+      "decided_at": "RAU session, from how many kills may overlap"
+    },
+    {
+      "name": "CCV_P_W_FETCH_EPOCH",
+      "value": 3,
+      "status": "provisional",
+      "source": "Skeleton review response 2 (2026-09-25); OOE session (2026-10-03), A-70",
+      "derive": "clog2(CCV_P_BR_CKPTS + 2)",
+      "require": "2 ** CCV_P_W_FETCH_EPOCH > CCV_P_BR_CKPTS + 1",
+      "doc": "Fetch epoch, on ccv_ooe_fet_redirect and on every uop (ccv_fet_dec_instr, ccv_dec_ooe_uop; A-70). OOE advances a warp's epoch on every redirect, demotion and kill, and drops any arriving uop whose epoch is not current. A uop in flight from FET to OOE can see one epoch change per unresolved branch older than it (they resolve out of order, youngest first in the worst case: CCV_P_BR_CKPTS redirects) plus one demotion or kill, so 2^W must exceed CCV_P_BR_CKPTS + 1, or a uop that many epochs stale aliases the current epoch and executes as correct-path. At 2 bits the rule fails.",
+      "decided_at": "generated"
+    },
+    {
+      "name": "CCV_L_W_CLASS",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Eight uop classes: integer, float, SFU and convert, memory, control, collective, predicate, spare. DEC decides whether class is derivable from opcode at all.",
+      "decided_at": "DEC block session -- is class derivable from opcode?"
+    },
+    {
+      "name": "CCV_L_W_OPCODE",
+      "value": 9,
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "One encoding across all three hops, owned by the schema (Q-34): a block may narrow it locally only as a strict projection, never a re-encoding. Narrowing at RCU->LANE is likely, but the ISA opcode census sets it. Anything decoding this field will be rewritten.",
+      "decided_at": "ISA opcode census, then DEC/OOE/RCU agree the hops"
+    },
+    {
+      "name": "CCV_OP_PRF_COPY",
+      "value": 511,
+      "status": "preliminary",
+      "churn": "low",
+      "decided_at": "generated",
+      "source": "OOE session, A-33/A-38; core skeleton models it (2026-10-03)",
+      "derive": "2 ** CCV_L_W_OPCODE - 1",
+      "doc": "The copy-only op's opcode on ccv_ooe_rcu_issue and ccv_rcu_lane_ops: the all-ones code, which no ISA opcode takes. A masked load issues it beside the load, with the load's rob_tag and destinations and the old destination as merge_data: a lane returns merge_data on its inactive lanes, RCU writes only those, and no done comes back -- the load keeps one completion, its own (A-38). OOE clears the load's copy-pending at issue + CCV_LAT_LANE, as for any lane op; RCU owes the PRF write within CCV_LAT_LANE of accepting it."
+    },
+    {
+      "name": "CCV_L_W_MEM_OP",
+      "value": 4,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Memory operation, enumerated (AR's and OA's responses IS-11 and AR-21): 0 load, 1 store, 2 atomic-read (an atomic's A1: read the old values and hold the lines), 3 atomic-write (its A3: write the new values and release), 4 predicate load (ld.pred), 5 predicate store (st.pred), 0xE fence, 0xF OOE's bulk discard; 6-0xD spare. 4 and 5 are DEC's, one uop per predicate of the mask (AR's response TI-36): to OOE a load and a store; to MIU one word at lane 0's address. DEC emits load, store, the predicate transfers and fence from its table; 2, 3 and 0xF are OOE's alone (V-72, V-52). An atomic's operation is not here: it travels as the A2 lane op's opcode. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). ordering is non-zero only with 0xE. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.",
+      "decided_at": "MIU block session"
+    },
+    {
+      "name": "CCV_L_W_SPM_OP",
+      "value": 2,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Scratchpad bank access: read, write, and room for a read-modify variant.",
+      "decided_at": "SPM block session"
+    },
+    {
+      "name": "CCV_L_W_COH_OP",
+      "value": 4,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Coherent line request: acquire, release, probe response, writeback, grant acknowledgement. Follows the TL-C subset chosen.",
+      "decided_at": "MLC/EXB session, once the TL-C subset is chosen"
+    },
+    {
+      "name": "CCV_L_W_PROBE_TYPE",
+      "value": 2,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "Kind of inbound message on ccv_exb_mlc_rsp: 0 = a response to a request; otherwise a probe and what it asks (to-invalid, to-branch, to-trunk, after TL-C Probe param). Replaces the one-bit inbound_probe flag.",
+      "decided_at": "MLC/EXB session, alongside CCV_L_W_COH_OP"
+    },
+    {
+      "name": "CCV_L_W_GRID_SEL",
+      "value": 8,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Skeleton review response 2 (2026-09-25)",
+      "doc": "Grid selector on the host's kill request (ccv_cru_rau_cfg). RAU maps grid to warp mask from tables it owns. Sized for 256 grid slots; the real number is how many grids RAU tracks at once.",
+      "decided_at": "RAU / CRU sessions"
+    },
+    {
+      "name": "CCV_L_W_OWNERSHIP",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "TL-C permission levels plus an explicit dirty bit, kept wider than TL-C needs so a CHI bridge maps without a second translation.",
+      "decided_at": "MLC/EXB session, alongside CCV_L_W_COH_OP"
+    },
+    {
+      "name": "CCV_L_W_SPACE",
+      "value": 1,
+      "status": "isa",
+      "source": "Payload widths pass (2026-09-25); OA's response IS-11 (2026-10-19)",
+      "doc": "Memory space: 0 global, 1 shared. No instruction produces another: .local and .const are ld.global and st.global under compiler conventions (ISA v1.7 §5), and .const protection is MIU's address window (O-51). Was 3 bits with const and local codes until IS-11.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| `00000`–`00011` | base + offset | `ld.global`, `st.global`, `ld.shared`, `st.shared` |", "value": "clog2(2)"}
+    },
+    {
+      "name": "CCV_L_W_ORDERING",
+      "value": 5,
+      "status": "isa",
+      "source": "Payload widths pass (2026-09-25); OA's response IS-11 (2026-10-19)",
+      "doc": "A fence's ordering, in the ISA's layout: [2:0] the scope and [4:3] the ordering, the fence's [10:8] and [12:11] (ISA v1.7 §3, Format E). Meaningful only on a fence and reserved zero otherwise: no load, store or atomic carries an ordering qualifier. Was 4 bits, two of order and two of scope, until IS-11.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| 56 | `fence` | `[10:8]` = scope, `[12:11]` = ordering |", "value": "r[0] + r[1]"}
+    },
+    {
+      "name": "CCV_L_W_ITLB_ENTRY",
+      "value": 64,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "ITLB entry: physical page number, permissions, ASID and valid, rounded up.",
+      "decided_at": "MMU session, with the page-table format"
+    },
+    {
+      "name": "CCV_L_OPERANDS_PER_LANE",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Operands shipped to a lane per beat. Whether a lane receives one instruction's operands or several, and whether the destination is read back for accumulate, both change this.",
+      "decided_at": "RCU/LANE session -- see the src_arch vs operand mismatch"
+    },
+    {
+      "name": "CCV_L_W_BAR_COUNT",
+      "value": 5,
+      "status": "isa",
+      "source": "Payload widths pass (2026-09-25); IS-16, ISA v1.9 O-59 (2026-10-20)",
+      "doc": "A CTA's allocated barrier count, 0 to 16, unbiased. A CTA has at most 16 barriers (ISA v1.9 O-59, PTX's named-barrier limit); IDs 16-63 are reserved and raise F-ILLEGAL at decode, and an ID at or above the count raises F-BARRIER at dispatch, in OOE. Was 7 bits for 1..64, which read the per-SM 4x16 table as a per-CTA reach.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "**O-59 — A CTA has at most 16 barriers; past its allocation is `F-BARRIER` — decided in 1.9.**", "value": "clog2(q[1] + 1)"}
+    },
+    {
+      "name": "CCV_L_PAGE_SHIFT",
+      "value": 12,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.",
+      "decided_at": "MMU session"
+    },
+    {
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Interface decisions (2026-09-24)",
+      "decided_at": "EXB session -- flattened bundle or separate TL channels",
+      "name": "CCV_L_W_TL_OUT",
+      "value": 1225,
+      "doc": "TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, 6-bit source, 4-bit sink: A 641 (opcode 3, param 3, size 4, source 6, address 48, mask 64, data 512, corrupt 1), C 577 (A without mask), E 4 (sink), valids 3."
+    },
+    {
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Interface decisions (2026-09-24)",
+      "decided_at": "EXB session -- flattened bundle or separate TL channels",
+      "name": "CCV_L_W_TL_IN",
+      "value": 1176,
+      "doc": "TL-C inbound, B + D plus a valid bit per TL channel: B 641 (as A), D 533 (opcode 3, param 2, size 4, source 6, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe."
+    },
+    {
+      "status": "preliminary",
+      "source": "SV top generation (2026-09-25)",
+      "decided_at": "CRU session -- the CSR fabric has no topology yet",
+      "name": "CCV_L_W_CSR_ADDR",
+      "value": 16,
+      "churn": "med",
+      "doc": "CSR address. A first guess, made only so the common CSR port can be declared: the schema gave csr_req as 'address, write data, write enable' with no widths, and there is no CSR map yet."
+    }
+  ]
+}

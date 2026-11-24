@@ -1,0 +1,32 @@
+{
+ "u_gfree.rt_v_cq01h": {
+  "from": "u_ren1n.n_rt_v",
+  "ahead": 2,
+  "loop": [
+   "u_gfree",
+   "u_ren1n"
+  ],
+  "assert": [
+   "rt_of_grant"
+  ],
+  "control": [
+   "rt-late"
+  ],
+  "why": "u_gfree's returns (OI-81/82): Rename 2 returns a granted row it did not use; the return leaves u_ren1n at 03 and reaches the free list's pending register at its 01 two cycles after the grant left it at 02, the edge after the grant. A late return names a row granted two edges back: rt_of_grant (the grants a cycle older, check-only) catches it (control rt-late)."
+ },
+ "u_gfree.rt_row_cq01h": {
+  "from": "u_ren1n.n_rt_row",
+  "ahead": 2,
+  "loop": [
+   "u_gfree",
+   "u_ren1n"
+  ],
+  "assert": [
+   "rt_of_grant"
+  ],
+  "control": [
+   "rt-late"
+  ],
+  "why": "u_gfree's returns (OI-81/82): Rename 2 returns a granted row it did not use; the return leaves u_ren1n at 03 and reaches the free list's pending register at its 01 two cycles after the grant left it at 02, the edge after the grant. A late return names a row granted two edges back: rt_of_grant (the grants a cycle older, check-only) catches it (control rt-late)."
+ }
+}

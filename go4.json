@@ -1,0 +1,127 @@
+{
+ "u_go.px_cq01h": {
+  "from": {
+   "cone": [
+    "pxn_cq04h",
+    "pxr_cq04h"
+   ],
+   "ahead": {
+    "pxn_cq04h": 3,
+    "pxr_cq04h": 3
+   }
+  },
+  "loop": [
+   "u_go.lane_c_cq02h",
+   "u_go.lane_v_cq02h",
+   "u_ren1.lane_v_cq02h>l_v",
+   "tq_g_cq03h",
+   "pxn_cq04h"
+  ],
+  "assert": [
+   "no_over_grant_names"
+  ],
+  "control": [
+   "no-take-q2"
+  ]
+ },
+ "u_go.room_g_cq01h": {
+  "from": {
+   "cone": [
+    "ucg_cq04h",
+    "tq_gs_cq03h"
+   ],
+   "ahead": {
+    "ucg_cq04h": 3,
+    "tq_gs_cq03h": 2
+   }
+  },
+  "loop": [
+   "u_go.lane_c_cq02h",
+   "u_go.lane_v_cq02h",
+   "u_ren1.lane_v_cq02h>l_v",
+   "tq_gs_cq03h"
+  ],
+  "assert": [
+   "no_over_grant_room"
+  ],
+  "control": [
+   "no-take-q2"
+  ]
+ },
+ "u_go.room_p_cq01h": {
+  "from": {
+   "cone": [
+    "ucp_cq04h",
+    "tq_ps_cq03h"
+   ],
+   "ahead": {
+    "ucp_cq04h": 3,
+    "tq_ps_cq03h": 2
+   }
+  },
+  "loop": [
+   "u_go.lane_c_cq02h",
+   "u_go.lane_v_cq02h",
+   "u_ren1.lane_v_cq02h>l_v",
+   "tq_ps_cq03h"
+  ],
+  "assert": [
+   "no_over_grant_room"
+  ],
+  "control": [
+   "no-take-q2"
+  ]
+ },
+ "u_go.unmet_g_cq01h": {
+  "from": {
+   "cone": [
+    "ur_g_cq05h",
+    "ufg_cq04h",
+    "tq_gs_cq03h"
+   ],
+   "ahead": {
+    "ur_g_cq05h": 4,
+    "tq_gs_cq03h": 2,
+    "ufg_cq04h": 3
+   }
+  },
+  "loop": [
+   "u_go.lane_c_cq02h",
+   "u_go.lane_v_cq02h",
+   "u_ren1.lane_v_cq02h>l_v",
+   "tq_gs_cq03h"
+  ],
+  "assert": [
+   "no_over_grant_room"
+  ],
+  "control": [
+   "no-last-take"
+  ]
+ },
+ "u_go.unmet_p_cq01h": {
+  "from": {
+   "cone": [
+    "ur_p_cq05h",
+    "ufp_cq04h",
+    "tq_ps_cq03h"
+   ],
+   "ahead": {
+    "ur_p_cq05h": 4,
+    "tq_ps_cq03h": 2,
+    "ufp_cq04h": 3
+   }
+  },
+  "loop": [
+   "u_go.lane_c_cq02h",
+   "u_go.lane_v_cq02h",
+   "u_ren1.lane_v_cq02h>l_v",
+   "tq_ps_cq03h"
+  ],
+  "assert": [
+   "no_over_grant_room"
+  ],
+  "control": [
+   "no-last-take"
+  ]
+ }
+}

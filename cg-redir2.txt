@@ -1,0 +1,254 @@
+  unit ooe_redir      ooe_redir         185 flops,  179 in  8 clock gates (0 groups under 8), worst enable  3.3 NGD
+    idle   12003 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium  9712 cycles, activity 0.000,  2 gates enabled, lowest DCGE 99%
+    high    2577 cycles, activity 0.001,  2 gates enabled, lowest DCGE 100%
+    gate      21 flops  3.3 NGD      -     -     -  ag_cq03h[14:11,9:6,4:1], pk_cq04h[3:0], pl_en_cq04h, pv_cq03h[3:0]  (en: ord_en_cq03h)
+    gate      16 flops  0.0 NGD      -   99%  100%  ckf_m_cq05h[15:0]  (en: ckm_en_cq04h)
+    gate      17 flops  1.7 NGD      -  100%  100%  ckm_en_cq04h, fq_cq04h[15:0]  (en: fv_en_cq03h)
+    gate       8 flops  1.7 NGD      -     -     -  ee_cq04h[11:9], ew_cq04h[19:15]  (en: <logic>)
+    gate       8 flops  1.7 NGD      -     -     -  ee_cq04h[2:0], ew_cq04h[4:0]  (en: <logic>)
+    gate       8 flops  1.7 NGD      -     -     -  ee_cq04h[5:3], ew_cq04h[9:5]  (en: <logic>)
+    gate       8 flops  1.7 NGD      -     -     -  ee_cq04h[8:6], ew_cq04h[14:10]  (en: <logic>)
+    ungated    1 flops  0.0 NGD     0%    6%   18%  fl_q_cq03h  (en: always)
+    ungated    1 flops  0.0 NGD     0%    0%    0%  g_ent[0].id_en_cq03h  (en: always)
+    ungated    1 flops  0.0 NGD     0%    0%    0%  g_ent[1].id_en_cq03h  (en: always)
+    ungated    1 flops  0.0 NGD     0%    0%    0%  g_ent[2].id_en_cq03h  (en: always)
+    ungated    1 flops  0.0 NGD     0%    0%    0%  g_ent[3].id_en_cq03h  (en: always)
+    gate      93 flops  0.0 NGD      -     -     -  rdr_ckpt_cq05h[1:0], rdr_ep_cq05h[2:0], rdr_stay_cq05h, rdr_t1_cq05h[1:0], rdr_tgt_cq05h[47:0], rdr_tmask_cq05h[31:0], rdr_warp_cq05h[4:0]  (en: pl_en_cq04h)
+    ungated    1 flops  0.0 NGD     0%    0%    0%  rst_r01h  (en: always)
+  RST-2: ooe_redir's reset arrives at cycle 1 at every endpoint
+    CG-5 ooe_redir (unit ooe_redir): enable of ee_cq04h[11:9], ew_cq04h[19:15] comes from input rd_l_cq03h, not only from the module's own flops (en: <logic>)
+    CG-5 ooe_redir (unit ooe_redir): enable of ee_cq04h[2:0], ew_cq04h[4:0] comes from input rd_l_cq03h, not only from the module's own flops (en: <logic>)
+    CG-5 ooe_redir (unit ooe_redir): enable of ee_cq04h[5:3], ew_cq04h[9:5] comes from input rd_l_cq03h, not only from the module's own flops (en: <logic>)
+    CG-5 ooe_redir (unit ooe_redir): enable of ee_cq04h[8:6], ew_cq04h[14:10] comes from input rd_l_cq03h, not only from the module's own flops (en: <logic>)
+    CG-1 ccv_common_clk: rtl/clk/ccv_common_clk.sv:106: rst_n_q written every cycle, under no enable
+    CG-1 ccv_common_clk: rtl/clk/ccv_common_clk.sv:106: quiesced_q written every cycle, under no enable
+    CG-1 ccv_common_clk: rtl/clk/ccv_common_clk.sv:106: stalled_q written every cycle, under no enable
+    CG-1 ccv_common_clk: rtl/clk/ccv_common_clk.sv:106: override_q written every cycle, under no enable
+    CG-1 ccv_common_clk: rtl/clk/ccv_common_clk.sv:151: hold_q written every cycle, under no enable
+    CG-1 ccv_common_rpt: rtl/phys/ccv_common_rpt.sv:141: rst_n_q written every cycle, under no enable
+    CG-1 ccv_common_rpt: rtl/phys/ccv_common_rpt.sv:181: valid_q written every cycle, under no enable
+    CG-1 ccv_common_rpt: rtl/phys/ccv_common_rpt.sv:181: wake_q written every cycle, under no enable
+    CG-1 ccv_common_rpt: rtl/phys/ccv_common_rpt.sv:181: credit_q written every cycle, under no enable
+    CG-1 ccv_common_rpt: rtl/phys/ccv_common_rpt.sv:181: stall_q written every cycle, under no enable
+    CG-1 ccv_common_rpt: rtl/phys/ccv_common_rpt.sv:211: bnd_lead_q written every cycle, under no enable
+    CG-1 ccv_common_rpt: rtl/phys/ccv_common_rpt.sv:218: lead_q written every cycle, under no enable
+    CG-1 ccv_rcu: rtl/rcu/ccv_rcu.sv:1138: kill_detect_v_cr01h written every cycle, under no enable
+    CG-1 ccv_rcu: rtl/rcu/ccv_rcu.sv:1162: wake_detect_iw_cr01h written every cycle, under no enable
+    CG-1 ooe_age: rtl/ooe/ooe_age.sv:62: rst_r01h written every cycle, under no enable
+    CG-1 ooe_age: rtl/ooe/ooe_age.sv:137: older_en_cq02h written every cycle, under no enable
+    CG-1 ooe_cmcap: rtl/ooe/ooe_cmcap.sv:58: rst_r01h written every cycle, under no enable
+    CG-1 ooe_cmcap: rtl/ooe/ooe_cmcap.sv:62: cv_cq01h written every cycle, under no enable
+    CG-1 ooe_cmcap: rtl/ooe/ooe_cmcap.sv:62: fv_cq01h written every cycle, under no enable
+    CG-1 ooe_decq: rtl/ooe/ooe_decq.sv:138: rst_r01h written every cycle, under no enable
+    CG-1 ooe_decq: rtl/ooe/ooe_decq.sv:656: fl_q_cq02h written every cycle, under no enable
+    CG-1 ooe_decq: rtl/ooe/ooe_decq.sv:656: fl_o_cq02h written every cycle, under no enable
+    CG-1 ooe_decq: rtl/ooe/ooe_decq.sv:656: enq_en_cq01h written every cycle, under no enable
+    CG-1 ooe_decq: rtl/ooe/ooe_decq.sv:656: arr_q_cq02h written every cycle, under no enable
+    CG-1 ooe_decq: rtl/ooe/ooe_decq.sv:656: tkv_cq02h written every cycle, under no enable
+    CG-1 ooe_decrx: rtl/ooe/ooe_decrx.sv:89: rst_r01h written every cycle, under no enable
+    CG-1 ooe_decrx: rtl/ooe/ooe_decrx.sv:92: ev_q_cq01h written every cycle, under no enable
+    CG-1 ooe_decrx: rtl/ooe/ooe_decrx.sv:228: enq_v_cq02h written every cycle, under no enable
+    CG-1 ooe_decrx: rtl/ooe/ooe_decrx.sv:232: enq_slot_cq02h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:207: rst_r01h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:572: st_cq02h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:599: rqh_cq02h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:599: ro_cq02h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:599: free_en_cq01h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:599: fr_ch_cq02h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:599: pr_v_cq02h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:623: sa_en_cq01h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:623: rt_en_cq01h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:737: pv_cq02h written every cycle, under no enable
+    CG-1 ooe_freelist: rtl/ooe/ooe_freelist.sv:793: sch_cq02h written every cycle, under no enable
+    CG-1 ooe_go: rtl/ooe/ooe_go.sv:171: rst_r01h written every cycle, under no enable
+    CG-1 ooe_go: rtl/ooe/ooe_go.sv:870: rbusy_cq01h written every cycle, under no enable
+    CG-1 ooe_go: rtl/ooe/ooe_go.sv:870: sq_cq01h written every cycle, under no enable
+    CG-1 ooe_go: rtl/ooe/ooe_go.sv:870: blk_cq01h written every cycle, under no enable
+    CG-1 ooe_go: rtl/ooe/ooe_go.sv:870: blkw_cq01h written every cycle, under no enable
+    CG-1 ooe_go: rtl/ooe/ooe_go.sv:870: blkx_cq01h written every cycle, under no enable
+    CG-1 ooe_go: rtl/ooe/ooe_go.sv:870: chg_cq02h written every cycle, under no enable
+    CG-1 ooe_mempl: rtl/ooe/ooe_mempl.sv:62: rst_r01h written every cycle, under no enable
+    CG-1 ooe_mempl: rtl/ooe/ooe_mempl.sv:71: gen_cq02h written every cycle, under no enable
+    CG-1 ooe_mempl: rtl/ooe/ooe_mempl.sv:71: den_cq02h written every cycle, under no enable
+    CG-1 ooe_mempl: rtl/ooe/ooe_mempl.sv:71: pay_en_cq03h written every cycle, under no enable
+    CG-1 ooe_prodmap: rtl/ooe/ooe_prodmap.sv:89: rst_r01h written every cycle, under no enable
+    CG-1 ooe_prodmap: rtl/ooe/ooe_prodmap.sv:117: grp_l_cq01h written every cycle, under no enable
+    CG-1 ooe_prodmap: rtl/ooe/ooe_prodmap.sv:117: grp_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:146: rst_r01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: wl_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: rw_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: ck_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: rg_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: rp_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: rs_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: sq_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:182: rl_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:203: rsc_cq01h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:240: wl_cq02h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:240: rw_cq02h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:240: ck_cq02h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:252: pi_v_cq02h written every cycle, under no enable
+    CG-1 ooe_rat: rtl/ooe/ooe_rat.sv:252: pq_v_cq02h written every cycle, under no enable
+    CG-1 ooe_rcupl: rtl/ooe/ooe_rcupl.sv:58: rst_r01h written every cycle, under no enable
+    CG-1 ooe_rcupl: rtl/ooe/ooe_rcupl.sv:64: iss_en_cq02h written every cycle, under no enable
+    CG-1 ooe_rcupl: rtl/ooe/ooe_rcupl.sv:64: pay_en_cq03h written every cycle, under no enable
+    CG-1 ooe_redir: rtl/ooe/ooe_redir.sv:96: rst_r01h written every cycle, under no enable (rst_r01h changes on 0% of idle cycles)
+    CG-1 ooe_redir: rtl/ooe/ooe_redir.sv:109: re_q_cq03h written every cycle, under no enable (re_q_cq03h changes on 0% of idle cycles)
+    CG-1 ooe_redir: rtl/ooe/ooe_redir.sv:109: fl_q_cq03h written every cycle, under no enable (fl_q_cq03h changes on 0% of idle cycles)
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:240: rst_r01h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:335: cwe_cq01h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:530: o_v_cq03h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:530: o_lv_cq03h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:530: p_v_cq03h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:876: rsf_en_cq01h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:912: nv_cq04h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:957: ur_o_cq02h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:957: ur_f_cq04h written every cycle, under no enable
+    CG-1 ooe_rename: rtl/ooe/ooe_rename.sv:1144: m_v_cq04h written every cycle, under no enable
+    CG-1 ooe_rendep: rtl/ooe/ooe_rendep.sv:136: rst_r01h written every cycle, under no enable
+    CG-1 ooe_rendep: rtl/ooe/ooe_rendep.sv:174: grp_l_cq01h written every cycle, under no enable
+    CG-1 ooe_rendep: rtl/ooe/ooe_rendep.sv:174: st_v_cq02h written every cycle, under no enable
+    CG-1 ooe_rendep: rtl/ooe/ooe_rendep.sv:174: g2_v_cq03h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:252: rst_r01h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: al_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: ev_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: rel_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: fl_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: fb_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: dn_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: cm_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:262: cf_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1688: ft_v_cq03h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1794: r_live_cq03h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1794: m_live_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1838: sql_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1838: hdl_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1838: kgl_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1838: kpl_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:1925: fp_q_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:2003: bo_v_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:2003: bo_vw_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:2003: bo_vr_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:2216: rs_w_cq02h written every cycle, under no enable
+    CG-1 ooe_rob_w: rtl/ooe/ooe_rob_w.sv:2354: rw_seen_cq02h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:131: rst_r01h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:303: iss_cq02h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:303: ng_cq02h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:548: req_en_cq01h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:548: cf_en_cq03h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:548: cva_cq01h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:548: cvb_cq02h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:548: sq_en_cq01h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:576: hcq_cq02h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:576: hh_cq02h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:576: hhv_cq02h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:609: p_rst_r01h written every cycle, under no enable
+    CG-1 ooe_rs: rtl/ooe/ooe_rs.sv:649: iss_en_cq02h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:140: rst_r01h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:305: cret_cq03h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:305: dsc_cq04h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:354: ready_en_cq03h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:354: gl_cq05h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:354: stop_cq03h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:354: alc_cq03h written every cycle, under no enable
+    CG-1 ooe_sched: rtl/ooe/ooe_sched.sv:354: chg_cq04h written every cycle, under no enable
+    CG-1 ooe_slot: rtl/ooe/ooe_slot.sv:100: rst_r01h written every cycle, under no enable
+    CG-1 ooe_slot: rtl/ooe/ooe_slot.sv:112: ev_q_cq01h written every cycle, under no enable
+    CG-1 ooe_slot: rtl/ooe/ooe_slot.sv:112: kl_q_cq01h written every cycle, under no enable
+    CG-1 ooe_wake: rtl/ooe/ooe_wake.sv:204: rst_r01h written every cycle, under no enable
+    CG-1 ooe_wake: rtl/ooe/ooe_wake.sv:579: cv_cq01h written every cycle, under no enable
+    CG-1 ooe_wake: rtl/ooe/ooe_wake.sv:579: hl_cq01h written every cycle, under no enable
+    CG-1 ooe_wake: rtl/ooe/ooe_wake.sv:579: sq_en_cq01h written every cycle, under no enable
+    CG-1 ooe_wake: rtl/ooe/ooe_wake.sv:579: wml_cq02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:148: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: sv_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: sk_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: pv_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: pk_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: r2v_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: wr_v_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: g2_v_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:186: gw_v_cr01h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:339: wr_act_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:339: wr_act_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:339: gws_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:388: mw_act_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:388: mw_row_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:397: mw_slot_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:397: mw_b_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:397: mw_lm_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:397: mw_kp_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:397: mw_nib_cr02h written every cycle, under no enable
+    CG-1 rcu_bank_slice: rtl/rcu/rcu_bank_slice.sv:445: rv_cr03h written every cycle, under no enable
+    CG-1 rcu_kill: rtl/rcu/rcu_kill.sv:103: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_kill: rtl/rcu/rcu_kill.sv:124: kvd_cr02h written every cycle, under no enable
+    CG-1 rcu_kill: rtl/rcu/rcu_kill.sv:146: cr_q_cr01h written every cycle, under no enable
+    CG-1 rcu_kill: rtl/rcu/rcu_kill.sv:154: dwake_q_cr01h written every cycle, under no enable
+    CG-1 rcu_kill: rtl/rcu/rcu_kill.sv:154: idle_q_cr01h written every cycle, under no enable
+    CG-1 rcu_kill: rtl/rcu/rcu_kill.sv:173: csr_q_cr01h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:180: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:232: v_cr02h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:232: wk_cr02h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:241: lsec_cr02h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:241: lsrc_cr02h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:241: limm_cr02h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:241: lmrg_cr02h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:250: pcvq_cr02h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:392: sv_cr03h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:598: pcq_cr03h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:718: ssv_cr03h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:718: sdv_cr03h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:718: sov1_cr03h written every cycle, under no enable
+    CG-1 rcu_lanes: rtl/rcu/rcu_lanes.sv:718: ssl_cr03h written every cycle, under no enable
+    CG-1 rcu_mem: rtl/rcu/rcu_mem.sv:92: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_mem: rtl/rcu/rcu_mem.sv:108: v_cr02h written every cycle, under no enable
+    CG-1 rcu_mem: rtl/rcu/rcu_mem.sv:108: wk_cr02h written every cycle, under no enable
+    CG-1 rcu_mem: rtl/rcu/rcu_mem.sv:117: lsrc_cr02h written every cycle, under no enable
+    CG-1 rcu_mem: rtl/rcu/rcu_mem.sv:166: mv_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:143: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:167: mrxv_cr01h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:167: crxv_cr01h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:167: prxv_cr01h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:167: prxv2_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:167: rivq_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:167: ocrq_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:167: ostq_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:224: kact_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:426: dk_mi_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:426: dk_ci_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:426: rk_mi_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:426: rk_ci_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:456: mcr_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:456: ccr_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:505: dm_busy_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:505: dm_v_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:505: dm_vo_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:505: dm_wk_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:505: dm_r2_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:505: dv_o_cr01h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_busy_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_v_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_l16_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_sel_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rs_cr_cr04h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:609: rwsel_o_cr03h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: rsc_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:696: e16_o_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: quiet_q_cr02h written every cycle, under no enable
+    CG-1 rcu_mig: rtl/rcu/rcu_mig.sv:747: busy_q_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:162: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qa_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: qab_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: ivb_cr02h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: dv_cr01h written every cycle, under no enable
+    CG-1 rcu_pred: rtl/rcu/rcu_pred.sv:234: mw_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:124: rst_cr01h_n written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: iv_cr02h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:146: r_v_cr03h written every cycle, under no enable
+    CG-1 rcu_r: rtl/rcu/rcu_r.sv:265: dn_v_cr03h written every cycle, under no enable

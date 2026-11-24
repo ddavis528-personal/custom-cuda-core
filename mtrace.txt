@@ -1,0 +1,16 @@
+12:09:27.676585 git.c:463               trace: built-in: git merge --no-edit origin/ccr-58815650-0ch1hh
+12:09:27.677689 read-cache.c:2388       performance: 0.000134489 s:  read cache /home/user/custom-cuda-core/.git/worktrees/wt-sw/index
+12:09:27.682079 read-cache.c:1631       performance: 0.001040141 s:  refresh index
+12:09:27.682105 run-command.c:659       trace: run_command: git stash create
+12:09:27.684037 git.c:463               trace: built-in: git stash create
+12:09:27.684343 read-cache.c:2388       performance: 0.000148165 s:  read cache /home/user/custom-cuda-core/.git/worktrees/wt-sw/index
+12:09:27.685209 unpack-trees.c:2004     performance: 0.000008339 s:    traverse_trees
+12:09:27.685220 unpack-trees.c:438      performance: 0.000000253 s:    check_updates
+12:09:27.685224 unpack-trees.c:2096     performance: 0.000071204 s:   unpack_trees
+12:09:27.685237 diff-lib.c:639          performance: 0.000109869 s:  diff-index
+12:09:27.686266 diff-lib.c:274          performance: 0.001025902 s:  diff-files
+12:09:27.686281 trace.c:414             performance: 0.002373459 s: git command: /usr/lib/git-core/git stash create
+12:09:27.686632 read-cache.c:1631       performance: 0.000023124 s:  refresh index
+12:09:27.686808 unpack-trees.c:2004     performance: 0.000011039 s:   traverse_trees
+12:09:27.686813 unpack-trees.c:438      performance: 0.000000134 s:   check_updates
+12:09:27.686817 unpack-trees.c:2096     performance: 0.000057054 s:  unpack_trees

@@ -1,0 +1,9 @@
+TITLE: #35 ooe_rename to 25 NGD: narrow placement treats a pending writer as unseen (cand_indep_pend)
+SUMMARY: ooe_rename now meets 25 NGD (flop-flop 24.73; caps 10 -> 1, q_pname_cq03h 3.32). It needs one model change: narrow placement treats a source or merged old destination whose writer is in the pending group (last cycle's) as unseen, as it already does an in-group writer. Model knob cand_indep_pend, on; RH prices on vs off. Needs: OA
+DETAIL:
+- Why: the pending group's names bind in Rename 2's first gates, too late for placement's position compare at 25 (measured 26.34 with the pending name read and q_gname 20.6/20).
+- RTL: ooe_ren1 forms a seen bit per read (no in-group or pending writer, not the zero row), lane-selects it into the Rename 1 register; Rename 2's placement starts from it. nwant selects a per-read home compare made from flops. Pending reads take their name from m_gname/m_pname (Rename 2's register). u_ren1np and its copies removed.
+- Flops: about +200 for the per-slot writer map and seen bits, -88 copy flops, -64 name copies.
+- Model: Core::placePos's unseen covers grp_written_prev_ when cand_indep_pend; test control pend-follows (rename_sec) catches the RTL following a pending writer.
+- Benches: ren1, rename, rename_ceil, rename_scarce, rename_sec PASS, every control caught.
+- Asks OA: accept the placement rule (or name a cheaper form); performance from RH to follow on this row.

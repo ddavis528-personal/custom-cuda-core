@@ -1,0 +1,168 @@
+{
+  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-502): u_go.pl (OA-494), u_gfree's section allocations sa_v/sa_row/sa_sec (OA-498) and returns rt_v/rt_row (OA-501) and leads sa_l/rt_l (OA-502), each signed by OA in the register.",
+  "reads": {
+    "u_go.pl_cq02h": {
+      "from": "pl_cq03h",
+      "ahead": 1,
+      "loop": [
+        "u_go.lane_c_cq02h",
+        "u_go.lane_v_cq02h",
+        "u_ren1.lane_v_cq02h>l_v",
+        "pl_cq03h"
+      ],
+      "assert": [
+        "no_over_grant_names",
+        "no_over_grant_rs",
+        "no_over_grant_room"
+      ],
+      "control": [
+        "no-take-q"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "the go's lagged take (OA-490, OI-207, OA-489, OA-494): u_go grants lanes at 02 (lane_v_cq02h, lane_c_cq02h); they cross u_ren1, a register-free helper, combinationally into l_v, whose per-class takes the parent counts into pl_cq03h; u_go's pool correction reads it a cycle later as its pl at 02. u_go.wt_cq02h is no register: ooe_go's always_comb sums wtq_cq02h, combinational on pl; it is listed as it reads pl, and it feeds the free lists' alloc_req, not the takes. A stale take over-grants names, RS rows or a slot's room."
+    },
+    "u_gfree.sa_v_cq01h": {
+      "from": "u_ren1n.n_sa_v",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "sec_alloc_free",
+        "sec_free_live"
+      ],
+      "control": [
+        "sa-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's section state (OI-81/82): Rename 2's section allocations leave u_ren1n at 03 and reach the free list's write at its 01 two cycles after the candidates they consumed left it at 02; the free list's candidates and avail are read ahead of them by design, its pend/wr masks covering the two in-flight cycles. A late allocation leaves a section free in its state that is not: sec_free_live and sec_alloc_free catch it (control sa-late)."
+    },
+    "u_gfree.sa_row_cq01h": {
+      "from": "u_ren1n.n_sa_row",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "sec_alloc_free",
+        "sec_free_live"
+      ],
+      "control": [
+        "sa-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's section state (OI-81/82): Rename 2's section allocations leave u_ren1n at 03 and reach the free list's write at its 01 two cycles after the candidates they consumed left it at 02; the free list's candidates and avail are read ahead of them by design, its pend/wr masks covering the two in-flight cycles. A late allocation leaves a section free in its state that is not: sec_free_live and sec_alloc_free catch it (control sa-late)."
+    },
+    "u_gfree.sa_sec_cq01h": {
+      "from": "u_ren1n.n_sa_sec",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "sec_alloc_free",
+        "sec_free_live"
+      ],
+      "control": [
+        "sa-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's section state (OI-81/82): Rename 2's section allocations leave u_ren1n at 03 and reach the free list's write at its 01 two cycles after the candidates they consumed left it at 02; the free list's candidates and avail are read ahead of them by design, its pend/wr masks covering the two in-flight cycles. A late allocation leaves a section free in its state that is not: sec_free_live and sec_alloc_free catch it (control sa-late)."
+    },
+    "u_gfree.rt_v_cq01h": {
+      "from": "u_ren1n.n_rt_v",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "rt_of_grant"
+      ],
+      "control": [
+        "rt-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's returns (OI-81/82): Rename 2 returns a granted row it did not use; the return leaves u_ren1n at 03 and reaches the free list's pending register at its 01 two cycles after the grant left it at 02, the edge after the grant. A late return names a row granted two edges back: rt_of_grant (the grants a cycle older, check-only) catches it (control rt-late)."
+    },
+    "u_gfree.rt_row_cq01h": {
+      "from": "u_ren1n.n_rt_row",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "rt_of_grant"
+      ],
+      "control": [
+        "rt-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's returns (OI-81/82): Rename 2 returns a granted row it did not use; the return leaves u_ren1n at 03 and reaches the free list's pending register at its 01 two cycles after the grant left it at 02, the edge after the grant. A late return names a row granted two edges back: rt_of_grant (the grants a cycle older, check-only) catches it (control rt-late)."
+    },
+    "u_gfree.sa_l_cq00h": {
+      "from": {
+        "cone": [
+          "u_go.lane_v_cq02h"
+        ],
+        "ahead": {
+          "u_go.lane_v_cq02h": 2
+        }
+      },
+      "loop": [
+        "u_gfree.fsp_cq03h",
+        "ucg_cq04h",
+        "u_go.room_g_cq01h>fitsw_cq02h>lane_v_cq02h"
+      ],
+      "assert": [
+        "sa_led"
+      ],
+      "control": [
+        "sal-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's section-allocation lead (OI-81/82, OA-499): a lane that writes a GPR leads its sections into the free list a cycle ahead; u_go grants the lane at 02 (lane_v_cq02h) and the lead is the free list's 00, two stages ahead by design. The loop closes through the frees by owner: fsp_cq03h into the slot counters (ucg_cq04h), u_go's room_g and its fitsw register, back to lane_v. A late lead leaves an allocation unled: sa_led catches it (control sal-late)."
+    },
+    "u_gfree.rt_l_cq00h": {
+      "from": {
+        "cone": [
+          "u_go.lane_v_cq02h",
+          "u_go.lane_c_cq02h",
+          "u_go.wb_cq02h",
+          "cwt_cq02h"
+        ],
+        "ahead": {
+          "u_go.lane_v_cq02h": 2,
+          "u_go.lane_c_cq02h": 2,
+          "u_go.wb_cq02h": 2,
+          "cwt_cq02h": 2
+        }
+      },
+      "loop": [
+        "u_gfree.fsp_cq03h",
+        "ucg_cq04h",
+        "u_go.room_g_cq01h>fitsw_cq02h>lane_v_cq02h"
+      ],
+      "assert": [
+        "rt_led"
+      ],
+      "control": [
+        "rtl-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's return lead (OI-81/82, OA-499): a narrow lane may return its row next cycle, led into the free list a cycle ahead from u_go's grant at 02 (lane_v, lane_c, wb) and the lane's codes (cwt_cq02h); the lead is the free list's 00, two stages ahead by design. The loop closes as sa_l's, through fsp_cq03h, ucg_cq04h and u_go's room_g/fitsw. A late lead leaves a return unled: rt_led catches it (control rtl-late)."
+    }
+  }
+}

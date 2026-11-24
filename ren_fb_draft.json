@@ -1,0 +1,25 @@
+{
+  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-490). DRAFT for OA's signature: \"by\" is set when OA signs in the register (OI-213).",
+  "reads": {
+    "u_go.pl_cq02h": {
+      "from": "pl_cq03h",
+      "ahead": 1,
+      "loop": [
+        "u_go.wb_cq02h",
+        "u_go.wt_cq02h",
+        "pl_cq03h"
+      ],
+      "assert": [
+        "no_over_grant_names",
+        "no_over_grant_rs",
+        "no_over_grant_room"
+      ],
+      "control": [
+        "no-take-q"
+      ],
+      "by": "",
+      "date": "",
+      "why": "the go's lagged take: u_go grants (wb, wt) at 02, rename counts the takes per class into pl_cq03h, and u_go's pool correction reads them a cycle later as its own pl at 02 (OA-490, OI-207, OA-489); a stale take over-grants names, RS rows or a slot's room"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+OI pricing request (#35, cand_indep_pend). Branch ccr-57eff422-5tdecg at c4394ade (once pushed).
+New model knob cand_indep_pend (default on): narrow placement treats a source / merged old destination
+whose writer is in the PENDING group (last cycle's rename group) as unseen, like an in-group writer.
+This lets RTL bind pending names in Rename 2 and takes ooe_rename to 24.55 NGD.
+Please price ON (default) vs OFF (--cand_indep_pend=0 or the knob-table equivalent), same configs you used
+for OI-134 (U/G/L at 192/160/128) plus CoreMark and the S1 kernels: cycles delta % per config, and the
+narrow-placement count if your runs report it. Reply with one table.

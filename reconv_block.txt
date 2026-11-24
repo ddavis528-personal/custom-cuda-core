@@ -1,0 +1,34 @@
+/// C_RECONV (serial 5; OA rev 393, RA-16) joins exit's no-op path: a ROB
+/// entry complete at allocation, no RS entry, no rename, never issued,
+/// retired in order. The control treats it as a real op: it issues.
+void testReconv() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "reconv no-op (control)" : "reconv no-op";
+    Config c = baseConfig();
+    c.inject_reconv_real = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    Op r; r.k = kReconv; p.push_back(r);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op r2; r2.k = kReconv; p.push_back(r2);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    const unsigned issued = issueCount(e, 2) + issueCount(e, 4);
+    if (control) {
+      std::printf("  %-24s %s\n", "control reconv-issues", issued ? "caught" : "MISSED");
+      EXPECT(issued != 0, "a C_RECONV treated as a real op should issue");
+      continue;
+    }
+    EXPECT(issued == 0, "a C_RECONV issued %u times: it completes at allocation", issued);
+    EXPECT(issueCount(e, 1) == 1 && issueCount(e, 3) == 1, "the lane ops issued %u and %u times",
+           issueCount(e, 1), issueCount(e, 3));
+    const std::vector<uint64_t> &rt = e.w[0].retired;
+    bool order = rt.size() == 5;
+    for (size_t k = 0; order && k != rt.size(); ++k) order = rt[k] == k + 1;
+    EXPECT(order, "retired %zu uops, want all five in order", rt.size());
+  }
+}
+

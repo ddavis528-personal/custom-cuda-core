@@ -1,0 +1,90 @@
+{
+  "_comment": "Findings of tools/check-ngd.py that stood when the logic depth rules were made (Daniel, 2026-10-17 and 2026-10-18; docs/rtl-coding-style.md, 'Logic depth'): a port over the default CCV_NGD_PORT (NGD-2, NGD-3), awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign; or logic on a path straight through a module, or between a module's children touching none of its flops (NGD-5, keyed from>to), awaiting a redesign that groups it with one sequential side, or the module's declaration as an inner helper. Or an inner helper that no module instantiates yet, a path input to output over CCV_NGD_INNER (NGD-6, 2026-10-19, keyed from>to), awaiting its parent. Or a register that drives an output and reaches a flop or another output past that output's required time (NGD-7, 2026-10-19, keyed by register), awaiting a copy for the output and one for the rest. The list only shrinks: check-ngd refuses an entry that now meets the rule, and one that was not here when its rule was made.",
+  "modules": {},
+  "fanout": {
+    "ooe_go": {
+      "NGD-1": 26.1,
+      "NGD-2 lane_c_cq02h": 22.4,
+      "NGD-2 lane_v_cq02h": 24.5,
+      "NGD-2 take_cq02h": 19.3,
+      "NGD-2 wb_cq02h": 24.5,
+      "NGD-2 wt_cq02h": 25.0,
+      "NGD-3 ha_cq01h": 27.9,
+      "NGD-3 hv_cq01h": 28.9,
+      "NGD-3 pl_cq01h": 27.2,
+      "NGD-3 px_cq01h": 28.0,
+      "NGD-3 reach_cq01h": 25.3,
+      "NGD-7 utw_cq02h": 17.0
+    },
+    "ooe_ratread": {
+      "NGD-6 po_dst_cq02h>ren_pold_cq01h": 17.9,
+      "NGD-6 po_dst_cq02h>ren_psrc_cq01h": 17.9,
+      "NGD-6 po_pdst_cq02h>ren_ppguard_cq01h": 16.7,
+      "NGD-6 po_pdst_cq02h>ren_ppold_cq01h": 16.7,
+      "NGD-6 po_pdst_cq02h>ren_ppq_cq01h": 16.7,
+      "NGD-6 pw_dst_cq01h>ren_pold_cq01h": 18.2,
+      "NGD-6 pw_dst_cq01h>ren_psrc_cq01h": 18.3,
+      "NGD-6 pw_pdst_cq01h>ren_ppguard_cq01h": 17.6,
+      "NGD-6 pw_pdst_cq01h>ren_ppold_cq01h": 17.6,
+      "NGD-6 pw_pdst_cq01h>ren_ppq_cq01h": 17.6,
+      "NGD-6 pw_slot_cq01h>ren_pold_cq01h": 18.0,
+      "NGD-6 pw_slot_cq01h>ren_ppguard_cq01h": 17.1,
+      "NGD-6 pw_slot_cq01h>ren_ppold_cq01h": 17.1,
+      "NGD-6 pw_slot_cq01h>ren_ppq_cq01h": 17.1,
+      "NGD-6 pw_slot_cq01h>ren_psrc_cq01h": 18.0,
+      "NGD-6 ren_dst_cq01h>ren_pold_cq01h": 20.8,
+      "NGD-6 ren_dst_cq01h>ren_psrc_cq01h": 20.8,
+      "NGD-6 ren_gwe_cq01h>ren_pold_cq01h": 17.9,
+      "NGD-6 ren_gwe_cq01h>ren_psrc_cq01h": 17.9,
+      "NGD-6 ren_pdst_cq01h>ren_ppguard_cq01h": 17.6,
+      "NGD-6 ren_pdst_cq01h>ren_ppold_cq01h": 17.6,
+      "NGD-6 ren_pdst_cq01h>ren_ppq_cq01h": 17.6,
+      "NGD-6 ren_pguard_cq01h>ren_ppguard_cq01h": 16.9,
+      "NGD-6 ren_pq_cq01h>ren_ppq_cq01h": 16.9,
+      "NGD-6 ren_pwe_cq01h>ren_ppguard_cq01h": 16.9,
+      "NGD-6 ren_pwe_cq01h>ren_ppold_cq01h": 16.9,
+      "NGD-6 ren_pwe_cq01h>ren_ppq_cq01h": 16.9,
+      "NGD-6 ren_rst_cq01h>ren_pold_cq01h": 18.6,
+      "NGD-6 ren_rst_cq01h>ren_ppguard_cq01h": 17.6,
+      "NGD-6 ren_rst_cq01h>ren_ppold_cq01h": 17.6,
+      "NGD-6 ren_rst_cq01h>ren_ppq_cq01h": 17.6,
+      "NGD-6 ren_rst_cq01h>ren_psrc_cq01h": 18.6,
+      "NGD-6 ren_slot_cq01h>ren_pold_cq01h": 20.6,
+      "NGD-6 ren_slot_cq01h>ren_ppguard_cq01h": 19.6,
+      "NGD-6 ren_slot_cq01h>ren_ppold_cq01h": 19.6,
+      "NGD-6 ren_slot_cq01h>ren_ppq_cq01h": 19.6,
+      "NGD-6 ren_slot_cq01h>ren_psrc_cq01h": 20.6,
+      "NGD-6 ren_src_cq01h>ren_psrc_cq01h": 20.1,
+      "NGD-6 ren_v_cq01h>ren_pold_cq01h": 17.9,
+      "NGD-6 ren_v_cq01h>ren_ppguard_cq01h": 16.9,
+      "NGD-6 ren_v_cq01h>ren_ppold_cq01h": 16.9,
+      "NGD-6 ren_v_cq01h>ren_ppq_cq01h": 16.9,
+      "NGD-6 ren_v_cq01h>ren_psrc_cq01h": 17.9
+    },
+    "ooe_rename": {
+      "NGD-2 q_pname_cq03h": 3.32
+    },
+    "ooe_rendep": {
+      "NGD-3 gsn_cq01h": 28.5,
+      "NGD-3 psn_cq01h": 28.8
+    },
+    "ooe_rob_w": {
+      "NGD-1": 29.6,
+      "NGD-3 al_n_cq02h": 29.2,
+      "NGD-3 dn_tag_cq02h": 26.3,
+      "NGD-3 fl_slot_cq02h": 28.6,
+      "NGD-3 fl_v_cq02h": 29.5
+    },
+    "ooe_rs": {
+      "NGD-1": 28.8,
+      "NGD-3 prv_dep_cq01h": 26.4,
+      "NGD-3 req_cq01h": 28.4
+    },
+    "ooe_sched": {
+      "NGD-1": 26.7,
+      "NGD-3 cidx_cq03h": 25.6,
+      "NGD-3 res_cq03h": 29.0,
+      "NGD-3 vel_cq03h": 28.2
+    }
+  }
+}

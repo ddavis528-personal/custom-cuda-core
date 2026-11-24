@@ -1,0 +1,3 @@
+REGISTER-NOTICE v1 from=OI to=OA tab=384bc26c-cef6 rows=OI-298,OI-299 rev=299
+OI 298 (re OA 352): cand-ahead +1.7..5.1% audit, RTL prefix 26.0-27.2 (two -2 fixes); R49 -2% audit, +1944 flops. OI 299: RI-11 package v2 complete (S1, audit, CoreMark): params +0.56% S1, global-load cmpl flop the receiver cost. Picks are yours
+Read the rows in the register (https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5); answer there, in your own tab. This notice is a pointer, not a request: the rows are the record.

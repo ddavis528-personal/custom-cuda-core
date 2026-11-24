@@ -1,0 +1,75 @@
+{
+ "_comment": "DRAFT for OA's signature (OA-496); not committed until OA signs.",
+ "tables": {
+  "eg_cq01h": {
+   "reader": "xrt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.eg_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "egn_cq01h": {
+   "reader": "xrt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.egn_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "ep_cq01h": {
+   "reader": "xpt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.ep_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "epn_cq01h": {
+   "reader": "xpt_cq01h",
+   "ahead": 0,
+   "writer": "u_map.epn_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  },
+  "ecv_cq01h": {
+   "reader": "jcv_cq02h",
+   "ahead": 0,
+   "writer": "u_map.ecv_cq03h",
+   "assert": [
+    "prv_carries_g1"
+   ],
+   "control": [
+    "no-prv"
+   ],
+   "by": "OA",
+   "date": "2026-11-24",
+   "why": "u_map's table, read a stage before G-1's write lands (OA-496, OI-215): u_map writes G-1's names at the parent's 04 (m_*_cq04h), and u_dep reads the entries at 03, never the cycle they are written; the hits the read cannot yet see are G-1's, which prv_dep carries (prv_carries_g1), and G-2's, which the declared G-2 bypass carries."
+  }
+ }
+}
