@@ -144,6 +144,22 @@
     "run": "{dir}/tb --cg {scenario} {vcd}",
     "scope": "miu_lead"
    }
+  },
+  {
+   "name": "miu_tlb",
+   "module": "miu_tlb",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_tlb.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_tlb {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_tlb"
+   }
   }
  ]
 }

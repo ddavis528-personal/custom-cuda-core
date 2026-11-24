@@ -16,6 +16,9 @@
 #   miu_lead: test/miu/lead_tb.cpp, A1 leaders, set index and the every-bank
 #     gate (MI-27 (b)); controls used (a gate blind to last cycle's
 #     launches), scale (no index scale) and last (a group's highest lane),
+#   miu_tlb: test/miu/tlb_tb.cpp, each slot's L0 and the 32-entry TLB's
+#     refill (MA rev 199), controls early (the L0 written a cycle early)
+#     and norr (the grant to the lowest pending slot),
 #   miu_ids: test/miu/ids_tb.cpp, the DCU req_ids: quarter picks, releases
 #     and the id-to-entry table,
 #   miu_cred: test/miu/cred_tb.cpp, DCU bank credits and the A1 gate,
@@ -82,4 +85,7 @@ bench miu_lead test/miu/cg-build.sh miu_lead "$B/miu_lead" -- "$B/miu_lead/tb"
 control miu_lead used
 control miu_lead scale
 control miu_lead last
+bench miu_tlb test/miu/cg-build.sh miu_tlb "$B/miu_tlb" -- "$B/miu_tlb/tb"
+control miu_tlb early
+control miu_tlb norr
 exit $fail
