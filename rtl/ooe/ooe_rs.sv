@@ -207,26 +207,32 @@ module ooe_rs #(
                                                input logic [N-1:0] keep);
     logic [P*N-1:0]   d;
     logic [2*P*N-1:0] cd;
-    d = rd;
+    logic [2*P-1:0]   td, tc0, tc1;   // each cell's terms, one per port it names: OR-reduced, a tree not a chain
     for (int p = 0; p < P; p++)
-      for (int j = 0; j < N; j++)
-        cd[(p * N + j) * 2 +: 2] = rc[(p * N + j) * 2 +: 2] & {2{keep[j]}};
-    for (int p = 0; p < P; p++)
-      for (int q = 0; q < P; q++)
-        for (int j = 0; j < N; j++) begin
-          if (q != p && gd[p * P + q] && g[q * N + j]) begin
-            d[p * N + j]             = 1'b1;
-            cd[(p * N + j) * 2 +: 2] = cd[(p * N + j) * 2 +: 2] | gc[(p * P + q) * 2 +: 2];
-          end
-          if (vd[p * P + q] && lg[q * N + j]) begin
-            d[p * N + j]             = 1'b1;
-            cd[(p * N + j) * 2 +: 2] = cd[(p * N + j) * 2 +: 2] | vc[(p * P + q) * 2 +: 2];
-          end
+      for (int j = 0; j < N; j++) begin
+        for (int q = 0; q < P; q++) begin
+          td[q]      = q != p && gd[p * P + q] && g[q * N + j];
+          td[P + q]  = vd[p * P + q] && lg[q * N + j];
+          tc0[q]     = td[q] & gc[(p * P + q) * 2];
+          tc1[q]     = td[q] & gc[(p * P + q) * 2 + 1];
+          tc0[P + q] = td[P + q] & vc[(p * P + q) * 2];
+          tc1[P + q] = td[P + q] & vc[(p * P + q) * 2 + 1];
         end
+        d[p * N + j]            = rd[p * N + j] | (|td);
+        cd[(p * N + j) * 2]     = (rc[(p * N + j) * 2] & keep[j]) | (|tc0);
+        cd[(p * N + j) * 2 + 1] = (rc[(p * N + j) * 2 + 1] & keep[j]) | (|tc1);
+      end
     rows_of = {cd, d};
   endfunction
 
   (* keep *) logic [N-1:0] valid_cq02h;  // the valid bits, for allocation and the rows
+  // Copies of the valid bits (OA rev 325, step 1): allocation's grant
+  // broadcast to the 3N-bit row write is the block's widest net, so each
+  // copy's grants drive one group of it, g1 the dep rows, g2 and g3 the code
+  // rows' halves, and g the rest (hit, prod, the column flags). Written and
+  // reset exactly as valid_cq02h; (* keep *) or synthesis merges them back.
+  (* keep *) logic [N-1:0] vc1_cq02h, vc2_cq02h, vc3_cq02h;
+  (* keep *) logic [P*N-1:0] g1_cq02h, g2_cq02h, g3_cq02h;
   (* keep *) logic [N-1:0] prod_cq02h;   // payload: read only while its entry is valid
   // The prod bits' copy for ooe_sched (NGD-7: the register starts paths
   // inside deeper than the output's budget allows).
@@ -252,6 +258,8 @@ module ooe_rs #(
   logic [P*W-1:0]   gi_cq02h;
   logic [P*N-1:0]   d_cq02h;
   logic [2*P*N-1:0] cd_cq02h;
+  logic [P*N-1:0]   dz_cq02h;    // the rows' named terms alone, no row bits: the free enters named's root
+  logic [2*P*N-1:0] cdz_cq02h;
   // -- Confirmation, here (OI-45, OI-50; V-65) --------------------------------
   // This module's issued register: set at a grant (select's, issued from
   // the next edge), cleared by its own replays and frees, so it is
@@ -299,9 +307,15 @@ module ooe_rs #(
   assign rmask_cq02h = valid_cq02h & ~free_cq02h & ~lga_cq02h;
   always_comb begin
     g_cq02h = grants(valid_cq02h, req_cq01h);
+    g1_cq02h = grants(vc1_cq02h, req_cq01h);
+    g2_cq02h = grants(vc2_cq02h, req_cq01h);
+    g3_cq02h = grants(vc3_cq02h, req_cq01h);
     {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{rmask_cq02h}}, row_code_cq01h, grp_dep_cq01h,
                                   grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
                                   valid_cq02h & ~lga_cq02h);
+    {cdz_cq02h, dz_cq02h} = rows_of(g_cq02h, '0, row_code_cq01h, grp_dep_cq01h,
+                                    grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
+                                    valid_cq02h & ~lga_cq02h);
     for (int p = 0; p < P; p++) begin
       gv_cq02h[p]           = |g_cq02h[p * N +: N];
       gi_cq02h[p * W +: W] = '0;
@@ -390,21 +404,32 @@ module ooe_rs #(
   logic [2*N*N-1:0] code_nx_cq02h;
   logic [N-1:0]     hr_nx_cq02h, hm_nx_cq02h, named_r_cq02h, named_m_cq02h;
   logic [2*N*N-1:0] dep2_cq02h;    // each cell's bit, twice, as the line selects lie
-  logic             hit_cq02h;
+  logic             hit_cq02h, ga1_cq02h, ga2_cq02h, ga3_cq02h;
+  logic [A-1:0]     nt_r_cq02h, nt_m_cq02h, ny_r_cq02h, ny_m_cq02h;
   always_comb begin
     for (int c = 0; c < N * N; c++) dep2_cq02h[c * 2 +: 2] = {2{dep_cq02h[c]}};
     named_r_cq02h = '0;
     named_m_cq02h = '0;
     for (int i = 0; i < N; i++) begin
+      // One-hot AND-OR (an entry is granted to one port at most): the kept
+      // row where no port takes it, else the taking port's row; each group
+      // of the row through its own grant copy.
       hit_cq02h = 1'b0;
-      dep_nx_cq02h[i * N +: N]           = dep_cq02h[i * N +: N] & ~free_cq02h;
-      code_nx_cq02h[i * 2 * N +: 2 * N] = code_cq02h[i * 2 * N +: 2 * N] & dep2_cq02h[i * 2 * N +: 2 * N];
-      for (int p = 0; p < P; p++)
-        if (g_cq02h[p * N + i]) begin
-          hit_cq02h                          = 1'b1;
-          dep_nx_cq02h[i * N +: N]           = d_cq02h[p * N +: N];
-          code_nx_cq02h[i * 2 * N +: 2 * N] = cd_cq02h[p * 2 * N +: 2 * N];
-        end
+      ga1_cq02h = 1'b0; ga2_cq02h = 1'b0; ga3_cq02h = 1'b0;
+      for (int p = 0; p < P; p++) begin
+        hit_cq02h = hit_cq02h | g_cq02h[p * N + i];
+        ga1_cq02h = ga1_cq02h | g1_cq02h[p * N + i];
+        ga2_cq02h = ga2_cq02h | g2_cq02h[p * N + i];
+        ga3_cq02h = ga3_cq02h | g3_cq02h[p * N + i];
+      end
+      dep_nx_cq02h[i * N +: N]           = dep_cq02h[i * N +: N] & ~free_cq02h & {N{!ga1_cq02h}};
+      code_nx_cq02h[i * 2 * N +: N]      = code_cq02h[i * 2 * N +: N] & dep2_cq02h[i * 2 * N +: N] & {N{!ga2_cq02h}};
+      code_nx_cq02h[i * 2 * N + N +: N]  = code_cq02h[i * 2 * N + N +: N] & dep2_cq02h[i * 2 * N + N +: N] & {N{!ga3_cq02h}};
+      for (int p = 0; p < P; p++) begin
+        dep_nx_cq02h[i * N +: N]          = dep_nx_cq02h[i * N +: N] | (d_cq02h[p * N +: N] & {N{g1_cq02h[p * N + i]}});
+        code_nx_cq02h[i * 2 * N +: N]     = code_nx_cq02h[i * 2 * N +: N] | (cd_cq02h[p * 2 * N +: N] & {N{g2_cq02h[p * N + i]}});
+        code_nx_cq02h[i * 2 * N + N +: N] = code_nx_cq02h[i * 2 * N + N +: N] | (cd_cq02h[p * 2 * N + N +: N] & {N{g3_cq02h[p * N + i]}});
+      end
       valid_nx_cq02h[i] = hit_cq02h || (valid_cq02h[i] && !free_cq02h[i]);
       // Its prod bit, from its port; cleared with its valid bit (read only
       // while valid), so it shares its class's enable.
@@ -418,11 +443,21 @@ module ooe_rs #(
           kc_nx_cq01h[i * 5 +: 5] = {acls_cq01h[p * 3 +: 3], akind_cq01h[p * 2 +: 2]};
         end
     end
-    for (int p = 0; p < P; p++)
-      if (|g_cq02h[p * N +: N]) begin
-        if (p < A) named_r_cq02h = named_r_cq02h | d_cq02h[p * N +: N];
-        else       named_m_cq02h = named_m_cq02h | d_cq02h[p * N +: N];
+    // Each column's flag from the ports that write a row naming it: an
+    // OR-reduce over the class's ports, a tree not a chain.
+    for (int j = 0; j < N; j++) begin
+      // The free enters at the root: a port's row names column j through
+      // its own input (masked, rmask) or through a grant it names (dz, the
+      // row less its input), so (rmask & X) | Y, X free of the free.
+      for (int p = 0; p < A; p++) begin
+        nt_r_cq02h[p] = gv_cq02h[p] & row_dep_cq01h[p * N + j];
+        nt_m_cq02h[p] = gv_cq02h[A + p] & row_dep_cq01h[(A + p) * N + j];
+        ny_r_cq02h[p] = gv_cq02h[p] & dz_cq02h[p * N + j];
+        ny_m_cq02h[p] = gv_cq02h[A + p] & dz_cq02h[(A + p) * N + j];
       end
+      named_r_cq02h[j] = (rmask_cq02h[j] & (|nt_r_cq02h)) | (|ny_r_cq02h);
+      named_m_cq02h[j] = (rmask_cq02h[j] & (|nt_m_cq02h)) | (|ny_m_cq02h);
+    end
     // Emptiness in parallel with the rows: a kept row's from its flops less
     // the frees; a new one's from its port's inputs, before any grant (a
     // row naming a port of its group names a granted entry: every port that
@@ -630,17 +665,24 @@ module ooe_rs #(
     if (rst_r01h) begin
       valid_cq02h   <= '0;
       valid_o_cq02h <= '0;
+      vc1_cq02h <= '0; vc2_cq02h <= '0; vc3_cq02h <= '0;
       hr_cq02h      <= '0;
       hm_cq02h      <= '0;
     end else begin
       if (rcu_en_cq01h) begin
         valid_cq02h[NR-1:0]   <= valid_nx_cq02h[NR-1:0];
         valid_o_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
+        vc1_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
+        vc2_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
+        vc3_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
         hr_cq02h              <= hr_nx_cq02h;
       end
       if (miu_en_cq01h) begin
         valid_cq02h[N-1:NR]   <= valid_nx_cq02h[N-1:NR];
         valid_o_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
+        vc1_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
+        vc2_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
+        vc3_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
         hm_cq02h              <= hm_nx_cq02h;
       end
     end
