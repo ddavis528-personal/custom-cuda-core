@@ -420,16 +420,14 @@ module dcu_bctl #(
   // The flags, one gate open in a write's cycle and the next (when they
   // clear); mgp, each fill slot's set is last cycle's write's (DI-43, below).
   logic [NFW-1:0] mgp_q_cc04h, mgpn_cc04h;
+  // ftps/ftpp are read only under ftp_q, so they load at every open of the
+  // gate (one group with the flags, CG-4): under ftp_q they hold the write's.
   logic ftp_en_cc04h;
   assign ftp_en_cc04h = rst_r01h || ftfe_cc04h || ftp_q_cc04h;
   always_ff @(posedge dcu_core_clk) begin
     if (ftp_en_cc04h) begin
       ftp_q_cc04h  <= !rst_r01h && ftfe_cc04h;
       mgp_q_cc04h  <= mgpn_cc04h & {NFW{!rst_r01h}};
-    end
-  end
-  always_ff @(posedge dcu_core_clk) begin
-    if (ftfe_cc04h) begin
       ftps_q_cc04h <= wfs_q_cc04h;
       ftpp_q_cc04h <= wsp_q_cc04h;
     end
@@ -1433,8 +1431,9 @@ module dcu_bctl #(
   assign ywf_cc04h = pwn_cc02h && !(hf_cc04h && |(ch_cc04h & yd_q_cc04h));
 `endif
   // A held fill that yields marks its slot (cleared by the slot's next fill).
-  logic yev_cc04h, yd_en_cc04h;
+  logic yev_cc04h;
   assign yev_cc04h   = bf_cc04h && !mp_cc04h && hf_cc04h && ywf_cc04h;
+  logic yd_en_cc04h;
   assign yd_en_cc04h = rst_r01h || yev_cc04h || fl_q_cc04h;
   always_ff @(posedge dcu_core_clk) begin
     if (yd_en_cc04h)
@@ -1450,12 +1449,8 @@ module dcu_bctl #(
       sv_q_cc04h   <= '0;
       hd_q_cc04h   <= '0;
       fpw_q_cc04h   <= '0;
-      fsel_q_cc04h <= NFW'(1);
-      hp_q_cc04h   <= NFW'(1);
-      hpo_q_cc04h  <= NFW'(1);
       fl2_q_cc04h  <= 1'b0;
       vt_q_cc04h   <= 1'b0;
-      snt_q_cc04h  <= '0;
       fu_q_cc04h   <= 1'b0;
       gfa_q_cc04h  <= 1'b0;
     end else begin
@@ -1465,18 +1460,36 @@ module dcu_bctl #(
         hd_q_cc04h[f] <= sv_q_cc04h[f] && !gf_cc04h[f] && !sn_cc04h[f] &&
                          (hd_q_cc04h[f] || sdt_cc04h[f] >= WTS'(KH));
       fpw_q_cc04h   <= (fpw_q_cc04h | sn_cc04h) & ~vn_cc04h;
-      // (the pointers rotate one slot on a payload, a grant)
-      fsel_q_cc04h <= ({fsel_q_cc04h[NFW-2:0], fsel_q_cc04h[NFW-1]} & {NFW{fl_q_cc04h}}) |
-                      (fsel_q_cc04h & {NFW{!fl_q_cc04h}});
-      hp_q_cc04h   <= ({hp_q_cc04h[NFW-2:0], hp_q_cc04h[NFW-1]} & {NFW{tf_cc04h}}) |
-                      (hp_q_cc04h & {NFW{!tf_cc04h}});
-      hpo_q_cc04h  <= ({hp_q_cc04h[NFW-2:0], hp_q_cc04h[NFW-1]} & {NFW{tf_cc04h}}) |
-                      (hp_q_cc04h & {NFW{!tf_cc04h}});
       fl2_q_cc04h  <= fl_q_cc04h;
       vt_q_cc04h   <= tk_cc04h;
-      snt_q_cc04h  <= fsel_q_cc04h & {NFW{fl_q_cc04h && (pa_cc04h || nm_cc04h)}};
       fu_q_cc04h   <= vt_q_cc04h;
       gfa_q_cc04h  <= tf_cc04h;
+    end
+  end
+  // The pointers rotate one slot on a payload (fsel), a grant (hp, hpo),
+  // each gated: fsel with the stamps' slot it loads, open on a payload and
+  // while a stamp slot is set; the heads on the write fields' gate, which
+  // holds every grant (tf needs wf_en's terms; CG-5).
+  logic fs_en_cc04h;
+  assign fs_en_cc04h = rst_r01h || fl_q_cc04h || |snt_q_cc04h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (fs_en_cc04h) begin
+      fsel_q_cc04h <= rst_r01h ? NFW'(1) :
+                      ({fsel_q_cc04h[NFW-2:0], fsel_q_cc04h[NFW-1]} & {NFW{fl_q_cc04h}}) |
+                      (fsel_q_cc04h & {NFW{!fl_q_cc04h}});
+      snt_q_cc04h  <= fsel_q_cc04h & {NFW{!rst_r01h && fl_q_cc04h && (pa_cc04h || nm_cc04h)}};
+    end
+  end
+  logic hp_en_cc04h;
+  assign hp_en_cc04h = rst_r01h || wf_en_cc04h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (hp_en_cc04h) begin
+      hp_q_cc04h  <= rst_r01h ? NFW'(1) :
+                     ({hp_q_cc04h[NFW-2:0], hp_q_cc04h[NFW-1]} & {NFW{tf_cc04h}}) |
+                     (hp_q_cc04h & {NFW{!tf_cc04h}});
+      hpo_q_cc04h <= rst_r01h ? NFW'(1) :
+                     ({hp_q_cc04h[NFW-2:0], hp_q_cc04h[NFW-1]} & {NFW{tf_cc04h}}) |
+                     (hp_q_cc04h & {NFW{!tf_cc04h}});
     end
   end
   logic fu_en_cc04h;
@@ -1594,19 +1607,30 @@ module dcu_bctl #(
   // at most NFW fills (each one that yielded to it once); a held fill waits
   // at most HW cycles (DI-37: K + gap + 1 + 11 + 1 in the model's terms).
   `CCV_ASSERT(bctl_port_overflow, !(fwe_q_cc01h && &pvs_cc02h))
+  // The wait counters below are the assertions' own state, gated like any
+  // register: open while a head waits or a count is left to clear.
   logic [3:0] phw_q_cc03h;
+  logic       phw_en_cc03h, phwc_cc02h;
+  assign phw_en_cc03h = rst_r01h || pv_q_cc02h[0] || |phw_q_cc03h;
+  assign phwc_cc02h   = rst_r01h || !pv_q_cc02h[0] || pw_cc02h;
   always_ff @(posedge dcu_core_clk) begin
-    if (rst_r01h || !pv_q_cc02h[0] || pw_cc02h) phw_q_cc03h <= '0;
-    else if (phw_q_cc03h != 4'hf)                phw_q_cc03h <= phw_q_cc03h + 4'd1;
+    if (phw_en_cc03h)
+      phw_q_cc03h <= phwc_cc02h ? 4'd0 : phw_q_cc03h + 4'(phw_q_cc03h != 4'hf);
   end
   `CCV_ASSERT(bctl_port_wait, phw_q_cc03h <= 4'(NFW))
   localparam int HW = 4 * NFW;
   logic [5:0] hw_q_cc04h [NFW];
-  logic       hw_ok_cc04h;
+  logic       hw_ok_cc04h, hw_en_cc04h, hwnz_cc04h;
+  always_comb begin
+    hwnz_cc04h = 1'b0;
+    for (int f = 0; f < NFW; f++) hwnz_cc04h = hwnz_cc04h || (|hw_q_cc04h[f]);
+  end
+  assign hw_en_cc04h = rst_r01h || |(sv_q_cc04h & hd_q_cc04h) || hwnz_cc04h;
   always_ff @(posedge dcu_core_clk) begin
-    for (int f = 0; f < NFW; f++)
-      if (rst_r01h || !(sv_q_cc04h[f] && hd_q_cc04h[f]) || gf_cc04h[f]) hw_q_cc04h[f] <= '0;
-      else if (hw_q_cc04h[f] != 6'h3f)                                 hw_q_cc04h[f] <= hw_q_cc04h[f] + 6'd1;
+    if (hw_en_cc04h)
+      for (int f = 0; f < NFW; f++)
+        hw_q_cc04h[f] <= (rst_r01h || !(sv_q_cc04h[f] && hd_q_cc04h[f]) || gf_cc04h[f])
+                       ? 6'd0 : hw_q_cc04h[f] + 6'(hw_q_cc04h[f] != 6'h3f);
   end
   always_comb begin
     hw_ok_cc04h = 1'b1;
