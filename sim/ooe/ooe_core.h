@@ -90,6 +90,12 @@ struct Config {
   /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle
   /// counted held through the next as well.
   unsigned rs_free_lag = 0;
+  /// rs_cand_ahead A (OA rev 352, (1)): ooe_rs registers each class's
+  /// allocation candidates a cycle ahead, the first A entries free at the
+  /// start of the cycle before that were not that cycle's candidates. Only a
+  /// candidate is allocated or counted free by rename; one left unused idles
+  /// a cycle. 0 is off.
+  unsigned rs_cand_ahead = 0;
   unsigned decq_free_lag = 1;   // DA, OA rev 327: ooe_decq builds it
   unsigned ren_floor = ccv::prov::kRenFloor;
   unsigned ren_ceil = ccv::prov::kRenCeil;
@@ -2022,7 +2028,9 @@ private:
   std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
   bool free_prompt_ = false;                ///< an RS free now is a confirmation's
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
-  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]); }
+  std::vector<uint8_t> rs_cand_, rs_vstart_;   ///< rs_cand_ahead: this cycle's candidates, valid at its start
+  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]) ||
+                                         (cfg_.rs_cand_ahead && !(e < rs_cand_.size() && rs_cand_[e])); }
   bool robHeld(unsigned si, unsigned i) const {
     const size_t k = size_t(si) * cfg_.rob_depth + i;
     return slot_[si].rob[i].valid || rob_late_[k] ||

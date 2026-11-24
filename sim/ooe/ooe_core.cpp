@@ -27,7 +27,7 @@ std::string Config::apply(const std::string &spec) {
       {"rs_warp_cap", &rs_warp_cap}, {"decq", &decq}, {"decq_warp_max", &decq_warp_max},
       {"phys_regs", &phys_regs}, {"pred_regs", &pred_regs},
       {"fl_buf", &fl_buf}, {"fl_banks", &fl_banks}, {"fl_free_lag", &fl_free_lag},
-      {"rs_free_lag", &rs_free_lag}, {"decq_free_lag", &decq_free_lag}, {"ren_floor", &ren_floor},
+      {"rs_free_lag", &rs_free_lag}, {"rs_cand_ahead", &rs_cand_ahead}, {"decq_free_lag", &decq_free_lag}, {"ren_floor", &ren_floor},
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
@@ -421,6 +421,20 @@ void Core::cycle(uint64_t now) {
   // rs_free_lag: last cycle's frees (wlog_ is cleared below).
   rs_prev_free_.assign(n_, 0);
   for (unsigned e = 0; e != n_ && e < wlog_.rfree.size(); ++e) rs_prev_free_[e] = wlog_.rfree[e];
+  // rs_cand_ahead: next cycle's candidates, from this cycle's start (its
+  // registered valid bits) less this cycle's candidates.
+  if (cfg_.rs_cand_ahead) {
+    std::vector<uint8_t> nc(n_, 0);
+    if (rs_vstart_.size() != n_) rs_vstart_.assign(n_, 1);
+    if (rs_cand_.size() != n_) rs_cand_.assign(n_, 0);
+    for (unsigned k = 0; k != 2; ++k) {
+      unsigned got = 0;
+      for (unsigned e = k ? cfg_.rs_rcu : 0; e != (k ? n_ : cfg_.rs_rcu) && got != cfg_.rs_cand_ahead; ++e)
+        if (!rs_vstart_[e] && !rs_cand_[e]) { nc[e] = 1; ++got; }
+    }
+    rs_cand_.swap(nc);
+    for (unsigned e = 0; e != n_; ++e) rs_vstart_[e] = rs_[e].valid;
+  }
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   if (cfg_.fits_stale) {
     rob_prompt_prev_ = rob_prompt_;
@@ -966,7 +980,8 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
   // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
-    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e]) && !(cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e])) {
+    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e]) && !(cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]) &&
+        !(cfg_.rs_cand_ahead && !(e < rs_cand_.size() && rs_cand_[e]))) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
@@ -984,6 +999,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
       ++slot_[slot].rs_held;
       return e;
     }
+  if (cfg_.rs_cand_ahead) err("rs_cand_ahead: class %u has no candidate left at cycle %llu", unsigned(c), (unsigned long long)now_);
   return kNoEntry;
 }
 
