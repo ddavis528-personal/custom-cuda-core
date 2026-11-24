@@ -609,6 +609,10 @@ under an enable comparing a tagged index with the row's number, and read by
 a loop selecting a row by the same compare. The compare's tagged side is
 then the read's index, held to condition 4 (at the reader's stage), and a
 writer's enable may be a net reaching the rows through the generate block.
+A row's own read-modify-write (its next value reading the row through the
+loop variable, written back to that row) takes its compare from the write's
+enable (DI-53). A read the plain arithmetic already passes, such as one at
+the table's own stage, needs no listing.
 `reference_table3.sv` (passes) and `bad_table3.sv` (a row compare a stage
 early, refused) hold it.
 

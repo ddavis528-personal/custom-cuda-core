@@ -3,7 +3,8 @@
   "table": {
     "mtab_cy03h": {
       "readers": [
-        "mrd_cy02h"
+        "mrd_cy02h",
+        "mrn_cy02h"
       ],
       "writers": [
         {

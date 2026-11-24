@@ -1641,6 +1641,20 @@ def check_file(path, rel):
                             if lhs == reader:
                                 exprs += [row_index(e, [rhs], loopv)
                                           for e in index_reads(rhs, arr)[0]]
+                    # A row's own read-modify-write (DI-53): the row's value is
+                    # read through its loop variable and written back to the
+                    # same row; its compare is in the write's enable.
+                    wctx = []
+                    for k, rhs, li, c in wr:
+                        if reader in IDENT_RE.findall(rhs) and li.strip() in loopv:
+                            for cc in c:
+                                wctx.append(cc)
+                                for nm in IDENT_RE.findall(cc):
+                                    for m in re.finditer(r"\bassign\s+%s\s*=\s*([^;]+);"
+                                                         % re.escape(nm), body):
+                                        wctx.append(m.group(1))
+                    if wctx:
+                        exprs = [row_index(e, wctx, loopv) for e in exprs]
                     bad_ix = None
                     for e in exprs:
                         ridx.update(re.findall(r"[a-z]\w*", e))

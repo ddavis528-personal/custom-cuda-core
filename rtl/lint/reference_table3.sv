@@ -7,7 +7,8 @@
 // generate block under a compare of the port's tagged row with its number,
 // and read by a loop selecting the row by the same compare, its tagged side
 // at the reader's stage. The lookup's enable is a net, pw_cy02h, reaching
-// the rows through the generate block.
+// the rows through the generate block. Each row's next value reads the row
+// itself, its compare in the sibling write enable.
 // tools/check-1d.sh fails if ANY finding is reported here.
 //===----------------------------------------------------------------------===//
 
@@ -56,15 +57,17 @@ module reference_table3 (
   // The write port: the lookup writes unless the fill has it (it then waits).
   logic       pw_cy02h;
   logic [2:0] pi_cy02h;
-  logic [5:0] pd_cy02h;
   assign pw_cy02h = lv_cy02h & ~fe_cy04h;
   assign pi_cy02h = fe_cy04h ? fi_cy04h : li_cy02h;
-  assign pd_cy02h = fe_cy04h ? fd_cy04h : rd_cy02h + 6'd1;
+  // Each row's own read-modify-write: the row's next value reads the row,
+  // its compare in the sibling enable (DI-53).
   for (genvar r = 0; r < 8; r++) begin : g_tab
-    logic ren_cy02h;
+    logic       ren_cy02h;
+    logic [5:0] rn_cy02h;
     assign ren_cy02h = (pw_cy02h | fe_cy04h) && pi_cy02h == 3'(r);
+    assign rn_cy02h  = fe_cy04h ? fd_cy04h : tab_cy03h[r] + 6'd1;
     always_ff @(posedge reference_core_clk) begin
-      if (ren_cy02h) tab_cy03h[r] <= pd_cy02h;
+      if (ren_cy02h) tab_cy03h[r] <= rn_cy02h;
     end
   end
   always_ff @(posedge reference_core_clk) rd_out_cy03h <= rd_cy02h;

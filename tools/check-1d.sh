@@ -234,7 +234,8 @@ WANT
 # fold table as DI wrote it (DI-51: row registers in a generate loop, each
 # written and read under a compare of a tagged index with its row number,
 # the lookup's enable a net through the generate block), passes;
-# bad_table3.sv's row compare a stage early is refused.
+# bad_table3.sv's row compare a stage early, and a declaration leaving
+# out the rows' own read-modify-write (DI-53), are refused.
 while IFS='|' read -r what want; do
   if grep -qF "$want" "$TMP/bad.log"; then
     say "CCV-L23 two-writer table refused: $what" "PASS"
@@ -246,6 +247,7 @@ an unasserted second enable|table ntab_cy03h is refused: writer fill's enable (n
 an undeclared second writer|table utab_cy03h is refused: an undeclared writer reaches its write port: ugd_cy05h, uge_cy05h, ugi_cy05h, at stage 05
 no write-conflict assertion|table ctab_cy03h is refused: writer fill's enable (cfe_cy04h) is named in no assertion with the loop writer's (cle_cy02h)
 a row compare not at the reader's stage|table mtab_cy03h's read by mrd_cy02h is refused: its index 'mli_cy01h' is at stage 01, not the reader's own (02)
+a row's own read not listed|table otab_cy03h is refused: its loop writer lookup reads no listed reader
 ...and the refused port's stage skip reported|upe_cy02h is at stage 02 but combinational logic over stage(s) 02,04,05 gives 05
 WANT
 
