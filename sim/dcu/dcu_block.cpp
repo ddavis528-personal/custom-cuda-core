@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 #include "dcu_core.h"
+#include "wayfold.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -83,6 +84,10 @@ private:
     c.ue_track = envU("CCV_DCU_UE_TRACK", c.ue_track);
     c.ecc_every = envU("CCV_DCU_ECC_INJECT", 0);
     c.notice = envU("CCV_DCU_NOTICE", c.notice) != 0;
+    // Under MI's MIU model, MIU's A2 drops every other slot on a bank
+    // (MA-27), so two lookups due in one bank in one cycle never happen
+    // (DI-25 (4), MA rev 156). The stub sends them; the loser path stays.
+    if (const char *v = std::getenv("CCV_MIU_IMPL")) c.no_cycle_conflict = std::string(v) == "model";
     c.brk = k.brk;
     return c;
   }
@@ -109,6 +114,14 @@ private:
       k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
               (unsigned long long)pa, (unsigned long long)set);
+    // TI-518, AR 405 (3): MIU's pa_fold is DCU's own fold of phys_addr
+    // whenever the predictor is on (--break miu-fold-flip), as the stub's.
+    const unsigned k = core_.config().wp_bits;
+    const uint64_t pf = get(req, c.miu_dcu, "pa_fold");
+    if (k && !core_.config().wp_mru && pf != ccv::skel::wayFold(pa, k))
+      k_.fail("dcu: slot %u req_id %u pa_fold %llx is not its phys_addr %llx's fold %x",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)pf,
+              (unsigned long long)pa, ccv::skel::wayFold(pa, k));
   }
 
   D::Req decode(unsigned s, const Receiver::Msg &m) {
@@ -130,6 +143,13 @@ private:
 
   void work() override {
     const Ch &c = ch();
+    // Slice 2, part 1: a fill's ccv_mlc_dcu_rsp credit is its fill buffer,
+    // home when the line is written and its last answer has left (an
+    // acknowledgement's at once).
+    if (!armed_) {
+      armed_ = true;
+      creditAtRelease(c.mlc_dcu);
+    }
     std::vector<D::Req> in;
     // Requests whose payload lands now, in slot order, unless DCU holds the
     // channel; a held one is taken the first cycle DCU accepts again. One a
@@ -164,6 +184,16 @@ private:
       f.own = get(m.payload, c.mlc_dcu, "ownership") != 0;
       fill = f;
     }
+    // Slice 2, part 4: an inbound probe (MLC's own req_id: its probe buffer).
+    std::optional<D::Probe> prb;
+    if (has(prb_in_, 0)) {
+      Receiver::Msg m = take(prb_in_, 0);
+      D::Probe q;
+      q.id = unsigned(get(m.payload, prb_in_, "req_id"));
+      q.pa = get(m.payload, prb_in_, "phys_addr");
+      q.inval = get(m.payload, prb_in_, "invalidate_or_downgrade") != 0;
+      prb = q;
+    }
     D::Ports p;
     for (unsigned s = 0; s != D::kSlots; ++s) {
       p.rsp_can[s] = can(c.dcu_miu, s);
@@ -171,7 +201,16 @@ private:
       p.ntc_can[s] = can(c.fill_ntc, s);
     }
     p.mlc_can = can(c.dcu_mlc, 0);
-    const D::Out o = core_.cycle(now_, in, fill, p);
+    p.prb_can = can(prb_ack_, 0);
+    const D::Out o = core_.cycle(now_, in, fill, p, prb);
+    if (o.prb_ack) {
+      Bits b = msgOf(prb_ack_);
+      put(b, prb_ack_, "req_id", o.prb_ack->id);
+      put(b, prb_ack_, "ack", o.prb_ack->data);
+      if (o.prb_ack->data) putLine(b, field(prb_ack_, "dirty_data").lsb, o.prb_ack->line);
+      send(prb_ack_, 0, b, makeUid(IdClass::kNone, 0));
+    }
+    for (unsigned k = 0; k != o.fill_release; ++k) release(c.mlc_dcu, 0);
     for (const auto &n : o.notices) {
       Bits b = msgOf(c.fill_ntc);
       put(b, c.fill_ntc, "req_id", n.req_id);
@@ -248,6 +287,10 @@ private:
     }
   }
   bool ue_owed_ = false;
+  bool armed_ = false;
+  // The probe channels, which stub.h's Ch does not name yet.
+  const unsigned prb_in_ = chanId("ccv_mlc_dcu_probe");
+  const unsigned prb_ack_ = chanId("ccv_dcu_mlc_probe_ack");
   bool extra_sent_ = false;
   std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
   bool credOwed() const {

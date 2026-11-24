@@ -4,6 +4,17 @@
 # the sizes its units use. One PASS line each; any failure fails the run.
 #   dcu_cap: test/dcu/cap_tb.cpp, one request slot's capture, and its control
 #            early (the payload taken with its valid), which must fail
+#   dcu_btag: test/dcu/btag_tb.cpp, one bank's tag RFs and compare, and its
+#            controls highest (the highest slot picked) and wbr (a same-edge
+#            write seen by the read), which must fail
+#   dcu_bctl: test/dcu/bctl_tb.cpp, one bank's controller (fold compare,
+#            grants, wait queue, aging, fix, PLRU, entry returns), and its
+#            controls flat (the model puts a new lookup ahead of the re-read)
+#            and nofree (a dropped access keeps its entry), which must fail
+#   dcu_mshr: test/dcu/mshr_tb.cpp, the miss buffers (merge, allocate, wait,
+#            bank order, the request to MLC, a fill's entry read), and its
+#            controls nomerge (dcu-mshr-nomerge), order (dcu-miss-reorder) and credit,
+#            which must fail
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/dcu-rtl; mkdir -p "$B"
@@ -33,4 +44,18 @@ control() {   # unit, control: the bench must fail with mismatches
 }
 bench dcu_cap test/dcu/cg-build.sh dcu_cap "$B/dcu_cap" -- "$B/dcu_cap/tb"
 control dcu_cap early
+bench dcu_btag test/dcu/cg-build.sh dcu_btag "$B/dcu_btag" -- "$B/dcu_btag/tb"
+control dcu_btag highest
+control dcu_btag wbr
+for seed in 1 2 3; do
+  bench "dcu_bctl seed $seed" test/dcu/cg-build.sh dcu_bctl "$B/dcu_bctl" -- "$B/dcu_bctl/tb" --seed $seed
+done
+control dcu_bctl flat
+control dcu_bctl nofree
+for seed in 1 2 3; do
+  bench "dcu_mshr seed $seed" test/dcu/cg-build.sh dcu_mshr "$B/dcu_mshr" -- "$B/dcu_mshr/tb" --seed $seed
+done
+control dcu_mshr nomerge
+control dcu_mshr order
+control dcu_mshr credit
 exit $fail

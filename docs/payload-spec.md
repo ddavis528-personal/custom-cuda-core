@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 17 | 44 |
+| All decided | 17 | 45 |
 | ⚠️ Some provisional | 27 | 148 |
 | ⛔ Some preliminary | 13 | 154 |
-| **Total** | **57** | **346** |
+| **Total** | **57** | **347** |
 
 ## What still has to be decided
 
@@ -211,7 +211,7 @@ rau → ooe · rate 1 · control
 
 ### `ccv_ooe_rau_drained`
 
-Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length. Every demote gets exactly one drained. REFUSED (OA's response TI-25 (2)): a demote that lands after the warp's exit has retired is refused, with no squash, no map and no rewind beats, and drained carries refused = 1; RAU cancels the demotion (no migration commands), and exited frees the slot as for any finishing warp. A demote that lands before the exit retires is an ordinary demotion, and the squash takes the exit with it.
+Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length. Every demote gets exactly one drained. REFUSED (OA's response TI-25 (2)): a demote that lands after the warp's exit has retired is refused, with no squash, no map and no rewind beats, and drained carries refused = 1; RAU cancels the demotion (no migration commands), and exited frees the slot as for any finishing warp. A demote that lands before the exit retires is an ordinary demotion, and the squash takes the exit with it. PC_KEPT (OA 469, AR 406, AR 408): pc_kept = 1 iff no instruction of the warp has retired since its tier-1 slot was allocated (launch or restore-alloc). resume_pc is then don't-care, and RAU resumes the warp at the PC it allocated the slot with: the launch start_pc, or the resume_pc it restored, which RAU's parked record keeps valid from the restore to the warp's next drained (AR 407; RAU keeps no PC register of its own). Otherwise pc_kept = 0 and resume_pc is as before. With refused = 1, pc_kept is don't-care. The architectural PC moves only when an instruction retires, so with nothing retired since the alloc it is still the alloc PC (AR 406 (2)). The models CHECK that on pc_kept = 1 the oracle's architectural PC equals the PC RAU resumes at.
 
 ooe → rau · rate 1 · control
 
@@ -221,7 +221,8 @@ ooe → rau · rate 1 · control
 | `resume_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `arch_state_ready` | `1` | 1 | literal |
 | `refused` | `1` | 1 | literal |
-| **total** | | **71** | |
+| `pc_kept` | `1` | 1 | literal |
+| **total** | | **72** | |
 
 ### `ccv_rau_rcu_mig`
 

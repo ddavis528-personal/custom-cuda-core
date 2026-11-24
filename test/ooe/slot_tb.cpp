@@ -19,8 +19,9 @@
 // atomic at the head never holds a demote), no-xr (a demote is never
 // refused), no-held (the ROB always reads empty), lnd-early (the notice
 // always reads landed), no-kill-lead (the kill's lead never reaches it),
-// no-ev-lead (the event lead never reaches it) and no-free (a free never
-// reaches it).
+// no-ev-lead (the event lead never reaches it), no-free (a free never
+// reaches it) and rsa-no-clear-restore (a restore-allocate never clears
+// the slot's retired-since-allocation flop, so its pc_kept is lost).
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
@@ -54,7 +55,7 @@ Core::SlotLog pend;
 bool have_pend = false;
 bool exp_ack = false;
 unsigned exp_ack_ep = 0;
-unsigned long long cycles = 0, cores = 0, mismatches = 0, allocs[4] = {}, demotes = 0, refused = 0, held_dm = 0,
+unsigned long long kept_drains = 0, cycles = 0, cores = 0, mismatches = 0, allocs[4] = {}, demotes = 0, refused = 0, held_dm = 0,
                    kills = 0, acks = 0, acks_now = 0, ntcs = 0, maps = 0, drains = 0, rels = 0, skipped = 0,
                    max_al = 0, max_dm = 0;
 
@@ -154,6 +155,13 @@ void drive(const Core::SlotLog &e, const Core::SlotLog *nx) {
   dut->lnd_cq01h = control == "lnd-early" ? (1u << S) - 1 : e.landed;
   dut->ath_cq01h = control == "no-ath" ? 0 : e.ath;
   dut->xr_cq01h = control == "no-xr" ? 0 : e.xr;
+  // pc_kept (OA 470): the retirements, and the control rsa-no-clear-restore,
+  // a retirement on every restore-allocate's own cycle, so rsa survives it.
+  uint32_t ret = e.ret;
+  if (control == "rsa-no-clear-restore")
+    for (const auto &a : e.alloc)
+      if (a.op == 2) ret |= 1u << a.slot;
+  dut->ret_cq01h = ret;
   // The next cycle's leads.
   dut->ev_l_cq00h = nx && hasEvents(*nx) && control != "no-ev-lead";
   dut->kill_l_cq00h = nx && nx->kill && control != "no-kill-lead";
@@ -168,7 +176,7 @@ void drive(const Core::SlotLog &e, const Core::SlotLog *nx) {
   if (dut->map_cq02h != e.map) fail("maps differ", 0, dut->map_cq02h, e.map);
   if (dut->rel_cq02h != e.release) fail("releases differ", 0, dut->rel_cq02h, e.release);
   if (dut->dmh_cq02h != e.dmh) fail("held demotes differ", 0, dut->dmh_cq02h, e.dmh);
-  uint32_t drn = 0, ref = 0;
+  uint32_t drn = 0, ref = 0, kept = 0;
   for (const auto &d : e.drained) {
     int s = -1;
     for (unsigned t = 0; t != S; ++t)
@@ -176,10 +184,13 @@ void drive(const Core::SlotLog &e, const Core::SlotLog *nx) {
     if (s < 0) { fail("a drained message for a warp no slot holds", 0, 0, d.warp); continue; }
     drn |= 1u << s;
     if (d.refused) ref |= 1u << s;
+    else if (d.kept) { kept |= 1u << s; ++kept_drains; }
     ++(d.refused ? refused : drains);
   }
   if (dut->drn_cq02h != drn) fail("drained messages differ", 0, dut->drn_cq02h, drn);
   else if ((dut->drn_ref_cq02h & drn) != ref) fail("drained refusals differ", 0, dut->drn_ref_cq02h & drn, ref);
+  else if ((dut->drn_kept_cq02h & drn & ~ref) != kept)
+    fail("drained pc_kept differs", 0, dut->drn_kept_cq02h & drn & ~ref, kept);
   if (e.kill_ack >= 0) {
     exp_ack = true;
     exp_ack_ep = unsigned(e.kill_ack);
@@ -212,6 +223,7 @@ void resetDut() {
   dut->lnd_cq01h = 0;
   dut->ath_cq01h = 0;
   dut->xr_cq01h = 0;
+  dut->ret_cq01h = 0;
   dut->ooe_rst_r00h = 1;
   tick();
   tick();
@@ -272,10 +284,10 @@ int main(int argc, char **argv) {
   std::printf("slot_tb control=%s seeds=%u cores=%llu (skipped: other slots or a model control=%llu) cycles=%llu allocs=%llu/%llu/%llu/%llu "
               "(free/launch/ralloc/ract, max %llu a cycle) demotes=%llu (max %llu) refused=%llu held-at-atomic=%llu "
               "kills=%llu acks=%llu (naming none=%llu) notices=%llu maps=%llu drained=%llu releases=%llu "
-              "protocol-error cores left=%llu mismatches=%llu model_failures=%d\n",
+              "pc_kept=%llu protocol-error cores left=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, skipped, cycles, allocs[0], allocs[1], allocs[2],
               allocs[3], max_al, demotes, max_dm, refused, held_dm, kills, acks, acks_now, ntcs, maps, drains, rels,
-              proto_skipped, mismatches, model_fails);
+              kept_drains, proto_skipped, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();
