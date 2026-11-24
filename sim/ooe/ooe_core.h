@@ -486,6 +486,12 @@ struct Config {
   /// Meanwhile the slot runs on: rename takes the wrong path, select issues
   /// it, and the squash takes all of it.
   unsigned squash_act_lag = 1;
+  /// RI-11 pricing (OA rev 340): an interface flop in front of each OOE
+  /// receiver that acts on its payload in its arrival cycle moves that act a
+  /// cycle. Bits: 1 rau alloc, 2 rau demote, 4 syu release, 8 rcu done,
+  /// 16 cmpl hint, 32 miu cmpl, 64 dec uop (taken a cycle after it lands).
+  /// The message is taken as it lands (credits unchanged), its act deferred.
+  unsigned rx_lag = 0;
   /// The go's run from the tail sees a held entry's release a cycle late
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
   /// scan that forms the run, so the scan reads it as held one cycle more.
@@ -607,6 +613,9 @@ struct Config {
   bool inject_park_layout_lost = false;
   /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
   bool inject_cta_slot_zero = false;
+  /// RI-12's control: a released slot keeps its warp's queued uops, which
+  /// the warp's next slot then takes against a count that never held them.
+  bool inject_keep_released_uops = false;
   /// TI-36 (b)'s control: a predicate-only masked load (ld.pred) makes no
   /// copy, so its inactive lanes' bits are lost.
   bool inject_pred_copy_lost = false;
@@ -2166,7 +2175,6 @@ public:
   /// next.
   bool wakeLineChanges(unsigned j, unsigned k) const { return lineAt(j, k, now_ + 2) != lineAt(j, k, now_ + 1); }
   unsigned rsSlot(unsigned e) const { return rs_[e].slot; }
-  unsigned rsRes(unsigned e) const { return rs_[e].res; }   ///< the entry's footprint (S0-S3, R, P0-P3; ooe_select's res)
   bool rsCopy(unsigned e) const { return rs_[e].copy; }
   bool rsEligibleNext(unsigned e) const { return rs_[e].eligible_at <= now_ + 1; }
   bool slotActive(unsigned s) const { return s < slot_.size() && slot_[s].st == WarpState::kActive; }

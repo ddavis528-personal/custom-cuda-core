@@ -40,7 +40,7 @@ std::string Config::apply(const std::string &spec) {
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
       {"held_room_lag", &held_room_lag}, {"kill_free_lag", &kill_free_lag},
-      {"squash_held_room_lag", &squash_held_room_lag}};
+      {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -2213,6 +2213,30 @@ void Core::releaseSlot(unsigned slot) {
   for (unsigned r : cand_ret_) pend += ret_owner_[r] == slot + 1;
   if (s.held_gpr != pend || (cfg_.rename_preds && s.held_pred))
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr - pend, s.held_pred);
+  // RI-12: uops that landed after the demotion's squash, fetched in the new
+  // epoch from the rewind while the warp drained, are dropped with the slot;
+  // its restore refetches from the resume PC. ooe_decq frees the slot's
+  // entries at the free as at a flush (the free's cycle takes no uop for
+  // the slot: its warp holds none).
+  if (!cfg_.inject_keep_released_uops) {
+    decq_flushed_ |= 1u << slot;
+    for (auto it = decq_.begin(); it != decq_.end();)
+      if (it->warp == s.warp) {
+        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+        ++decq_freed_;
+        ++decq_flush_now_;
+        it = decq_.erase(it);
+        --s.decq;
+        count("decq.release_drop");
+        ev("release_drop", s.warp);
+      } else ++it;
+  }
+  {
+    unsigned q = 0;
+    for (const Uop &u : decq_) q += u.warp == s.warp;
+    if (q || s.decq)
+      err("RI-12: slot %u released with %u of warp %u's uops queued, its count %u", slot, q, s.warp, s.decq);
+  }
   slot_of_[s.warp % kWarpIds] = -1;
   if (slot < squash_due_.size()) squash_due_[slot].on = false;
   rlog_.release |= 1u << slot;

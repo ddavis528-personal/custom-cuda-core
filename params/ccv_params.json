@@ -807,7 +807,7 @@
     },
     {
       "name": "CCV_LAT_LANE_BASE",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
       "decided_at": "LANE per-block session",
       "source": "OOE Stage 4 session (2026-10-02), interface change set",
@@ -832,7 +832,7 @@
     },
     {
       "name": "CCV_LAT_LANE",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-48",
@@ -1000,7 +1000,7 @@
     },
     {
       "name": "CCV_LAT_SFU",
-      "value": 12,
+      "value": 13,
       "status": "tunable",
       "decided_at": "LANE per-block session",
       "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
@@ -1033,7 +1033,7 @@
     },
     {
       "name": "CCV_LAT_RCU_ADDR_BASE",
-      "value": 5,
+      "value": 6,
       "status": "tunable",
       "decided_at": "RCU per-block session",
       "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08)",
@@ -1041,7 +1041,7 @@
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
-      "value": 5,
+      "value": 6,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1050,7 +1050,7 @@
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 16,
+      "value": 17,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1059,7 +1059,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 18,
+      "value": 19,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
