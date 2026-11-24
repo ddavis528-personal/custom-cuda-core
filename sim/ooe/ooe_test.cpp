@@ -663,7 +663,9 @@ struct Env {
       if (!cfg.sectioned && names.size() != core.heldGprs(slot))
         errors.push_back("TI-21: warp " + std::to_string(d.warp) + " drained holding " +
                          std::to_string(core.heldGprs(slot)) + " registers, its map " + std::to_string(names.size()));
-      if (x->rewind_seen && d.resume_pc != x->rewind_pc)
+      // A pc_kept drain sends no PC (AR 408, OA 470): RAU's stands, and a
+      // straggler's beat after the walk does not move it.
+      if (x->rewind_seen && !d.pc_kept && d.resume_pc != x->rewind_pc)
         errors.push_back("TI-24: drained's resume PC is not the oldest beat's");
     }
     const uint64_t migrate = t + hop + 1;            // drained to RAU, its decision
@@ -5386,7 +5388,8 @@ void testMemopCredits() {
 /// confirms on a stale ready bit. The two random cases that found it, at
 /// the latencies that found them: L1_WAKE 16 and L1_CMPL 19, pinned here so
 /// a later L1_CMPL (RA-43's 18 moves both off the co-grant edge) cannot
-/// retire the control silently.
+/// retire the control silently. The redirect lag that found them is pinned
+/// too: the default's 1 (OA 492) moves both off the edge.
 void testCogrant() {
   const char *cases[] = {"random seed 6 mode 6", "random seed 19 mode 7"};
   static bool no_cogrant;
@@ -5394,6 +5397,7 @@ void testCogrant() {
   g_config_hook = [](Config &c) {
     c.lat_l1_wake = 16;
     c.lat_l1_cmpl = 19;
+    c.redirect_send_lag = 0;
     c.inject_no_cogrant = no_cogrant;
   };
   for (const bool control : {false, true}) {
