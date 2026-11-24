@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-23. Keep this current at every task's end; it is what
+Updated 2026-11-24. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -38,8 +38,7 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-23 late: TI 542,
-MA 190; see the file. Last row TI-544. Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). 11-24: see the file. Last row TI-552. Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -76,27 +75,21 @@ background `while pgrep` wait.
   coremark128). AR 405 leaves MA to state the mispredict path; a DCU
   response field for it would be a new TI row.
 
-## In flight (11-23, late)
-- 11-23 sweep landed 4e3dda64 (full clean gate; release 1ae46ca1, tag
-  refused, local only); ccr-80102643 and ccr-9eb50716 each have 1 commit
-  for the next sweep. FILL_AGE (608f8711) landed before it.
-- ti-drop branch ti-tblat (gate-scratch/TI-tblat), gate-push next: AR-410
-  (kSlowEnd 1 MiB, CCV_TB_LATENCY, TIMEOUT_MEMOP 40960, cm128 at 1000),
-  AR 412 (1) testbench 20+-5 seeded (tb_overtaken + jitter-0 control),
-  (2) swap class on new kernel vadd6 (bin slot_refill_parked; control at
-  20+-5 = fewer demotions, since credit contention demotes once there:
-  tell AR, TI-545 to write), MLC_HIT_MAX 28 (AR 413), stub and model
-  re-pins (TI-544; DI-48: land, DI fixes vadd4's MSHR-port race), MA-32
-  merged (lint admits by MA under rtl/miu, rtl/dcu; TI-542/543).
-- After landing: row to AR (re-baseline, old vs new cycles, AR 411 (4)),
-  MA, DI, MI. Then AR 412 (3) read class: colwalk-p128b-like streaming
-  read at 1000, B/cycle, per-queue peaks vs caps (needs IdPool peak
-  instrumentation), longest hold vs TIMEOUT_MEM; 128 MLC->EXB ids:
-  ask AR (W_REQ_MLC_EXB 6 -> 7 vs a class-only build). Report, not a gate
-  failure.
-- Waiting on Daniel: is OA-479 (b) approved (DI-42 relays it; no DA row)?
-  Then task 77 (two-writer table lint + check-1d) and 78 (DI-43 control).
-- Task 76 (common credit modules, TI-537..541) after the read class.
+## In flight (11-24)
+- LANDED b780f324 on both branches (RESUMED SCOPED PASS 28/28): AR-410, testbench
+  20+-5 seeded, swap class vadd6, MLC_HIT_MAX 28, re-pins, MA-32, dcu-wb-refetch
+  unit-held (DI-49). TI-552 told DI (merge b9aeadc7), MI, MA. Cycles old (4e3dda64)
+  vs new table being measured (run-tabulate, worktrees ti-cyc-old/new): then a
+  row to AR (re-baseline, AR 411 (4)).
+- ti-tw (worktree /home/user/ti-tw, gate-scratch/TI-tw, on b780f324): OA-479 (b)
+  two-writer table lint (Daniel approved 11-24; TI-548), row-register tables
+  (DI-51, TI-549), a row's own RMW compare from its write enable (DI-53,
+  TI-550). OA accepted (OA-480). check-1d 45 lines. Gate-push next, after
+  the cycles measurement (one heavy job at a time). DI retries its fold-table
+  declaration on 8ac04d40; MA signs it.
+- Then: DI-38 re-pins on DI's b9aeadc7 tip (task 72); MI 29603c02 held-wait
+  re-pin when MI rings (task 80; MI-33/34, TI-551); OI-204 pc_kept at:11
+  lines (task 66); AR 417 (task 79); task 76 credit modules.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
