@@ -191,6 +191,24 @@ void getBeat(const Bits &b, uint32_t lsb, Line &l, unsigned beat) {
 class Testbench : public Stub {
 public:
   Testbench(int inst, Kernel &k) : Stub(inst, k) {
+    // The placeholder DRAM's latency (DA rev 132, AR 412 (1)): every request
+    // that pays it, a line read (a page-table level's among them) or a
+    // write's ack, draws it uniformly from latency_ +- jitter_, from a PRNG
+    // keyed by (seed_, the request's arrival order here), never the oracle,
+    // so both hosts draw the same and any seed reproduces a run exactly.
+    // CCV_TB_LATENCY sets the mean (AR-410), CCV_TB_JITTER the half-width
+    // (0: fixed), CCV_TB_SEED the seed; the defaults keep the gate's runs and
+    // kernel pins reproducible. No draw may pass CCV_P_TIMEOUT_MEM, the bound
+    // CCV_P_TIMEOUT_MEMOP is derived from. The slow regions stay fixed.
+    latency_ = envNum(k, "CCV_TB_LATENCY", kLatency, 1, ccv::prov::kTimeoutMem);
+    jitter_ = envNum(k, "CCV_TB_JITTER", kJitter, 0, ccv::prov::kTimeoutMem);
+    seed_ = envNum(k, "CCV_TB_SEED", kSeed, 0, ~uint64_t(0));
+    if (jitter_ >= latency_ || latency_ + jitter_ > ccv::prov::kTimeoutMem)
+      k.fail("testbench: latency %llu +- %llu leaves 1..CCV_P_TIMEOUT_MEM (%u)",
+             (unsigned long long)latency_, (unsigned long long)jitter_,
+             unsigned(ccv::prov::kTimeoutMem));
+    std::printf("TESTBENCH latency=%llu jitter=%llu seed=%llu\n", (unsigned long long)latency_,
+                (unsigned long long)jitter_, (unsigned long long)seed_);
     // Every warp runs the same code from the same memory: warp 0's record of
     // them stands for all (Kernel::loadOracles holds the others to it).
     for (size_t i = 0; i != k.orcs[0].code.size(); ++i)
@@ -202,10 +220,35 @@ public:
   const char *kind() const override { return "testbench"; }
 
 private:
-  static constexpr uint64_t kLatency = 10;   // placeholder DRAM
+  /// The placeholder DRAM: kLatency +- kJitter cycles (DA rev 132).
+  static constexpr uint64_t kLatency = 20, kJitter = 5, kSeed = 1;
+  uint64_t latency_ = kLatency, jitter_ = kJitter, seed_ = kSeed;
+  uint64_t drawn_ = 0;                       // requests that drew a latency
+  static uint64_t envNum(Kernel &k, const char *name, uint64_t dflt, uint64_t lo, uint64_t hi) {
+    const char *v = std::getenv(name);
+    if (!v || !*v) return dflt;
+    char *end = nullptr;
+    const unsigned long long n = std::strtoull(v, &end, 0);
+    if (*end || n < lo || n > hi) {
+      k.fail("testbench: %s=%s is not in %llu..%llu", name, v,
+             (unsigned long long)lo, (unsigned long long)hi);
+      return dflt;
+    }
+    return n;
+  }
+  /// The next request's latency: latency_ +- jitter_, keyed by arrival order.
+  uint64_t draw() {
+    uint64_t x = seed_ * 0x9E3779B97F4A7C15ull + ++drawn_;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+    x ^= x >> 31;
+    return latency_ - jitter_ + x % (2 * jitter_ + 1);
+  }
   /// A slow region, for a warp stalled on a miss as long as DRAM's: a line
   /// at kSlowBase or above answers kSlowLatency cycles after it is asked
-  /// for (Daniel, 2026-10-21; the stall kernel). No other kernel reaches it.
+  /// for (Daniel, 2026-10-21; the stall kernel). Only the kernels written
+  /// for it reach it (stall, provswap, atom, cas, atomf), since it ends at
+  /// kSlowEnd.
   static constexpr uint64_t kSlowBase = 0x80000, kSlowLatency = 400;
   /// Two more regions within the slow one's range, for provswap: a line
   /// from kMidBase answers after kMidLatency cycles, and one from kDeepBase
@@ -213,20 +256,26 @@ private:
   /// ready first.
   static constexpr uint64_t kMidBase = 0xA0000, kMidLatency = 250;
   static constexpr uint64_t kDeepBase = 0xC0000, kDeepLatency = 1000;
-  /// The slow regions end at kSlowEnd (MI-5 (1)): above it, the page tables
-  /// (0xF0 << 40) among them, every line is the placeholder DRAM's, so a
-  /// table walk pays kLatency a level, not kDeepLatency.
-  static constexpr uint64_t kSlowEnd = uint64_t(1) << 32;
+  /// The slow regions end at kSlowEnd, 1 MiB (AR-410): above it, the page
+  /// tables (0xF0 << 40) among them (MI-5 (1)), every line is the placeholder
+  /// DRAM's. Up to 4 GB, coremark128's data at 0x110000 took kDeepLatency by
+  /// accident and held its memops past their watchdog (TI-531).
+  static constexpr uint64_t kSlowEnd = uint64_t(1) << 20;
+  static_assert(kDeepLatency <= ccv::prov::kTimeoutMem && kSlowLatency <= ccv::prov::kTimeoutMem,
+                "a testbench latency past CCV_P_TIMEOUT_MEM breaks CCV_P_TIMEOUT_MEMOP's derive");
   struct P { uint64_t due; Bits msg; uint64_t tid; bool first = true; };
-  /// D beats, in the order they go: bursts by due cycle, each burst's beats
-  /// together and one a cycle. Responses are matched by source, not order,
-  /// so a fast line may pass a slow one; with one latency it is a FIFO.
+  /// D beats, in the order they go: bursts by due cycle, ties in arrival
+  /// order, each burst's beats together and one a cycle. Responses are
+  /// matched by source, not order, so a fast line may pass a slow one: the
+  /// draw and the slow regions both do it (AR 412 (1)), and tb_overtaken
+  /// counts each response that passes one asked for before it.
   std::deque<P> q_;
   void enqueue(std::vector<P> burst) {
     auto at = q_.begin();
     if (at != q_.end() && !at->first)      // never split the burst going out
       while (at != q_.end() && !at->first) ++at;
     while (at != q_.end() && !(at->first && at->due > burst.front().due)) ++at;
+    if (at != q_.end()) k_.hit("tb_overtaken");
     q_.insert(at, burst.begin(), burst.end());
   }
   struct Put { uint64_t addr; Line data{}; std::array<bool, kLine> mask{}; unsigned beats = 0; };
@@ -260,11 +309,11 @@ private:
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
         std::vector<P> burst;
-        const uint64_t due = now_ + (addr >= kSlowEnd ? kLatency
+        const uint64_t due = now_ + (addr >= kSlowEnd ? draw()
                           : addr >= kDeepBase  ? kDeepLatency
                           : addr >= kMidBase ? kMidLatency
                           : addr >= kSlowBase ? kSlowLatency
-                                              : kLatency);
+                                              : draw());
         for (unsigned beat = 0; beat != kBeats; ++beat) {
           Bits r = dBeat(kTlAckData, src);
           putBeat(r, kDData, l, beat);
@@ -281,7 +330,7 @@ private:
         if (++p.beats == kBeats) {
           for (unsigned k = 0; k != kLine; ++k)
             if (p.mask[k]) k_.mem[p.addr + k] = p.data[k];
-          enqueue({{now_ + kLatency, dBeat(kTlAck, src), m.tid, true}});
+          enqueue({{now_ + draw(), dBeat(kTlAck, src), m.tid, true}});
           puts_.erase(src);
         }
       } else {
@@ -5702,6 +5751,7 @@ private:
   const bool swap_ = std::string(env("CCV_RAU_MODE", "evict")) == "swap";
 
   std::set<unsigned> free_;                  ///< tier-1 slots
+  std::set<unsigned> demoted_slot_;          ///< freed by a demotion, not yet refilled
   std::map<unsigned, unsigned> slot_of_;     ///< resident or moving warp -> its slot
   std::deque<unsigned> waiting_;             ///< warps not yet launched, in order
   std::deque<unsigned> parked_;              ///< in PCA, oldest first
@@ -5806,6 +5856,7 @@ private:
       free_.erase(free_.begin());
       waiting_.pop_front();
       slot_of_[w] = slot;
+      demoted_slot_.erase(slot);
       alloc_q_.push_back({allocMsg(w, slot, kAllocLaunch), int(w)});
       launch_q_.push_back({w, slot});
     }
@@ -5829,6 +5880,8 @@ private:
       p_base_[w] = retired_[w] = 0;   // OOE counts from the restore
       free_.erase(free_.begin());
       parked_.erase(p);
+      // A demoted warp's slot refilled by a parked warp (AR 412 (2)).
+      if (demoted_slot_.erase(slot)) k_.hit("slot_refill_parked");
       slot_of_[w] = slot;
       restore_busy_ = true;
       alloc_q_.push_back({allocMsg(w, slot, 2), -1});   // restore-allocate (A-64)
@@ -6110,6 +6163,7 @@ private:
         // not before (V-27), and the slot goes to the oldest ready warp.
         alloc_q_.push_back({allocMsg(w, slot_of_[w], kAllocFree), -1});
         free_.insert(slot_of_[w]);
+        demoted_slot_.insert(slot_of_[w]);
         slot_of_.erase(w);
         parked_.push_back(w);
         demoting_.erase(w);

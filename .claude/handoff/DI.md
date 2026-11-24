@@ -29,13 +29,13 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
--7. Gate-push of the sweep merge (MI 18, AR 6, OA 3, MA 3 commits) with
-   3f8e66c3 (UE first answer, TI-528/MI-20), c4061f75 (dcu_mshr CG-3: the
-   records ride the outcome gate) and the host default
-   CCV_DCU_WB_ACK_DELAY=8 (dcu-wb-refetch reachable until TI moves the
-   line; then back to 0). On push: post the tip in DI-38 (TI-530), tell
-   TI/MI the UE first answer is in (ue_second_answer 2,1,1 on
-   ldpar/vadd/hit, ue-close-first caught), close DI-34 (MA rev 168).
+-7. PUSHED d400b928 (SCOPED PASS 28/28): sweep merge, UE first answer
+   (3f8e66c3), dcu_mshr CG-3 (c4061f75), host CCV_DCU_WB_ACK_DELAY=8.
+   Register rev 73: DI-38 tip posted, DI-33 (d) done, DI-34 closed; notices
+   to TI, MI, MA. When TI moves dcu-wb-refetch under the knob (TI-530 (2)):
+   set dcu_block.cpp's default back to 0. When TI's tblat fix (8daf7a2c,
+   TI-532/AR-410) lands: re-measure DI-23's localsp numbers
+   (CCV_MIU_IMPL=model CCV_MLC_WARM=1, TI-522).
 -6. IN FLIGHT: gate-push of a2b4d5c4 (dcu_mshr send record CG fix, credit
    floor; job log /root/ccv-logs/job-gate-push-20261123-055701-29983.log;
    wait with tools/gate-wait.sh <log>). When it passes: cherry-pick m0w's
