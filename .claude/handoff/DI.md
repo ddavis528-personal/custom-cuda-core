@@ -36,7 +36,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   scratchpad/ma33 (MA-33 debug instrumentation: g_dbg_site, DBG prints).
 
 ## Open work, most urgent first
-1. MA-33 (1): fix pushed (d16fc703; late lookup's miss retries on port 0;
+1. MA-33 (1) CLOSED: full runs clean (DI-57, rev 96).
    control dcu-late-miss-port, test late-miss-retry; DI-55, MA accepted rev
    213, DCU tab rev 127 holds the rule for RTL increment B). Closes on clean
    full coremark128priv runs: stub MIU at CCV_DCU_SETS=64, model/model seeds
@@ -65,6 +65,6 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    rerun with CCV_RESUME=1.
 
 ## Register bookmarks
-Conventions 20, DI 94, MI 68, MA 213, AR 421, OA 502, TI 582, OI 426, DA 134,
-RA 159, RI 92, IS 201, CP 160 (sweep 2026-11-24). DI tab last row DI-55.
+Conventions 20, DI 96, MI 68, MA 213, AR 421, OA 502, TI 582, OI 426, DA 134,
+RA 159, RI 92, IS 201, CP 160 (sweep 2026-11-24). DI tab last row DI-57 (id m8yvbw8rqgz.113801).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
