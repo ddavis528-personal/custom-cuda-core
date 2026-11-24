@@ -747,6 +747,16 @@ module ooe_freelist #(
     end
 `ifdef CCV_CHECK
     assign sec_cq02h = sec_q_cq02h;
+    // Rename 2 returns a row the edge after its grant, or never: the
+    // grants, a cycle older (check-only, so synthesis sees no register),
+    // must hold every row it returns. A late return (freelist_tb's
+    // rt-late, ooe_rename's CCV-L23 loop control) names one granted two
+    // edges back.
+    logic [N-1:0] gr_q_cq03h;
+    always_ff @(posedge ooe_core_clk) begin
+      gr_q_cq03h <= granted_cq02h;
+    end
+    `CCV_ASSERT(rt_of_grant, (rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h) & ~gr_q_cq03h) == '0)
 `endif
 
     // The candidates: slot s, kind k's lowest live row it owns with the
