@@ -67,6 +67,23 @@
     "run": "{dir}/tb --cg {scenario} {vcd}",
     "scope": "dcu_mshr"
    }
+  },
+  {
+   "name": "dcu_fill",
+   "module": "dcu_fill",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/common/ccv_common_secded_enc.sv",
+    "rtl/dcu/dcu_fill.sv"
+   ],
+   "params": {},
+   "clock": "dcu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/dcu/cg-build.sh dcu_fill {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "dcu_fill"
+   }
   }
  ]
 }
