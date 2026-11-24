@@ -473,6 +473,16 @@ module ooe_rob_w #(
   // ccv_rcu_ooe_done, asserted below), so an entry's dones owed fall by one
   // or none; MIU's completions are one an entry a cycle already.
   logic [S*D-1:0]    dn_e_cq02h, cm_e_cq02h;
+  // PROBE: first-kind capture of the raw tag, enabled by the flopped valid.
+  logic [NM*TW-1:0] ctag_cq03h;
+  logic [NM-1:0]    cmq_cq03h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) cmq_cq03h <= '0; else cmq_cq03h <= cm_q_cq02h;
+  end
+  for (genvar p = 0; p < NM; p++) begin : g_cap
+    always_ff @(posedge ooe_core_clk)
+      if (cm_q_cq02h[p]) ctag_cq03h[p * TW +: TW] <= cm_tag_cq02h[p * TW +: TW];
+  end
   logic [S*D*NR-1:0] dr_e_cq02h;               // a done for row r of entry e
   always_comb begin
     dn_e_cq02h = '0;
@@ -485,7 +495,7 @@ module ooe_rob_w #(
             dr_e_cq02h[e * NR + r] = 1'b1;
       dn_e_cq02h[e] = |dr_e_cq02h[e * NR +: NR];
       for (int p = 0; p < NM; p++)
-        if (cm_q_cq02h[p] && cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + e)) cm_e_cq02h[e] = 1'b1;
+        if (cmq_cq03h[p] && ctag_cq03h[p * TW +: TW] == TW'(WID * D + e)) cm_e_cq02h[e] = 1'b1;
     end
   end
   // Each row's count after this cycle is zero: none owed now, and its
@@ -858,7 +868,7 @@ module ooe_rob_w #(
       tl_en_cq02h[s]  = al_q_cq02h[s] | rel_q_cq02h[s] | rd_s_cq02h[s];
       fp_en_cq02h[s]  = (fl_q_cq02h & (~ufh_cq02h[s * NC] | ~kc_cq02h[s * KC])) | al_q_cq02h[s] | rel_q_cq02h[s] |
                         rd_s_cq02h[s];
-      cm_en_cq02h[s]  = (((|dn_q_cq02h) | (|cm_q_cq02h)) & wt_cq02h[s]) | ev_q_cq02h[s] |
+      cm_en_cq02h[s]  = (((|dn_q_cq02h) | (|cmq_cq03h)) & wt_cq02h[s]) | ev_q_cq02h[s] |
                         (|w_cq02h[s * RP +: RP]) | (fl_q_cq02h & ~ufh_cq02h[s * NC]) | al_q_cq02h[s] |
                         rd_s_cq02h[s] | (|hd_cq02h[s * D +: D]);
       win_en_cq02h[s] = ptr_en_cq02h[s] | fp_en_cq02h[s] | cm_en_cq02h[s];

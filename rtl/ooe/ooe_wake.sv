@@ -389,7 +389,7 @@ module ooe_wake #(
       // The lines as they lead: the bypass lines and the lead full-latency
       // line (the state's own full-latency line is the model's, for fin).
       wake_cq02h[j * 4 +: 4] = {st_cq02h[j * EW + FLL], st_cq02h[j * EW + FLINE +: 3]};
-      fn_cq02h[j]            = st_cq02h[j * EW + FFIN];
+      fn_cq02h[j]            = st_cq02h[j * EW + FFIN] | byp_cq02h[j];
     end
   // The issued bits leave from a copy of their own (NGD-7: the state's
   // issued bit starts paths deeper than the output's budget).
@@ -399,7 +399,8 @@ module ooe_wake #(
   // register in its entry's group.
   (* keep *) logic [N-1:0] mio_cq02h, fio_cq02h, msr_cq02h;
   assign miss_cq02h = mio_cq02h;
-  assign fin_cq02h  = fio_cq02h;
+  logic [N-1:0] byp_cq02h;
+  assign fin_cq02h  = fio_cq02h | byp_cq02h;
   assign msd_cq02h  = msr_cq02h;
   logic [N-1:0] is_cq02h;              // the state's, for this module's own logic
   always_comb
@@ -424,16 +425,30 @@ module ooe_wake #(
   // a timer's registered completion is one flop, straight into its enable.
   logic [NC-1:0]   cv_cq01h;
   logic [N-1:0]    hit_cq01h, cm_cq02h;
+  // PROBE: first-kind capture of the raw index, enabled by the flopped valid.
+  logic [NC*W-1:0] cidx_cq02h;
+  logic [NC-1:0]   cvq_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) cvq_cq02h <= '0; else cvq_cq02h <= cv_cq01h;
+  end
+  for (genvar k = 0; k < NC; k++) begin : g_cap
+    always_ff @(posedge ooe_core_clk)
+      if (cv_cq01h[k]) cidx_cq02h[k * W +: W] <= cmpl_idx_cq01h[k * W +: W];
+  end
+  always_comb
+    for (int j = 0; j < N; j++)
+      byp_cq02h[j] = hit_cq01h[j] && st_cq02h[j * EW + FISS] && st_cq02h[j * EW + FSPEC] && st_cq02h[j * EW + FLINE + 3];
   logic [EW*N-1:0] nx_cq02h;
   logic [N-1:0]    ent_en_cq02h;
   logic            sq_en_cq01h;
   logic            cm_en_cq02h;
-  assign cm_en_cq02h = cv_cq01h != '0 || cm_cq02h != '0;
+  assign cm_en_cq02h = 1'b0;
+  assign cm_cq02h = hit_cq01h;
   always_comb begin
     hit_cq01h = '0;
     for (int k = 0; k < NC; k++)
       for (int j = 0; j < N; j++)
-        if (cv_cq01h[k] && cmpl_idx_cq01h[k * W +: W] == W'(j)) hit_cq01h[j] = 1'b1;
+        if (cvq_cq02h[k] && cidx_cq02h[k * W +: W] == W'(j)) hit_cq01h[j] = 1'b1;
   end
   // The completion hints (OA-23), as the completions: the valid flopped
   // (hv), the payload decoded as it arrives (hnt) and registered (hm). A
@@ -560,8 +575,7 @@ module ooe_wake #(
     end
   end
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h)   cm_cq02h <= '0;
-    else if (cm_en_cq02h) cm_cq02h <= hit_cq01h;
+    if (rst_r01h) ;
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h)   hm_cq02h <= '0;

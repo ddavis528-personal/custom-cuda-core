@@ -93,6 +93,7 @@ module ooe_rs #(
   input  logic [N-1:0]     sqf_cq01h,    // entries the registered squash frees this cycle
   input  logic [N-1:0]     msd_cq01h,    // ooe_wake's held misses (FMISS), as confirmation reads them now
   input  logic [N-1:0]     cfin_cq01h,   // ooe_wake's final bits, likewise
+  input  logic [N-1:0]     cfb_cq01h,    // PROBE: the hit's bypass, late
   // The confirmation leads' terms, as they stand now (ooe_wake's, ooe_sched's).
   input  logic [N-1:0]     wtl3_cq00h,   // the full-latency line rises at the next edge
   input  logic [N-1:0]     fin_cq00h,    // final
@@ -271,12 +272,13 @@ module ooe_rs #(
   // matrix flops 18.3 NGD from the next state, over the 12 the dep output
   // holds them to (NGD-7). Confirmed entries are freed, and so are the
   // ones the registered squash frees.
-  logic [N-1:0] iss_cq02h, emp_cq02h, gone_cq02h, rep_cq02h, conf_cq02h, free_cq02h;
+  logic [N-1:0] iss_cq02h, emp_cq02h, gone_cq02h, rep_cq02h, conf_cq02h, free_cq02h, confe_cq02h;
   always_comb begin
     gone_cq02h = ~iss_cq02h | msd_cq01h;
     for (int i = 0; i < N; i++) begin
       rep_cq02h[i]  = iss_cq02h[i] && |(dep_cq02h[i * N +: N] & gone_cq02h);
-      conf_cq02h[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || !prod_cq02h[i]);
+      conf_cq02h[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || cfb_cq01h[i] || !prod_cq02h[i]);
+      confe_cq02h[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || !prod_cq02h[i]);
     end
   end
   assign free_cq02h = conf_cq02h | sqf_cq01h;
@@ -304,7 +306,7 @@ module ooe_rs #(
   // group ahead's: rename's lookup ran a stage earlier, on names that may
   // since have left their entries (ooe_rename, slice 2).
   logic [N-1:0] rmask_cq02h;
-  assign rmask_cq02h = valid_cq02h & ~free_cq02h & ~lga_cq02h;
+  assign rmask_cq02h = valid_cq02h & ~(confe_cq02h | sqf_cq01h) & ~lga_cq02h;
   always_comb begin
     g_cq02h = grants(valid_cq02h, req_cq01h);
     g1_cq02h = grants(vc1_cq02h, req_cq01h);
