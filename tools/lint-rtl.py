@@ -2290,10 +2290,23 @@ def verify_port_table(n, port, d, body, graph, signers, path):
         if wi not in insts:
             return "%s has no instance %s" % (pn, wi)
         wchild, wports, wbody, wconns = insts[wi]
-        wout = [o for o, dr in wports.items() if dr == "output" and (o == wreg or re.search(
-            r"\bassign\s+%s\s*=\s*%s\s*;" % (re.escape(o), re.escape(wreg)), wbody))]
-        if wreg not in dep_graph(wbody)[1] or not wout:
-            return "%s.%s is not a register %s drives an output with" % (wi, wreg, wchild)
+        # The register reaches the writer's output through its combinational
+        # logic only, no register between (OA-496): read from a sibling's
+        # table, the words arrive as that register holds them.
+        wdeps, wflops = dep_graph(wbody)
+        wout = []
+        for o, dr in wports.items():
+            if dr != "output":
+                continue
+            if o == wreg:
+                wout.append(o)
+                continue
+            _, rr = cone(wdeps, wflops, wdeps.get(o, ()) if o not in wflops else ())
+            if o not in wflops and wreg in rr:
+                wout.append(o)
+        if wreg not in wflops or not wout:
+            return ("%s.%s is not a register reaching an output of %s through "
+                    "combinational logic only" % (wi, wreg, wchild))
         wnets = set(x for o in wout for x in conn_ids(wconns.get(o, "")))
         for _, _, _, conns in rd:
             if set(conn_ids(conns.get(port, ""))) != wnets or not wnets:
