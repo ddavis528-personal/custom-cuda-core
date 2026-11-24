@@ -100,7 +100,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 421, OA 475, TI 545 (rev 544), MA 178, DI 69,
+- **Bookmarks** (revs read through): AR 421, OA 475, TI 553 (rev 552), MA 178, DI 69,
   MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 133, Conventions 20 (full
   sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
@@ -232,6 +232,21 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000i1. **RE-BASELINE NOW DUE (TI-553, 11-24).** b780f324 (on doowtf and
+   claude/custom-cuda-core-infra-6msg93; RESUMED SCOPED PASS) landed AR 410
+   (kSlowEnd 1 MiB, CCV_TB_LATENCY, MEMOP timeout 40960), AR 412 (1)(2)
+   (20+-5 seeded, tb_overtaken, vadd6 swap class), HIT_MAX 28. TI's default
+   gate-kernel table, 4e3dda64 -> b780f324: median +14.6%; short kernels
+   +14..40 cycles; localsp 2175->233, privwin 1161->203, slotform 4348->486,
+   waypred 1211->255; full 66 rows in TI's scratch (cyc/run-summary.txt).
+   TI gives no S1 or coremark -priv numbers. So AR re-runs perf-register's
+   baselines itself once the sweep has merged b780f324: S1 (sweep.sh's ten),
+   coremark32priv, coremark128priv in perf-register's standard config
+   (base 1, perfect fetch, warm MLC), with run-tabulate, never beside a gate.
+   Then edit perf-register: a re-baseline note (11-13 slow region and 10 ->
+   20+-5 default), mark each affected entry, a PF row for the read target
+   (AR 412 (3)), and PF-39's HIT_MAX wording (AR 413). check-docs, push.
+   Read class and AR 417's control are still TI's.
 000l. **Common credit RTL modules (TI-537/539/540, Daniel to TI: "a common
    RTL module ... for the block interfaces"). AR 415 (.679095): at a flopped
    end (BOUNDARY 1, the RTL default) cr_src is the counter and go only, and
