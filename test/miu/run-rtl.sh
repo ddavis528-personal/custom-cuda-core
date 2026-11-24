@@ -10,8 +10,9 @@
 #   miu_mq: test/miu/mq_tb.cpp, the memop queue, controls slot and discard
 #   miu_agu8: test/miu/agu8_tb.cpp, one lane octet's A1 sums and F-ALIGN,
 #            O-83's decision (MI-25 (D)), controls xfer (O-80's size ignored),
-#            sext (disp unsigned), lane0 (lane d taken as 0) and noshift (b
-#            from the sum without rbase << 16); miu_agu8_lc the same at LC = 1,
+#            sext (disp unsigned), lane0 (lane d taken as 0), noshift (b
+#            from the sum without rbase << 16) and wnoc (the window compare
+#            without the carry into bit 16 + k); miu_agu8_lc the same at LC = 1,
 #            lane 0's line copied for miu_grp (MA rev 209), control lcl1 (lane
 #            1's line taken)
 #   miu_rcap: test/miu/rcap_tb.cpp, one ccv_dcu_miu_rsp slot's capture,
@@ -19,6 +20,9 @@
 #     gate (MI-27 (b)); controls used (a gate blind to last cycle's
 #     launches), scale (no index scale) and lowest (the lowest active lane,
 #     not the fixed leader),
+#   miu_a2: test/miu/a2_tb.cpp, A2's lookup, PA and drop, controls carry,
+#     bank, addr, line, split, fone, win (an ordinary lane in the run's
+#     windows), iblk (an interleaved lane off W's block) and align,
 #   miu_tlb: test/miu/tlb_tb.cpp, each slot's L0 and the 32-entry TLB's
 #     refill (MA revs 199, 206-208), controls early (the L0 written a cycle
 #     early), norr (the grant to the lowest pending slot), tight (the
@@ -73,6 +77,7 @@ control miu_agu8 xfer
 control miu_agu8 sext
 control miu_agu8 lane0
 control miu_agu8 noshift
+control miu_agu8 wnoc
 bench miu_agu8_lc test/miu/cg-build.sh miu_agu8_lc "$B/miu_agu8_lc" -- "$B/miu_agu8_lc/tb"
 control miu_agu8_lc lcl1
 bench miu_cred test/miu/cg-build.sh miu_cred "$B/miu_cred" -- "$B/miu_cred/tb"
@@ -107,4 +112,7 @@ control miu_a2 addr
 control miu_a2 line
 control miu_a2 split
 control miu_a2 fone
+control miu_a2 win
+control miu_a2 iblk
+control miu_a2 align
 exit $fail
