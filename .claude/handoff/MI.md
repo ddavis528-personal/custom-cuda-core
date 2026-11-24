@@ -43,7 +43,7 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
 ## Register bookmarks (sweep of Tue 11-24)
-AR 421, OA 502, IS 201, TI 582, OI 426, CP 160, RA 159, RI 92, MA 213, MI 70, DI 93, DA 135,
+AR 421, OA 502, IS 201, TI 582, OI 426, CP 160, RA 159, RI 92, MA 217, MI 70, DI 93, DA 135,
 Conventions 20; specs MIU 226, Common 9, DCU 126. Next pings: Friday (section 6).
 - To close at MI's next write: MI-20 (DI rev 73), MI-29 (DI-50).
 - TI-569/571: TI refuses an orphan feedback.json: ccv_miu.feedback.json lands with the ccv_miu
@@ -52,10 +52,11 @@ Conventions 20; specs MIU 226, Common 9, DCU 126. Next pings: Friday (section 6)
   charged to MIU's 2%. DA 134: non-OOE NGD caps stay 25.
 
 ## Open work, most urgent first
-0. UNGATED on mi-dev, sent to gate-scratch/MI (unverified, nothing merges it): b50828a9 (A2 faults,
-   held for MA's MI-46 budgets) and e8df1179 (miu_mq lane map: bench PASS, controls ilv/local FAIL as
-   they must, CG passes; NGD of miu_mq not yet run: tools/bg-run.sh mq-ngd python3 tools/check-ngd.py
-   --unit miu_mq). If mi-wt is lost: git fetch origin gate-scratch/MI and branch from it.
+0. GATE-PUSH IN FLIGHT (scoped) on mi-dev: b50828a9 (A2 faults) + e8df1179 (miu_mq lane map; NGD in-to-flop
+   10.4 worst, CG 77/283 ungated) + budgets (MA rev 217 accepted MI-46). Wait on the newest job-gate-push log
+   with tools/gate-wait.sh. When pushed: ring TI with the tip to merge. Also on gate-scratch/MI (older tip).
+   MA rev 217's condition: show a negative .shared sum still faults by F-SHARED at A3, with a control
+   (with A3's F-SHARED; not built yet). Close MI-46 then. Spec agu8 flops 421/462 accepted.
 1. A2 fault slice, mi-dev b50828a9 (LOCAL, held): F-ALIGN, S[49:48] F-ADDR on every lane, window
    F-ADDR (ordinary lane in the windows; interleaved off W's block) in A2's drop; agu8 computes per lane
    we (S[47:16+k] == W>>k, carry-save, no carry chain) and ow; .shared no longer drops on a negative sum.
