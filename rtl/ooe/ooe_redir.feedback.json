@@ -1,11 +1,17 @@
 {
-  "_comment": "CCV-L23's declared table (DA rev 131 form; DA 130, OI-184's lag-1 option) for ooe_redir.sv's PWV form: each slot's redirect, written in its resolution's cycle and read by the send when the slot has waited.",
+  "_comment": "CCV-L23's declared table (DA rev 131 form; DA 130, OI-184's lag-1 option) for ooe_redir.sv's PWV form: each slot's redirect warp and epoch, written in its resolution's cycle and read by the send when the slot has waited (its checkpoint, mask, target and stay held in ooe_rob_w's own register, OA-487).",
   "table": {
-    "ft_cq04h": {
+    "ew_cq04h": {
       "readers": ["q_nx_cq03h"],
       "by": "OA",
-      "date": "2026-11-22",
-      "why": "ooe_redir's waiting redirects (S words, one a slot): a resolution writes its slot's word from ooe_rob_w's cq03h payload; the send, at its own stage, reads a word through pi_cq03h only when that slot waited, an arriving slot's payload being the ports'. Neither a loop's back edge nor a later copy on the reader's pipeline. To be signed by OA in OI's landing row."
+      "date": "2026-11-24",
+      "why": "ooe_redir's waiting redirects' warps (S words, one a slot): a resolution writes its slot's word from ooe_decrx's cq03h warp; the send, at its own stage, reads a word through pw_cq03h only when that slot waited, an arriving slot's being the ports'. Neither a loop's back edge nor a later copy on the reader's pipeline. To be signed by OA in OI's landing row."
+    },
+    "ee_cq04h": {
+      "readers": ["q_nx_cq03h"],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "As ew_cq04h, for each waiting redirect's epoch (ooe_decrx's ep1_cq03h)."
     }
   }
 }

@@ -99,7 +99,7 @@ module ooe_rob_w #(
   parameter int CW = 4,                  // a fault cause (CCV_W_FAULT_CAUSE)
   parameter int VA = 64,                 // a fault address (CCV_W_VA)
   parameter int BS = ND - 2,             // the done slot RCU-only ops complete on, branches among them (AR's RCU spec rev 14, OA rev 287)
-  parameter int PWV = 1,                 // the redirect's payload with its valid (OI-184's lag-1 option): rd_*_cq03h, not rd_*_cq04h
+  parameter int PWV = 1,                 // the redirect's payload with its valid (OI-184's lag-1 option): rd_*_cq03h too
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int S  = 1,                 // the slots this instance holds: its own
   localparam int LS = (SA > 1) ? $clog2(SA) : 1,
@@ -295,7 +295,10 @@ module ooe_rob_w #(
   logic [S*D*NR*RCW-1:0] oc_cq02h;           // per row, its dones in flight
   logic [S*D*2-1:0]    rc_cq02h;
   logic [S*D-1:0]      gwe_cq02h, pwe_cq02h, pfr_cq02h, br_cq02h;
-  logic [S*D*LK-1:0]   ck_cq02h;              // a branch's checkpoint
+  // A branch's checkpoint, twice (NGD-7): ckr_cq02h for the redirect
+  // payload's outputs alone, ck_cq02h for the rest, each (* keep *).
+  (* keep *) logic [S*D*LK-1:0] ck_cq02h;
+  (* keep *) logic [S*D*LK-1:0] ckr_cq02h;
   logic [S*D*4-1:0]    dst_cq02h;
   logic [S*D*GW-1:0]   gname_cq02h, gold_cq02h;
   logic [S*D*NSB-1:0]  gsec_cq02h;
@@ -721,7 +724,11 @@ module ooe_rob_w #(
   // frees its new names now; an unfilled one frees its slot now and its
   // names as its fill lands (the kill count). The model squashes ahead of
   // retire, so nothing behind the branch retires first (the window, below).
-  logic [S*D-1:0] sqm_cq02h, sp_s_cq02h, sq_p_cq03h;
+  logic [S*D-1:0] sqm_cq02h;
+  // The squash's entry, twice (NGD-7): sq_p_cq03h for the redirect payload's
+  // outputs alone, sp_s_cq02h for the rest, each (* keep *).
+  (* keep *) logic [S*D-1:0] sp_s_cq02h;
+  (* keep *) logic [S*D-1:0] sq_p_cq03h;
   logic [S-1:0]   sq_rt_cq02h;                  // the branch retired at R
   logic [S*D-1:0] pfx_cq02h, pick_cq02h, cw_e_cq02h;
   logic [S*D-1:0] sqe_cq02h, outq_cq02h, hds_cq02h, frel_cq02h, krel_cq02h;
@@ -1454,6 +1461,7 @@ module ooe_rob_w #(
         st_cq02h[ge]                <= fd_st_cq02h[ge];
         gns_cq02h[ge * NSB +: NSB]  <= fd_gns_cq02h[ge * NSB +: NSB];
         ck_cq02h[ge * LK +: LK]     <= fd_ck_cq02h[ge * LK +: LK];
+        ckr_cq02h[ge * LK +: LK]    <= fd_ck_cq02h[ge * LK +: LK];
         dst_cq02h[ge * 4 +: 4]      <= fd_dst_cq02h[ge * 4 +: 4];
         gname_cq02h[ge * GW +: GW]  <= fd_gname_cq02h[ge * GW +: GW];
         gold_cq02h[ge * GW +: GW]   <= fd_gold_cq02h[ge * GW +: GW];
@@ -2232,10 +2240,10 @@ module ooe_rob_w #(
         rd_o_cq03h[gs]                <= 1'b0;
         sqm_cq02h[gs * D +: D]        <= '0;
       end else if (rs_en_cq02h[gs]) begin
-        rd_s_cq02h[gs]                <= |pick_cq02h[gs * D +: D];
-        rd_t_cq02h[gs]                <= |pick_cq02h[gs * D +: D];
-        rd_q_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
-        rd_o_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
+        rd_s_cq02h[gs]                <= |cw_e_cq02h[gs * D +: D];
+        rd_t_cq02h[gs]                <= |cw_e_cq02h[gs * D +: D];
+        rd_q_cq03h[gs]                <= |cw_e_cq02h[gs * D +: D];
+        rd_o_cq03h[gs]                <= |cw_e_cq02h[gs * D +: D];
         sqm_cq02h[gs * D +: D]        <= sqm_nx_cq02h[gs * D +: D];
       end
     end
@@ -2251,7 +2259,7 @@ module ooe_rob_w #(
   assign rd_e_cq02h = rs_en_cq02h;
   assign ckf_l_cq02h = fpo_cq02h;
   always_comb
-    for (int s = 0; s < S; s++) rd_nx_cq02h[s] = rs_en_cq02h[s] ? |pick_cq02h[s * D +: D] : rd_s_cq02h[s];
+    for (int s = 0; s < S; s++) rd_nx_cq02h[s] = rs_en_cq02h[s] ? |cw_e_cq02h[s * D +: D] : rd_s_cq02h[s];
   // The squash's bulk discard (A-41, A-53): when it takes a store at MIU
   // (uncommitted: commit is at retire), the circular range (branch, tail]
   // goes to MIU at once, its loads with it (TI-21); a cycle after the squash.
@@ -2285,55 +2293,71 @@ module ooe_rob_w #(
   // record: its checkpoint, the lanes that took it, the target (taken: the
   // taken target, else the fall-through; a ret: {pc[47:32], aux}), stay for
   // a ret (AR-24 (b)).
-  logic [LK-1:0]  rp_ck_cq03h;
-  logic [RW-1:0]  rp_rec_cq03h;
-  logic [OWD-1:0] rp_out_cq03h;
+  // Each checkpoint's candidate is formed from its own record and outcome
+  // flops, beside the squash's one-hot entry select, so the payload is one
+  // AND-OR after the select (OA-487: rd_tgt's depth for the lag-1 send).
+  logic [LK-1:0]    rp_ck_cq03h;
+  logic [NK-1:0]    rp_h_cq03h;
+  logic [NK*PCW-1:0] cg_tgt_cq02h;
+  logic [NK*32-1:0]  cg_tm_cq02h;
+  logic [NK-1:0]     cg_st_cq02h;
   logic [S*LK-1:0]  rd_ckpt_nx_cq03h;
   logic [S*32-1:0]  rd_tmask_nx_cq03h;
   logic [S*PCW-1:0] rd_tgt_nx_cq03h;
   logic [S-1:0]     rd_stay_nx_cq03h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      rp_ck_cq03h = '0;
-      for (int i = 0; i < D; i++)
-        rp_ck_cq03h = rp_ck_cq03h | ({LK{sq_p_cq03h[s * D + i]}} & ck_cq02h[(s * D + i) * LK +: LK]);
-      rp_rec_cq03h = '0;
-      rp_out_cq03h = '0;
       for (int c = 0; c < NK; c++) begin
-        rp_rec_cq03h = rp_rec_cq03h | ({RW{rp_ck_cq03h == LK'(c)}} & rec_cq02h[(s * NK + c) * RW +: RW]);
-        rp_out_cq03h = rp_out_cq03h | ({OWD{rp_ck_cq03h == LK'(c)}} & out_cq02h[(s * NK + c) * OWD +: OWD]);
+        cg_st_cq02h[c] = rec_rt(rec_cq02h[(s * NK + c) * RW +: RW]);
+        cg_tm_cq02h[c * 32 +: 32] = out_cq02h[(s * NK + c) * OWD + 32 +: 32];
+        cg_tgt_cq02h[c * PCW +: PCW] =
+            rec_rt(rec_cq02h[(s * NK + c) * RW +: RW])
+              ? {rec_ph(rec_cq02h[(s * NK + c) * RW +: RW]), out_cq02h[(s * NK + c) * OWD +: 32]}
+              : out_cq02h[(s * NK + c) * OWD + 64] ? rec_tg(rec_cq02h[(s * NK + c) * RW +: RW])
+                                                   : rec_pn(rec_cq02h[(s * NK + c) * RW +: RW]);
       end
-      rd_ckpt_nx_cq03h[s * LK +: LK]   = rp_ck_cq03h;
-      rd_tmask_nx_cq03h[s * 32 +: 32]  = rp_out_cq03h[63:32];
-      rd_stay_nx_cq03h[s]              = rec_rt(rp_rec_cq03h);
-      rd_tgt_nx_cq03h[s * PCW +: PCW]  = rec_rt(rp_rec_cq03h) ? {rec_ph(rp_rec_cq03h), rp_out_cq03h[31:0]}
-                                       : rp_out_cq03h[64] ? rec_tg(rp_rec_cq03h) : rec_pn(rp_rec_cq03h);
+      rp_ck_cq03h = '0;
+      rp_h_cq03h  = '0;
+      for (int i = 0; i < D; i++) begin
+        rp_ck_cq03h = rp_ck_cq03h | ({LK{sq_p_cq03h[s * D + i]}} & ckr_cq02h[(s * D + i) * LK +: LK]);
+        for (int c = 0; c < NK; c++)
+          rp_h_cq03h[c] = rp_h_cq03h[c] | (sq_p_cq03h[s * D + i] && ckr_cq02h[(s * D + i) * LK +: LK] == LK'(c));
+      end
+      rd_ckpt_nx_cq03h[s * LK +: LK]  = rp_ck_cq03h;
+      rd_tmask_nx_cq03h[s * 32 +: 32] = '0;
+      rd_tgt_nx_cq03h[s * PCW +: PCW] = '0;
+      rd_stay_nx_cq03h[s]             = 1'b0;
+      for (int c = 0; c < NK; c++) begin
+        rd_tmask_nx_cq03h[s * 32 +: 32] = rd_tmask_nx_cq03h[s * 32 +: 32] | ({32{rp_h_cq03h[c]}} & cg_tm_cq02h[c * 32 +: 32]);
+        rd_tgt_nx_cq03h[s * PCW +: PCW] = rd_tgt_nx_cq03h[s * PCW +: PCW] | ({PCW{rp_h_cq03h[c]}} & cg_tgt_cq02h[c * PCW +: PCW]);
+        rd_stay_nx_cq03h[s]             = rd_stay_nx_cq03h[s] | (rp_h_cq03h[c] & cg_st_cq02h[c]);
+      end
     end
+  // The payload's register, written on the resolution's own flop (CG-5)
+  // and held until the slot's next: the redirect's word while the slot
+  // waits at ooe_redir (OA-487: the hold table here, rd_tgt's depth ending
+  // at its own flop). The PWV form also drives the cq03h payload, which
+  // ooe_redir takes when it sends the slot in its arrival cycle.
   if (PWV != 0) begin : g_rdpwv
-    // OI-184's lag-1 option: ooe_redir flops the payload with the valid.
     assign rd_ckpt_cq03h  = rd_ckpt_nx_cq03h;
     assign rd_tmask_cq03h = rd_tmask_nx_cq03h;
     assign rd_tgt_cq03h   = rd_tgt_nx_cq03h;
     assign rd_stay_cq03h  = rd_stay_nx_cq03h;
-    assign rd_ckpt_cq04h  = '0;
-    assign rd_tmask_cq04h = '0;
-    assign rd_tgt_cq04h   = '0;
-    assign rd_stay_cq04h  = '0;
-  end else begin : g_rdp
+  end else begin : g_rdc
     assign rd_ckpt_cq03h  = '0;
     assign rd_tmask_cq03h = '0;
     assign rd_tgt_cq03h   = '0;
     assign rd_stay_cq03h  = '0;
-    logic [S-1:0] rdp_en_cq03h;
-    assign rdp_en_cq03h = rd_q_cq03h;
-    for (genvar gs = 0; gs < S; gs++) begin : g_s
-      always_ff @(posedge ooe_core_clk) begin
-        if (rdp_en_cq03h[gs]) begin
-          rd_ckpt_cq04h[gs * LK +: LK]    <= rd_ckpt_nx_cq03h[gs * LK +: LK];
-          rd_tmask_cq04h[gs * 32 +: 32]   <= rd_tmask_nx_cq03h[gs * 32 +: 32];
-          rd_tgt_cq04h[gs * PCW +: PCW]   <= rd_tgt_nx_cq03h[gs * PCW +: PCW];
-          rd_stay_cq04h[gs]               <= rd_stay_nx_cq03h[gs];
-        end
+  end
+  logic [S-1:0] rdp_en_cq03h;
+  assign rdp_en_cq03h = rd_q_cq03h;
+  for (genvar gs = 0; gs < S; gs++) begin : g_rdp
+    always_ff @(posedge ooe_core_clk) begin
+      if (rdp_en_cq03h[gs]) begin
+        rd_ckpt_cq04h[gs * LK +: LK]    <= rd_ckpt_nx_cq03h[gs * LK +: LK];
+        rd_tmask_cq04h[gs * 32 +: 32]   <= rd_tmask_nx_cq03h[gs * 32 +: 32];
+        rd_tgt_cq04h[gs * PCW +: PCW]   <= rd_tgt_nx_cq03h[gs * PCW +: PCW];
+        rd_stay_cq04h[gs]               <= rd_stay_nx_cq03h[gs];
       end
     end
   end
@@ -2369,6 +2393,13 @@ module ooe_rob_w #(
   always_comb
     for (int s = 0; s < S; s++) pk_off_cq02h[s] = (|pick_cq02h[s * D +: D]) && !rs_en_cq02h[s];
   `CCV_ASSERT(pick_within_rs_en, pk_off_cq02h == '0)
+  // A pick exists whenever a candidate does (the first from the head), so
+  // the redirect's valid reads |cw_e: no OR over the picks, which keeps each
+  // pick bit's fanout within 4 beside sp_s and sq_p (fl_m's NGD-3, OI-211).
+  logic [S-1:0] pk_any_bad_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++) pk_any_bad_cq02h[s] = (|pick_cq02h[s * D +: D]) != (|cw_e_cq02h[s * D +: D]);
+  `CCV_ASSERT(pick_iff_candidate, pk_any_bad_cq02h == '0)
   // The flopped wrong term covers the records' wrong bits (those written
   // since reset: a record's wrong bit is not reset) and the bypass's.
   logic [S*NK-1:0] rw_seen_cq02h;
