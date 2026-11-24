@@ -99,7 +99,6 @@ module ooe_rob_w #(
   parameter int CW = 4,                  // a fault cause (CCV_W_FAULT_CAUSE)
   parameter int VA = 64,                 // a fault address (CCV_W_VA)
   parameter int BS = ND - 2,             // the done slot RCU-only ops complete on, branches among them (AR's RCU spec rev 14, OA rev 287)
-  parameter int PWV = 1,                 // the redirect's payload with its valid (OI-184's lag-1 option): rd_*_cq03h too
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int S  = 1,                 // the slots this instance holds: its own
   localparam int LS = (SA > 1) ? $clog2(SA) : 1,
@@ -230,7 +229,7 @@ module ooe_rob_w #(
   output logic [S*32-1:0]     rd_tmask_cq04h,
   output logic [S*PCW-1:0]    rd_tgt_cq04h,
   output logic [S-1:0]        rd_stay_cq04h,
-  // PWV: the same, in rd_l's cycle, for ooe_redir's send flop (0 otherwise).
+  // The same, in rd_l's cycle, for ooe_redir's send flop.
   output logic [S*LK-1:0]     rd_ckpt_cq03h,
   output logic [S*32-1:0]     rd_tmask_cq03h,
   output logic [S*PCW-1:0]    rd_tgt_cq03h,
@@ -2336,19 +2335,12 @@ module ooe_rob_w #(
   // The payload's register, written on the resolution's own flop (CG-5)
   // and held until the slot's next: the redirect's word while the slot
   // waits at ooe_redir (OA-487: the hold table here, rd_tgt's depth ending
-  // at its own flop). The PWV form also drives the cq03h payload, which
-  // ooe_redir takes when it sends the slot in its arrival cycle.
-  if (PWV != 0) begin : g_rdpwv
-    assign rd_ckpt_cq03h  = rd_ckpt_nx_cq03h;
-    assign rd_tmask_cq03h = rd_tmask_nx_cq03h;
-    assign rd_tgt_cq03h   = rd_tgt_nx_cq03h;
-    assign rd_stay_cq03h  = rd_stay_nx_cq03h;
-  end else begin : g_rdc
-    assign rd_ckpt_cq03h  = '0;
-    assign rd_tmask_cq03h = '0;
-    assign rd_tgt_cq03h   = '0;
-    assign rd_stay_cq03h  = '0;
-  end
+  // at its own flop). The cq03h payload is the same word, which ooe_redir
+  // takes when it sends the slot in its arrival cycle.
+  assign rd_ckpt_cq03h  = rd_ckpt_nx_cq03h;
+  assign rd_tmask_cq03h = rd_tmask_nx_cq03h;
+  assign rd_tgt_cq03h   = rd_tgt_nx_cq03h;
+  assign rd_stay_cq03h  = rd_stay_nx_cq03h;
   logic [S-1:0] rdp_en_cq03h;
   assign rdp_en_cq03h = rd_q_cq03h;
   for (genvar gs = 0; gs < S; gs++) begin : g_rdp

@@ -21,25 +21,28 @@
 // push_back does.
 //
 // Timing: ooe_rob_w's resolution flop rd_l is high in the squash's cycle,
-// a cycle after the model's resolve; its payload follows a cycle later. The
+// a cycle after the model's resolve, its payload on ports in the same cycle
+// and held in ooe_rob_w a cycle later (OA-487). The
 // redirect's warp and epoch come from ooe_decrx's flopped slot copies, read
 // in rd_l's cycle, before that squash's advance: the epoch after the
 // slot's, as the model's redirect carries it (squash_act_lag 1). The pick
 // is made in rd_l's cycle among the waiting entries and the arriving ones
 // (an arriving entry is younger than every waiting one) and registered:
-// the channel's valid from a flop a cycle after rd_l, its payload a cycle
-// after that, so two cycles after the model's send. The frees: each
+// the channel's valid and payload from flops a cycle after rd_l, two
+// cycles after the model's send at redirect_send_lag 0 (the lag-1 form, DA
+// 130; the two-cycle form, PWV=0, retired by OA 492). The frees: each
 // instance's ckf (its checkpoints, OA 427's cycle later) arrives in the
-// cycle rd_l would, so the free channel's valid comes from a flop a cycle
-// later and its mask a cycle after that, in the same relation as the
-// redirect's: a free sent with a redirect lands with it (A-58). A slot's
+// cycle rd_l would, so the free channel's valid and mask come from flops a
+// cycle later, in the same relation as the redirect's: a free sent with a
+// redirect lands with it (A-58). A slot's
 // frees are masked from its epoch-only notice's cycle (OA 438).
 //
 // Local clock gating: the entries' order and valids on any waiting entry
 // or any slot's resolution lead (rd_e, ooe_rob_w's resolution enable a
 // cycle before rd_l, flopped here); each slot's warp and epoch on its own
-// lead's flop; each slot's payload on its own flop of rd_l; the channel's
-// payload on its valid; the free mask on its valid. The reset is flopped
+// lead's flop; each slot's held payload in ooe_rob_w, on its resolution
+// flop; the channel's payload on the pick's gate; the free mask on its
+// valid's. The reset is flopped
 // (RST-1).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
@@ -52,7 +55,6 @@ module ooe_redir #(
   parameter int VA  = 64,      // the channel's target_pc (CCV_W_VA)
   parameter int WW  = 5,       // a warp_id (CCV_W_WARP_ID)
   parameter int EP  = 3,       // a fetch epoch (CCV_P_W_FETCH_EPOCH)
-  parameter int PWV = 1,       // OI-184's lag-1 option: the payload leaves with the valid
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LK = (NK > 1) ? $clog2(NK) : 1
 ) (
@@ -65,8 +67,9 @@ module ooe_redir #(
   input  logic [S*32-1:0]   rd_tmask_cq04h, // the lanes that took the branch,
   input  logic [S*PCW-1:0]  rd_tgt_cq04h,   // the target,
   input  logic [S-1:0]      rd_stay_cq04h,  // a ret's stay
-  // PWV: the same payload in rd_l's cycle too (ooe_rob_w's PWV form), for
-  // a slot sent in its arrival cycle; the cq04h ports hold a waiting one's.
+  // The same payload in rd_l's cycle, for a slot sent in its arrival
+  // cycle; the cq04h ports hold a waiting one's (a declared table read, OA
+  // 492).
   input  logic [S*LK-1:0]   rd_ckpt_cq03h,
   input  logic [S*32-1:0]   rd_tmask_cq03h,
   input  logic [S*PCW-1:0]  rd_tgt_cq03h,
@@ -81,21 +84,28 @@ module ooe_redir #(
   input  logic [S-1:0]      ntm_cq03h,
   // ccv_ooe_fet_redirect: the valid, then the payload a cycle later.
   output logic              rdr_v_cq04h,
-  output logic [WW-1:0]     rdr_warp_cq05h,
-  output logic [LS-1:0]     rdr_t1_cq05h,
-  output logic [LK-1:0]     rdr_ckpt_cq05h,
-  output logic [31:0]       rdr_tmask_cq05h,
-  output logic [VA-1:0]     rdr_tgt_cq05h,
-  output logic [EP-1:0]     rdr_ep_cq05h,
-  output logic              rdr_eo_cq05h,   // epoch_only
-  output logic              rdr_rw_cq05h,   // rewind
-  output logic              rdr_rh_cq05h,   // rewind_held
-  output logic              rdr_hl_cq05h,   // held_long
-  output logic              rdr_own_cq05h,  // own_pc
-  output logic              rdr_stay_cq05h,
+  output logic [WW-1:0]     rdr_warp_cq04h,
+  output logic [LS-1:0]     rdr_t1_cq04h,
+  output logic [LK-1:0]     rdr_ckpt_cq04h,
+  output logic [31:0]       rdr_tmask_cq04h,
+  output logic [VA-1:0]     rdr_tgt_cq04h,
+  output logic [EP-1:0]     rdr_ep_cq04h,
+  output logic              rdr_eo_cq04h,   // epoch_only
+  output logic              rdr_rw_cq04h,   // rewind
+  output logic              rdr_rh_cq04h,   // rewind_held
+  output logic              rdr_hl_cq04h,   // held_long
+  output logic              rdr_own_cq04h,  // own_pc
+  output logic              rdr_stay_cq04h,
   // ccv_ooe_fet_ckpt_free: the valid, then the mask a cycle later.
   output logic              ckf_v_cq04h,
-  output logic [S*NK-1:0]   ckf_m_cq05h
+  output logic [S*NK-1:0]   ckf_m_cq04h
+`ifdef CCV_CHECK_REDIR
+  ,
+  // Control pw-at-res (OA 492): every pick read as a waiting one, so a
+  // pick in its slot's resolution cycle reads the hold word as it is
+  // written; hd_read_not_written must catch it.
+  input  logic              ctl_pwres
+`endif
 );
 
   // The reset, flopped before any use (RST-1).
@@ -154,9 +164,7 @@ module ooe_redir #(
 
   // The order and the send's valid share one gate: while nothing waits or
   // arrives, the next order is the idle one and the send clears, so the
-  // send's own valid only widens it to clear itself. Which slot, and whether
-  // it arrived in the pick's cycle (its payload then on ooe_rob_w's outputs,
-  // else in its entry), sit in the PWV form's own block.
+  // send's own valid only widens it to clear itself.
   logic         ord_en_cq03h;
   assign ord_en_cq03h = (|pv_cq03h) || (|re_q_cq03h) || rdr_v_cq04h;
   always_ff @(posedge ooe_core_clk) begin
@@ -171,66 +179,6 @@ module ooe_redir #(
     end
   end
 
-  if (PWV == 0) begin : g_f2
-  // The two-cycle form: which slot, on the send's gate.
-  logic [S-1:0] pk_cq04h;
-  always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) pk_cq04h <= '0;
-    else if (ord_en_cq03h) pk_cq04h <= pick_cq03h;
-  end
-
-  // Each slot's warp and epoch, read in rd_l's cycle (before the advance),
-  // on its own resolution lead's flop. Its checkpoint, mask, target and stay
-  // need no entry here: ooe_rob_w's payload flops load on the same
-  // resolution and hold until the slot's next, which supersedes the entry.
-  logic [S*WW-1:0]    ew_cq04h;
-  logic [S*EP-1:0]    ee_cq04h;
-  for (genvar gs = 0; gs < S; gs++) begin : g_ent
-    logic id_en_cq03h;
-    assign id_en_cq03h = re_q_cq03h[gs];
-    always_ff @(posedge ooe_core_clk)
-      if (id_en_cq03h) begin   // rd_l a data select: the enable is this module's flop alone (CG-5)
-        ew_cq04h[gs * WW +: WW] <= rd_l_cq03h[gs] ? wid_cq03h[gs * WW +: WW] : ew_cq04h[gs * WW +: WW];
-        ee_cq04h[gs * EP +: EP] <= rd_l_cq03h[gs] ? ep1_cq03h[gs * EP +: EP] : ee_cq04h[gs * EP +: EP];
-      end
-  end
-
-  // The channel's payload, on its valid: the picked slot's entry and
-  // ooe_rob_w's held payload.
-  logic              pl_en_cq04h;
-  logic [WW-1:0]     ow_nx_cq04h;
-  logic [LS-1:0]     ot_nx_cq04h;
-  logic [LK-1:0]     ok_nx_cq04h;
-  logic [31:0]       om_nx_cq04h;
-  logic [PCW-1:0]    og_nx_cq04h;
-  logic [EP-1:0]     oe_nx_cq04h;
-  logic              os_nx_cq04h;
-  assign pl_en_cq04h = rdr_v_cq04h;
-  always_comb begin
-    ow_nx_cq04h = '0; ot_nx_cq04h = '0; ok_nx_cq04h = '0; om_nx_cq04h = '0;
-    og_nx_cq04h = '0; oe_nx_cq04h = '0; os_nx_cq04h = 1'b0;
-    for (int s = 0; s < S; s++)
-      if (pk_cq04h[s]) begin
-        ow_nx_cq04h = ow_nx_cq04h | ew_cq04h[s * WW +: WW];
-        ot_nx_cq04h = ot_nx_cq04h | LS'(s);
-        oe_nx_cq04h = oe_nx_cq04h | ee_cq04h[s * EP +: EP];
-        ok_nx_cq04h = ok_nx_cq04h | rd_ckpt_cq04h[s * LK +: LK];
-        om_nx_cq04h = om_nx_cq04h | rd_tmask_cq04h[s * 32 +: 32];
-        og_nx_cq04h = og_nx_cq04h | rd_tgt_cq04h[s * PCW +: PCW];
-        os_nx_cq04h = os_nx_cq04h | rd_stay_cq04h[s];
-      end
-  end
-  always_ff @(posedge ooe_core_clk)
-    if (pl_en_cq04h) begin
-      rdr_warp_cq05h  <= ow_nx_cq04h;
-      rdr_t1_cq05h    <= ot_nx_cq04h;
-      rdr_ckpt_cq05h  <= ok_nx_cq04h;
-      rdr_tmask_cq05h <= om_nx_cq04h;
-      rdr_tgt_cq05h   <= VA'(og_nx_cq04h);
-      rdr_ep_cq05h    <= oe_nx_cq04h;
-      rdr_stay_cq05h  <= os_nx_cq04h;
-    end
-  end else begin : g_f1
   // OI-184's lag-1 option (DA 130): the channel's payload is picked in rd_l's
   // cycle and flopped beside the valid, so it leaves with it. An arriving
   // slot's comes from ooe_rob_w's cq03h ports; a waiting one's from its
@@ -240,15 +188,15 @@ module ooe_redir #(
   // declared table, by OA; a word is never read in the cycle it is
   // written: an arriving slot's payload is the ports').
   localparam int FW = WW + EP + LK + 32 + PCW + 1;
-  logic [S*WW-1:0] ew_cq04h;
-  logic [S*EP-1:0] ee_cq04h;
+  logic [WW-1:0] ew_cq04h [S];
+  logic [EP-1:0] ee_cq04h [S];
+  logic [S-1:0] id_en_cq03h;
+  assign id_en_cq03h = re_q_cq03h;
   for (genvar gs = 0; gs < S; gs++) begin : g_ent
-    logic id_en_cq03h;
-    assign id_en_cq03h = re_q_cq03h[gs];
     always_ff @(posedge ooe_core_clk)
-      if (id_en_cq03h) begin   // rd_l a data select: the enable is this module's flop alone (CG-5)
-        ew_cq04h[gs * WW +: WW] <= rd_l_cq03h[gs] ? wid_cq03h[gs * WW +: WW] : ew_cq04h[gs * WW +: WW];
-        ee_cq04h[gs * EP +: EP] <= rd_l_cq03h[gs] ? ep1_cq03h[gs * EP +: EP] : ee_cq04h[gs * EP +: EP];
+      if (id_en_cq03h[gs]) begin   // rd_l a data select: the enable is this module's flop alone (CG-5)
+        ew_cq04h[gs] <= rd_l_cq03h[gs] ? wid_cq03h[gs * WW +: WW] : ew_cq04h[gs];
+        ee_cq04h[gs] <= rd_l_cq03h[gs] ? ep1_cq03h[gs * EP +: EP] : ee_cq04h[gs];
       end
   end
   logic [S*FW-1:0] ar_cq03h, hd_cq03h;
@@ -256,7 +204,7 @@ module ooe_redir #(
     for (int s = 0; s < S; s++) begin
       ar_cq03h[s * FW +: FW] = {wid_cq03h[s * WW +: WW], ep1_cq03h[s * EP +: EP], rd_ckpt_cq03h[s * LK +: LK],
                                 rd_tmask_cq03h[s * 32 +: 32], rd_tgt_cq03h[s * PCW +: PCW], rd_stay_cq03h[s]};
-      hd_cq03h[s * FW +: FW] = {ew_cq04h[s * WW +: WW], ee_cq04h[s * EP +: EP], rd_ckpt_cq04h[s * LK +: LK],
+      hd_cq03h[s * FW +: FW] = {{(WW + EP){1'b0}}, rd_ckpt_cq04h[s * LK +: LK],
                                 rd_tmask_cq04h[s * 32 +: 32], rd_tgt_cq04h[s * PCW +: PCW], rd_stay_cq04h[s]};
     end
   // The pick's slot, and one AND-OR over the arriving and the waiting words
@@ -269,13 +217,19 @@ module ooe_redir #(
       if (pick_cq03h[s]) pi_cq03h = pi_cq03h | LS'(s);
   end
   assign pa_cq03h = pick_cq03h & nw_cq03h;
+`ifdef CCV_CHECK_REDIR
+  assign pw_cq03h = pick_cq03h & ~(nw_cq03h & ~{S{ctl_pwres}});
+`else
   assign pw_cq03h = pick_cq03h & ~nw_cq03h;
-  `CCV_ASSERT(hd_read_not_written, (pw_cq03h & rd_l_cq03h) == '0)
+`endif
+  `CCV_ASSERT(hd_read_not_written, !((|pw_cq03h) && id_en_cq03h[pi_cq03h] && rd_l_cq03h[pi_cq03h]))
   logic [FW-1:0] q_nx_cq03h, q_cq04h;
   always_comb begin
     q_nx_cq03h = '0;
     for (int s = 0; s < S; s++)
       q_nx_cq03h = q_nx_cq03h | ({FW{pa_cq03h[s]}} & ar_cq03h[s * FW +: FW]) | ({FW{pw_cq03h[s]}} & hd_cq03h[s * FW +: FW]);
+    // A waiting slot's warp and epoch: its word of the table, through the pick's index.
+    q_nx_cq03h = q_nx_cq03h | ({FW{|pw_cq03h}} & {ew_cq04h[pi_cq03h], ee_cq04h[pi_cq03h], {(FW - WW - EP){1'b0}}});
   end
   logic qp_en_cq03h;
   assign qp_en_cq03h = (|pv_cq03h) || (|re_q_cq03h);   // a pick needs a waiting entry or a lead
@@ -285,17 +239,16 @@ module ooe_redir #(
       q_cq04h  <= q_nx_cq03h;
       qt_cq04h <= pi_cq03h;
     end
-  assign {rdr_warp_cq05h, rdr_ep_cq05h, rdr_ckpt_cq05h, rdr_tmask_cq05h} = q_cq04h[FW-1 -: WW + EP + LK + 32];
-  assign rdr_tgt_cq05h  = VA'(q_cq04h[1 +: PCW]);
-  assign rdr_stay_cq05h = q_cq04h[0];
-  assign rdr_t1_cq05h   = qt_cq04h;
-  end
+  assign {rdr_warp_cq04h, rdr_ep_cq04h, rdr_ckpt_cq04h, rdr_tmask_cq04h} = q_cq04h[FW-1 -: WW + EP + LK + 32];
+  assign rdr_tgt_cq04h  = VA'(q_cq04h[1 +: PCW]);
+  assign rdr_stay_cq04h = q_cq04h[0];
+  assign rdr_t1_cq04h   = qt_cq04h;
   // The epoch-only fields: 5b's.
-  assign rdr_eo_cq05h  = 1'b0;
-  assign rdr_rw_cq05h  = 1'b0;
-  assign rdr_rh_cq05h  = 1'b0;
-  assign rdr_hl_cq05h  = 1'b0;
-  assign rdr_own_cq05h = 1'b0;
+  assign rdr_eo_cq04h  = 1'b0;
+  assign rdr_rw_cq04h  = 1'b0;
+  assign rdr_rh_cq04h  = 1'b0;
+  assign rdr_hl_cq04h  = 1'b0;
+  assign rdr_own_cq04h = 1'b0;
 
   // The frees: every instance's, less a slot's under its notice, the valid
   // a cycle after they show and the mask a cycle after that.
@@ -311,14 +264,7 @@ module ooe_redir #(
   end
   always_ff @(posedge ooe_core_clk)
     if (fv_en_cq03h) fq_cq04h <= fm_nx_cq03h;
-  if (PWV == 0) begin : g_ckf2
-    logic ckm_en_cq04h;
-    assign ckm_en_cq04h = ckf_v_cq04h;
-    always_ff @(posedge ooe_core_clk)
-      if (ckm_en_cq04h) ckf_m_cq05h <= fq_cq04h;
-  end else begin : g_ckf1
-    assign ckf_m_cq05h = fq_cq04h;   // the mask leaves with its valid, as the redirect's payload
-  end
+  assign ckf_m_cq04h = fq_cq04h;   // the mask leaves with its valid, as the redirect's payload
 
 endmodule
 `undef CCV_CLK

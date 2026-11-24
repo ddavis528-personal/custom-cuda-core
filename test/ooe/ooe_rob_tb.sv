@@ -30,7 +30,6 @@ module ooe_rob_tb #(
   parameter int CW = 4,
   parameter int VA = 64,
   parameter int BS = ND - 2,
-  parameter int PWV = 1,           // OI-184's lag-1 redirect: the payload with the valid
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LD = $clog2(D),
@@ -48,16 +47,16 @@ module ooe_rob_tb #(
   input  logic [S-1:0]            ntm_cq03h,
   input  logic [1:0]              lead_off,   // controls: [0] drops rd_e, [1] ckf_l
   output logic                    rdr_v_cq04h,
-  output logic [4:0]              rdr_warp_cq05h,
-  output logic [LS-1:0]           rdr_t1_cq05h,
-  output logic [LK-1:0]           rdr_ckpt_cq05h,
-  output logic [31:0]             rdr_tmask_cq05h,
-  output logic [VA-1:0]           rdr_tgt_cq05h,
-  output logic [2:0]              rdr_ep_cq05h,
-  output logic [4:0]              rdr_zero_cq05h,
-  output logic                    rdr_stay_cq05h,
+  output logic [4:0]              rdr_warp_cq04h,
+  output logic [LS-1:0]           rdr_t1_cq04h,
+  output logic [LK-1:0]           rdr_ckpt_cq04h,
+  output logic [31:0]             rdr_tmask_cq04h,
+  output logic [VA-1:0]           rdr_tgt_cq04h,
+  output logic [2:0]              rdr_ep_cq04h,
+  output logic [4:0]              rdr_zero_cq04h,
+  output logic                    rdr_stay_cq04h,
   output logic                    ckf_v_cq04h,
-  output logic [S*NK-1:0]         ckf_m_cq05h,
+  output logic [S*NK-1:0]         ckf_m_cq04h,
   input  logic [S-1:0]            al_l_cq01h,
   input  logic [S*LA-1:0]         al_n_cq02h,
   input  logic [S*A-1:0]          al_nop_cq02h,
@@ -134,7 +133,7 @@ module ooe_rob_tb #(
   output logic [S*32-1:0]         rd_tmask_cq04h,
   output logic [S*PCW-1:0]        rd_tgt_cq04h,
   output logic [S-1:0]            rd_stay_cq04h,
-  output logic [S*LK-1:0]         rd_ckpt_cq03h,   // PWV: the payload in rd_l's cycle
+  output logic [S*LK-1:0]         rd_ckpt_cq03h,   // the payload in rd_l's cycle
   output logic [S*32-1:0]         rd_tmask_cq03h,
   output logic [S*PCW-1:0]        rd_tgt_cq03h,
   output logic [S-1:0]            rd_stay_cq03h,
@@ -148,6 +147,10 @@ module ooe_rob_tb #(
   output logic [S*PCW-1:0]        ft_pc_cq03h,
   output logic [S*32-1:0]         ft_lanes_cq03h,
   output logic [S*VA-1:0]         ft_addr_cq03h
+`ifdef CCV_CHECK_REDIR
+  ,
+  input  logic                    ctl_pwres
+`endif
 );
   // Per instance, its frees and their leads, ORed below.
   logic [S-1:0]        gfl_w, pfl_w;
@@ -159,7 +162,7 @@ module ooe_rob_tb #(
     // registers, done here by the bench, which stands in for it.
     logic [A-1:0] fl_m_w;
     always_comb for (int l = 0; l < A; l++) fl_m_w[l] = fl_v_cq02h[l] && fl_slot_cq02h[l * LS +: LS] == LS'(w);
-    ooe_rob_w #(.SA(S), .WID(w), .D(D), .RP(RP), .A(A), .ND(ND), .NM(NM), .GW(GW), .GR(GR), .NG(NG), .NS(NS), .PW(PW), .NP(NP), .LB(LB), .LT(LT), .NK(NK), .PCW(PCW), .CW(CW), .VA(VA), .BS(BS), .PWV(PWV)) u_w (
+    ooe_rob_w #(.SA(S), .WID(w), .D(D), .RP(RP), .A(A), .ND(ND), .NM(NM), .GW(GW), .GR(GR), .NG(NG), .NS(NS), .PW(PW), .NP(NP), .LB(LB), .LT(LT), .NK(NK), .PCW(PCW), .CW(CW), .VA(VA), .BS(BS)) u_w (
       .ooe_core_clk, .ooe_rst_r00h,
       .al_l_cq01h(al_l_cq01h[w * ($bits(al_l_cq01h) / S) +: $bits(al_l_cq01h) / S]),
       .al_n_cq02h(al_n_cq02h[w * ($bits(al_n_cq02h) / S) +: $bits(al_n_cq02h) / S]),
@@ -255,15 +258,18 @@ module ooe_rob_tb #(
       .ft_addr_cq03h(ft_addr_cq03h[w * ($bits(ft_addr_cq03h) / S) +: $bits(ft_addr_cq03h) / S])
     );
   end
-  ooe_redir #(.S(S), .NK(NK), .PCW(PCW), .VA(VA), .WW(5), .EP(3), .PWV(PWV)) u_redir (
+  ooe_redir #(.S(S), .NK(NK), .PCW(PCW), .VA(VA), .WW(5), .EP(3)) u_redir (
     .ooe_core_clk, .ooe_rst_r00h,
     .rd_e_cq02h(rde_w & ~{S{lead_off[0]}}), .rd_l_cq03h, .rd_ckpt_cq04h, .rd_tmask_cq04h, .rd_tgt_cq04h, .rd_stay_cq04h,
     .rd_ckpt_cq03h, .rd_tmask_cq03h, .rd_tgt_cq03h, .rd_stay_cq03h,
     .ckf_l_cq02h(ckl_w & ~{S{lead_off[1]}}), .ckf_cq03h, .wid_cq03h, .ep1_cq03h, .ntm_cq03h,
-    .rdr_v_cq04h, .rdr_warp_cq05h, .rdr_t1_cq05h, .rdr_ckpt_cq05h, .rdr_tmask_cq05h, .rdr_tgt_cq05h,
-    .rdr_ep_cq05h, .rdr_eo_cq05h(rdr_zero_cq05h[0]), .rdr_rw_cq05h(rdr_zero_cq05h[1]),
-    .rdr_rh_cq05h(rdr_zero_cq05h[2]), .rdr_hl_cq05h(rdr_zero_cq05h[3]), .rdr_own_cq05h(rdr_zero_cq05h[4]),
-    .rdr_stay_cq05h, .ckf_v_cq04h, .ckf_m_cq05h
+    .rdr_v_cq04h, .rdr_warp_cq04h, .rdr_t1_cq04h, .rdr_ckpt_cq04h, .rdr_tmask_cq04h, .rdr_tgt_cq04h,
+    .rdr_ep_cq04h, .rdr_eo_cq04h(rdr_zero_cq04h[0]), .rdr_rw_cq04h(rdr_zero_cq04h[1]),
+    .rdr_rh_cq04h(rdr_zero_cq04h[2]), .rdr_hl_cq04h(rdr_zero_cq04h[3]), .rdr_own_cq04h(rdr_zero_cq04h[4]),
+    .rdr_stay_cq04h, .ckf_v_cq04h, .ckf_m_cq04h
+`ifdef CCV_CHECK_REDIR
+    , .ctl_pwres
+`endif
   );
   always_comb begin
     gfree_l_cq02h = |gfl_w;

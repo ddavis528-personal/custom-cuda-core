@@ -504,11 +504,12 @@ struct Config {
   bool inject_straggler_early_credit = false;
   /// A squash to retirement drops a due squash's epoch advance (OA 460 control).
   bool inject_due_epoch_lost = false;
-  /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
-  /// rob_w's rd_l and the payload a cycle after that, so the redirect and
-  /// ckpt_free leave OOE this many cycles after the model's send, together
-  /// (A-58). A delay line on both outputs; an epoch notice lands as late.
-  unsigned redirect_send_lag = 0;
+  /// OA 447 (re:OI-179 (3)): the redirect and ckpt_free leave OOE this many
+  /// cycles after the model's send, together (A-58). A delay line on both
+  /// outputs; an epoch notice lands as late. 1 is the RTL's (OI-184's lag-1
+  /// form, DA 130; the two-cycle form retired, OA 492): ooe_redir registers
+  /// the pick and its payload together, a cycle after rob_w's rd_l.
+  unsigned redirect_send_lag = 1;
   /// ROB slice 5 (rev 277 (c)): ooe_rob_w keeps each slot's barrier reports
   /// (arrive, wait, exit) in a side buffer this deep, in program order,
   /// popped at retire; a slot's next one holds rename while it is full.

@@ -3367,8 +3367,9 @@ static bool stragglerCase(bool walk, unsigned delay, bool no_walk, bool early) {
     if (queued && freed < 0 && e.core.decqOf(0) == q0) freed = int64_t(e.t);
   }
   // e.t after a step is the cycle after the one that sent; the slot frees
-  // in the cycle whose step drops it.
-  const int64_t leave = beat + int64_t(c.redirect_send_lag);
+  // in the cycle whose step drops it. The log holds what leaves OOE, past
+  // redirect_send_lag's delay line, so beat is already when it leaves.
+  const int64_t leave = beat;
   const bool ok = queued && beat >= 0 && freed >= 0 && freed >= leave + int64_t(delay);
   if (!no_walk && !early)
     EXPECT(ok, "walk %d delay %u: queued %d, beat leaves %lld, freed %lld", walk, delay, queued,
@@ -5078,14 +5079,14 @@ void testCkptFreeLag() {
   EXPECT(caught, "a held free kept across an older redirect should land on a dead checkpoint");
 }
 
-/// redirect_send_lag (OA 447, re:OI-179 (3)): ooe_redir's two flops put
-/// the redirect and ckpt_free two cycles after the model's send, together
-/// (A-58). Random mispredicting programs run clean at 0 and 2, every
-/// redirect lagged at 2; the control sends the frees a cycle after the
+/// redirect_send_lag (OA 447, re:OI-179 (3)): ooe_redir's flop puts the
+/// redirect and ckpt_free a cycle after the model's send, together (A-58;
+/// 1 the default, DA 130). Random mispredicting programs run clean at 0, 1
+/// and 2, every redirect lagged at 1 and 2; the control sends the frees a cycle after the
 /// redirects, and FET's V-46 checker must see a free land on a checkpoint
 /// a redirect already freed.
 void testRedirectSendLag() {
-  for (const unsigned lag : {0u, 2u}) {
+  for (const unsigned lag : {0u, 1u, 2u}) {
     uint64_t lagged = 0, sent = 0;
     for (unsigned seed = 1; seed <= 6; ++seed)
       for (int mode = 0; mode < 8; mode += 3) {
