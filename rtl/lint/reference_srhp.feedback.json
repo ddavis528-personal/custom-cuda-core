@@ -1,0 +1,23 @@
+{
+  "_comment": "bad_conn4.sv's reference_srhp.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "from": "sm_cy04h",
+      "ahead": 3,
+      "loop": [
+        "u_c.e_cy02h",
+        "u_d.a_cy02h>s_cy03h>y_cy03h",
+        "sm_cy04h"
+      ],
+      "why": "a loop through a child's register, named as a hop, as u_map's through u_dep (OA-495 (c))"
+    }
+  }
+}

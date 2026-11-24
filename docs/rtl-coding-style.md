@@ -665,7 +665,17 @@ register before it, through combinational nets only), and `ahead` is
 helper unnamed, as the parent's logic (OI-213; `reference_hp.sv`), and any
 child through a combinational path named in the loop as
 `"<inst>.<input>><output>"` (OA-494; `reference_xp.sv`); a named crossing
-of a registered path is refused (`bad_conn3.sv`). A `<module>.feedback.json` beside no
+of a registered path is refused (`bad_conn3.sv`). OA-495 adds two more:
+`"from"` may be a cone, `{"cone": [<parent registers>], "ahead": {<register>:
+n}}`, when the input reads combinational logic over several parent
+registers. Every register that reaches the input through the parent's
+combinational nets and crossings must be listed, and every listed one
+must reach it, each `ahead` matching its tags; the loop's last hop is one
+of them (`reference_cnp.sv`). And a hop may cross a child through one of
+its registers, `"<inst>.<input>><register>><output>"`, where the input
+reaches that register's next value or enable and the register reaches the
+output, each combinationally (`reference_rhp.sv`); `bad_conn4.sv` holds
+both refusals. A `<module>.feedback.json` beside no
 `.sv` defining its module is refused, since the lint would never read it
 (MI-44). `reference_pp.sv` holds both;
 `bad_conn2.sv`'s untraced hop and helper feeding a second register are

@@ -2390,12 +2390,13 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
         return "not an architect's (by %r, not one of %s)" % (d.get("by"), ", ".join(signers))
     insts = instances(pbody, local, idx, fbdir)
     ri, rp = key.split(".", 1)
-    fr = str(d.get("from", ""))
-    if "." not in fr:
+    fr = d.get("from", "")
+    if isinstance(fr, dict) or "." not in str(fr):
         why = verify_regloop(ri, rp, fr, d, pbody, insts)
         if why:
             return why
         return verify_stale(d, pbody, insts, ri, fbdir)
+    fr = str(fr)
     wi, wp = fr.split(".", 1)
     if ri not in insts or wi not in insts:
         return "%s or %s is no instance of this module" % (ri, wi)
@@ -2467,15 +2468,53 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
             for on in conn_ids(hconns.get(o, "")):
                 for i in reach:
                     deps.setdefault(on, set()).update(conn_ids(hconns.get(i, "")))
-    if fr not in flops:
-        return "\"from\" %s is neither <instance>.<output> nor a register of this module" % fr
-    if conn_ids(insts[ri][3].get(rp, "")) != [fr]:
-        return "%s.%s does not read register %s directly" % (ri, rp, fr)
-    sn, sp = stage_of(fr), stage_of(rp)
-    if not sn or not sp or d.get("ahead") != sn[2] - sp[2]:
-        return "ahead is %r, but %s lies %s stage(s) past the input's tag" % (
-            d.get("ahead"), fr, (sn[2] - sp[2]) if sn and sp else "?")
     loop = [str(x) for x in (d.get("loop") or [])]
+    # Named crossings join the graph too, for the cone's reach (OA-495).
+    for h in loop:
+        if h.count(">") == 1 and "." in h:
+            ci, rest = h.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            if ci in insts:
+                for on in conn_ids(insts[ci][3].get(cout, "")):
+                    deps.setdefault(on, set()).update(conn_ids(insts[ci][3].get(cin, "")))
+    sp = stage_of(rp)
+    if isinstance(fr, dict):
+        # A combinational cone over listed parent registers (OA-495 (a)):
+        # exactly the listed registers reach the input through the parent's
+        # combinational nets and crossings, each ahead matching its tags.
+        cone_regs = [str(x) for x in (fr.get("cone") or [])]
+        aheads = fr.get("ahead") or {}
+        if not cone_regs:
+            return "a cone \"from\" lists no register"
+        nets, rr = cone(deps, flops, conn_ids(insts[ri][3].get(rp, "")))
+        for g in cone_regs:
+            if g not in flops:
+                return "cone register %s is no register of this module" % g
+        missing = sorted(rr - set(cone_regs))
+        extra = sorted(set(cone_regs) - rr)
+        if missing:
+            return ("register(s) %s reach %s.%s through the cone but are not listed: a "
+                    "cone lists every register it reads" % (", ".join(missing), ri, rp))
+        if extra:
+            return ("cone register(s) %s do not reach %s.%s through combinational logic"
+                    % (", ".join(extra), ri, rp))
+        for g in cone_regs:
+            sg = stage_of(g)
+            if not sg or not sp or aheads.get(g) != sg[2] - sp[2]:
+                return "ahead for %s is %r, but it lies %s stage(s) past the input's tag" % (
+                    g, aheads.get(g), (sg[2] - sp[2]) if sg and sp else "?")
+        ends = set(cone_regs)
+    else:
+        if fr not in flops:
+            return ("\"from\" %s is neither <instance>.<output> nor a register of this "
+                    "module" % fr)
+        if conn_ids(insts[ri][3].get(rp, "")) != [fr]:
+            return "%s.%s does not read register %s directly" % (ri, rp, fr)
+        sn = stage_of(fr)
+        if not sn or not sp or d.get("ahead") != sn[2] - sp[2]:
+            return "ahead is %r, but %s lies %s stage(s) past the input's tag" % (
+                d.get("ahead"), fr, (sn[2] - sp[2]) if sn and sp else "?")
+        ends = {fr}
     # The reader's output(s) first, then hops in order: a parent register, or
     # a crossing "<inst>.<input>><output>" of a child with a combinational
     # path from that input to that output (OA-494); the last is "from".
@@ -2483,10 +2522,12 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
     while n_out < len(loop) and "." in loop[n_out] and ">" not in loop[n_out]:
         n_out += 1
     outs, hops = loop[:n_out], loop[n_out:]
-    if not outs or not hops or hops[-1] != fr or any(
+    if not outs or not hops or hops[-1] not in ends or any(
             "." in h and ">" not in h for h in hops):
         return ("\"loop\" lists the reader's output(s), then the hops in order (parent "
-                "registers, or \"<inst>.<input>><output>\" crossings), ending at %s" % fr)
+                "registers, \"<inst>.<input>><output>\" crossings or \"<inst>.<input>>"
+                "<register>><output>\" registered hops), ending at %s"
+                % " or ".join(sorted(ends)))
     paths = port_paths(insts[ri][2], insts[ri][1])
     src = set()
     for x in outs:
@@ -2500,7 +2541,33 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
         src |= set(conn_ids(insts[ri][3].get(op, "")))
     prev = " / ".join(outs)
     for h in hops:
-        if ">" in h:
+        if h.count(">") == 2:
+            # A registered hop (OA-495 (c)): the child's input reaches the
+            # named register's next value or enable, and the register its
+            # output, each combinationally.
+            ci, rest = h.split(".", 1)
+            cin, creg, cout = rest.split(">")
+            if ci not in insts:
+                return "hop %s names no instance of this module" % h
+            cports = insts[ci][1]
+            cdeps, cflops = dep_graph(insts[ci][2])
+            if cports.get(cin) != "input" or cports.get(cout) != "output" or creg not in cflops:
+                return ("hop %s: %s is no input, %s no register or %s no output of %s"
+                        % (h, cin, creg, cout, ci))
+            dn, dr = cone(cdeps, cflops, cdeps.get(creg, ()))
+            if cin not in dn:
+                return ("hop %s: %s's input %s does not reach %s's next value or enable "
+                        "combinationally" % (h, insts[ci][0], cin, creg))
+            on, orr = cone(cdeps, cflops, cdeps.get(cout, ()) | ({cout} if cout in cflops else set()))
+            if creg not in orr and cout != creg:
+                return ("hop %s: %s's register %s does not reach its output %s "
+                        "combinationally" % (h, insts[ci][0], creg, cout))
+            nets, rr = cone(deps, flops, conn_ids(insts[ci][3].get(cin, "")))
+            if not (src & (nets | rr)):
+                return ("the loop's hop %s -> %s is not traced: %s's input %s does not read "
+                        "it through combinational logic" % (prev, h, ci, cin))
+            src = set(conn_ids(insts[ci][3].get(cout, "")))
+        elif ">" in h:
             ci, rest = h.split(".", 1)
             cin, cout = rest.split(">", 1)
             if ci not in insts:
