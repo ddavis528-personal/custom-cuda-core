@@ -604,6 +604,14 @@ beyond the seven conditions:
     undeclared third writer and missing write-conflict assertion are refused.
     Timing stays check-ngd's (condition 6).
 
+A table may be row registers (DI-51): a generate loop of rows, each written
+under an enable comparing a tagged index with the row's number, and read by
+a loop selecting a row by the same compare. The compare's tagged side is
+then the read's index, held to condition 4 (at the reader's stage), and a
+writer's enable may be a net reaching the rows through the generate block.
+`reference_table3.sv` (passes) and `bad_table3.sv` (a row compare a stage
+early, refused) hold it.
+
 ### CCV-L22 — a block runs on its own gated clock
 
 No `always_ff @(posedge core_clk)` inside a block, except the wake detector.

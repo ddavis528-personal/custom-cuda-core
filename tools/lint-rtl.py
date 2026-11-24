@@ -342,6 +342,35 @@ def two_writers(d, sa, arr):
     return out, sig, None
 
 
+def loop_vars(body):
+    """The genvars and procedural loop variables of a module body: a row
+    number, never a tagged net."""
+    out = set(re.findall(r"\bgenvar\s+([a-z]\w*)", body))
+    out |= set(re.findall(r"\bfor\s*\(\s*(?:genvar|int|integer|int\s+unsigned)?\s*"
+                          r"([a-z]\w*)\s*=", body))
+    return out
+
+
+def row_index(expr, ctx, loopv):
+    """The index a read of a row-register table goes through (DI-51): expr
+    itself when it reads anything but loop variables; else the tagged side of
+    each compare, in the read's conditions or right-hand side, of a tagged
+    index with the row's number."""
+    ws = re.findall(r"[a-z]\w*", expr)
+    rv = [w for w in ws if w in loopv]
+    if not rv or any(w not in loopv for w in ws):
+        return expr
+    sides = []
+    for c in ctx:
+        for clause in re.split(r"&&|\|\||\?|:", c):
+            if "==" not in clause or not any(re.search(r"\b%s\b" % v, clause) for v in rv):
+                continue
+            tagged = [w for w in re.findall(r"[a-z]\w*", clause) if stage_of(w)]
+            if tagged:
+                sides.append(" ".join(tagged))
+    return " ".join(sides) if sides else expr
+
+
 ASSERT_RE = re.compile(r"(?:`CCV_ASSERT(?:_AT)?|\bassert\s+property|\bassert)\s*\(")
 
 
@@ -1525,16 +1554,24 @@ def check_file(path, rel):
                                        "writer's data, index and enable are its own, held to "
                                        "the arithmetic up to the write port"
                                        % (w["name"], x, w["stage"]))
-                            elif x not in leaves:
+                            elif x not in leaves and x not in cnets:
                                 why = ("writer %s's %s does not reach the write port of %s "
                                        "(a stale writer is refused)" % (w["name"], x, arr))
                             if why:
                                 break
                         if why:
                             break
+                    owned = set()
+                    for w in wl:
+                        if w.get("loop"):
+                            continue
+                        for x in w["sigs"]:
+                            if x in cnets:
+                                owned |= set(y for y in cone(graph[0], graph[1], [x])[1]
+                                             if stage_of(y) and stage_of(y)[2] == w["stage"])
                     if not why:
                         und = sorted(x for x in leaves
-                                     if x not in wsig and x != arr
+                                     if x not in wsig and x not in owned and x != arr
                                      and stage_of(x) and stage_of(x)[1] != "r"
                                      and stage_of(x)[2] > sa[2] - 1)
                         if und:
@@ -1572,6 +1609,10 @@ def check_file(path, rel):
                     add("CCV-L23", ln0, "%s: table %s is refused: %s" % (fp, arr, why))
                     continue
                 # (1) every reader reads it; (4) through an index at its own stage.
+                # A row-register table (DI-51) is read by a loop over its rows,
+                # each selected by a compare of a tagged index with the row's
+                # number: that compare's tagged side is the read's index.
+                loopv = loop_vars(body)
                 wen = set(w for _, _, _, c in wr for w in IDENT_RE.findall(" ".join(c)))
                 ridx = set()
                 okr = []
@@ -1589,13 +1630,17 @@ def check_file(path, rel):
                     at = sr[2] - 1 if seqr else sr[2]
                     exprs = []
                     for kind, clk, b, bl, bpos in always_blocks(body):
+                        regions = cond_regions(b)
                         for apos, lhs, op, rhs in assignments(b):
                             if lhs == reader:
-                                exprs += index_reads(rhs, arr)[0]
+                                ctx = [c for a0, a1, c in regions if a0 <= apos < a1] + [rhs]
+                                exprs += [row_index(e, ctx, loopv)
+                                          for e in index_reads(rhs, arr)[0]]
                     for m in re.finditer(r"\bassign\s+[^;]+;", body):
                         for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
                             if lhs == reader:
-                                exprs += index_reads(rhs, arr)[0]
+                                exprs += [row_index(e, [rhs], loopv)
+                                          for e in index_reads(rhs, arr)[0]]
                     bad_ix = None
                     for e in exprs:
                         ridx.update(re.findall(r"[a-z]\w*", e))
