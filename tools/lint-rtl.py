@@ -1773,7 +1773,7 @@ def check_file(path, rel):
                             # less its offset: the reader's own (OI's rev 189,
                             # OA's rev 212), so its other inputs stay checked.
                             byp_ok.setdefault(reader, {})[rd] = ahead
-            for reader, d in sorted(decl.items()):
+            for reader, d in sorted((k, v) for k, v in decl.items() if "." not in k):
                 reads = d.get("from", [])
                 if d.get("by") not in signers:
                     add("CCV-L23", ln0,
@@ -1982,6 +1982,358 @@ def check_file(path, rel):
                     "flip or the wrong suffix -- use `_n` for a signal that "
                     "is simply defined active-low" % sib)
 
+    # -- CCV-L23 across a connection (OA 481-483) --------------------------
+    if scope == "design" and not rel.startswith(("rtl/top/", "rtl/generated/")):
+        check_connections(src, rel, add, feedback_signers(os.path.dirname(path)),
+                          os.path.dirname(path))
+
+    return F
+
+
+# -- CCV-L23 across a connection (OA 481-483, TI-554..556; MI-35) -----------
+# A child's port tags are its own numbering, not the parent's: a parent may
+# feed a child's cq01h input from a cq04h net. So a connection is held to the
+# arithmetic relatively. For each instance and each child output O that
+# depends, through the child's own nets and registers, on a child input I, the
+# parent's nets must give P(O) - P(I) >= S(O) - S(I): no output is tagged
+# earlier than the child's own latency from that input allows. The deficit
+# (S(O) - S(I)) - (P(O) - P(I)) of 1 through a register is OI-65's same-stage
+# feedback, exempt as it is inside a module (OA 482); anything else is fixed,
+# declared as a cross-module loop in the parent's <parent>.feedback.json, or
+# stood when the check was made (rtl/conn-ratchet.json, shrink-only). A
+# connection with an untagged port or net is a finding too (OA 481 (1)).
+# Out of scope, by name: children under rtl/common, rtl/ctech, rtl/macro and
+# rtl/clk (library and helper modules, whose ports carry no stage: CCV-L29
+# holds a block's sequential modules only), and the generated design
+# (rtl/top, rtl/generated), outside the per-file walk, whose channels cross
+# repeaters by params/links.json and are held there by check-links.
+CONN_RATCHET = os.path.join(ROOT, "rtl", "conn-ratchet.json")
+CONN_BASELINE = os.path.join(ROOT, "tools", "conn-ratchet-baseline.json")
+CONN_OUT = ("rtl/common/", "rtl/ctech/", "rtl/macro/", "rtl/clk/")
+_conn = {"path": CONN_RATCHET, "baseline": CONN_BASELINE, "entries": None,
+         "found": set(), "seen": set(), "index": None}
+
+
+def conn_ratchet():
+    if _conn["entries"] is None:
+        p = _conn["path"]
+        _conn["entries"] = (json.load(open(p)).get("entries", []) if os.path.exists(p) else [])
+    return _conn["entries"]
+
+
+def conn_key(e):
+    return tuple(e.get(k) for k in ("parent", "instance", "port", "net", "net_stage",
+                                    "port_stage", "deficit", "kind"))
+
+
+def module_headers(src):
+    """{module: (ports {name: direction}, body)} for comment-stripped text."""
+    out = {}
+    for m in re.finditer(r"\bmodule\s+([a-z]\w*)\b", src):
+        j = m.end()
+        k = re.match(r"\s*#\s*\(", src[j:])
+        if k:
+            _, j = balanced(src, j + k.end() - 1)
+        k = re.match(r"\s*\(", src[j:])
+        if not k:
+            continue
+        plist, j = balanced(src, j + k.end() - 1)
+        # A block top's port list is generated and included (`include
+        # "<top>_ports.svh", rtl/generated/): read it in place.
+        # (strip_comments blanks the string, so it is found by its name).
+        if "`include" in plist:
+            q = os.path.join(ROOT, "rtl", "top", "ports", m.group(1) + "_ports.svh")
+            if os.path.exists(q):
+                plist = plist.replace("`include", strip_comments(open(q).read()), 1)
+        e = src.find("endmodule", j)
+        ports, d = {}, None
+        for tok in re.finditer(r"\b(input|output|inout)\b|\[[^\]]*\]|([a-z]\w*)\s*(?=,|$)",
+                               plist.replace("\n", " ")):
+            if tok.group(1):
+                d = tok.group(1)
+            elif tok.group(2) and d:
+                ports[tok.group(2)] = d
+        out[m.group(1)] = (ports, src[j:e if e >= 0 else len(src)])
+    return out
+
+
+def module_index():
+    """{module: (rel path, ports, body)} over rtl/ (the generated design and
+    the lint fixtures aside), read once a run."""
+    if _conn["index"] is None:
+        idx = {}
+        for d, _, fns in os.walk(os.path.join(ROOT, "rtl")):
+            reld = os.path.relpath(d, ROOT).replace(os.sep, "/") + "/"
+            if reld.startswith(("rtl/top/", "rtl/generated/", "rtl/lint/")):
+                continue
+            for fn in fns:
+                if fn.endswith(".sv"):
+                    full = os.path.join(d, fn)
+                    for n, (ports, body) in module_headers(strip_comments(open(full).read())).items():
+                        idx.setdefault(n, (reld + fn, ports, body))
+        _conn["index"] = idx
+    return _conn["index"]
+
+
+def conn_ids(expr):
+    """The nets an instance connection reads: base names, never an index,
+    a member after a dot, a constant or a parameter."""
+    expr = re.sub(r"\[[^\]]*\]", " ", expr)
+    return [w for w in re.findall(r"(?<![.\w'])[a-z]\w*", expr)
+            if not UNSTAGED_RE.search(w) and w not in ("rst_n",)]
+
+
+def port_paths(body, ports):
+    """({output: {input: comb}}): for each output, the inputs it depends on,
+    through the module's nets and registers, and whether some path is
+    combinational (no register on it)."""
+    deps, flops = dep_graph(body)
+    ins = {p for p, d in ports.items() if d == "input"}
+    out = {}
+    for o, d in ports.items():
+        if d != "output":
+            continue
+        reach = {}
+        todo, seen = [(o, o not in flops)], set()
+        while todo:
+            n, comb = todo.pop()
+            for x in deps.get(n, ()):
+                c = comb and x not in flops
+                if x in ins:
+                    reach[x] = reach.get(x, False) or c
+                if (x, c) in seen or x in ins:
+                    continue
+                seen.add((x, c))
+                todo.append((x, c))
+        if reach:
+            out[o] = reach
+    return out
+
+
+def check_connections(src, rel, add, signers, fbdir):
+    """CCV-L23 across each instance connection of the file's modules."""
+    local = module_headers(src)
+    idx = module_index()
+    entries = {conn_key(e) for e in conn_ratchet()}
+    for parent, (pports, pbody) in local.items():
+        _conn["seen"].add(parent)
+        # A module with no register of its own is its parent's logic (an
+        # inner helper; CCV-L29 tags a block's sequential modules only): its
+        # ports and nets carry no stage, and a path through it is the
+        # parent's combinational logic, held to the plain arithmetic.
+        pseq = bool(dep_graph(pbody)[1])
+        fp, decl, _, _ = feedback_decls(fbdir, parent)
+        xdecl = {k: v for k, v in decl.items() if "." in k}
+        used = set()
+        for m in re.finditer(r"\b([a-z]\w*)\s*(#\s*\()?", pbody):
+            child = m.group(1)
+            if child == parent:
+                continue
+            if child in local:
+                crel, cports, cbody = rel, local[child][0], local[child][1]
+            elif child in idx:
+                crel, cports, cbody = idx[child]
+            elif os.path.exists(os.path.join(fbdir, child + ".sv")):
+                sib = module_headers(strip_comments(open(os.path.join(fbdir, child + ".sv")).read()))
+                if child not in sib:
+                    continue
+                crel = os.path.relpath(os.path.join(fbdir, child + ".sv"), ROOT)
+                cports, cbody = sib[child]
+            else:
+                continue
+            if crel.startswith(CONN_OUT):
+                continue
+            j = m.end()
+            if m.group(2):
+                _, j = balanced(pbody, j - 1)
+            k = re.match(r"\s*([a-z]\w*)\s*(?:\[[^\]]*\]\s*)?\(\s*\.", pbody[j:])
+            if not k:
+                continue
+            inst = k.group(1)
+            cseq = bool(dep_graph(cbody)[1])
+            txt, _ = balanced(pbody, pbody.index("(", j + k.end(1)))
+            ln = line_of(src, src.find(pbody) + m.start()) if pbody in src else 1
+            pt = {}
+            for c in re.finditer(r"\.([a-z]\w*)\s*(\()?", txt):
+                port = c.group(1)
+                if UNSTAGED_RE.search(port) or port not in cports:
+                    continue
+                expr = balanced(txt, c.end() - 1)[0] if c.group(2) else port
+                ids = conn_ids(expr)
+                if not ids:
+                    continue
+                for w in ids:
+                    # A block top's own boundary ports carry the schema's channel
+                    # names, untagged by design; the channel's timing is the
+                    # interface's (excluded by name, OA 481 (2)).
+                    bad = ("port" if stage_of(port) is None and cseq else
+                           "net" if stage_of(w) is None and pseq and
+                           not (parent.startswith("ccv_") and w in pports) else None)
+                    if bad:
+                        e = (parent, inst, port, w, None, None, None, "untagged " + bad)
+                        if e in entries:
+                            _conn["found"].add(e)
+                        else:
+                            add("CCV-L23", ln,
+                                "%s's %s.%s is connected to %s, and the %s carries no stage "
+                                "tag: a connection is held to the arithmetic, so both sides "
+                                "say their stage (OA 481 (1))"
+                                % (parent, inst, port, w, "child's port" if bad == "port" else "net"))
+                st = [stage_of(w)[2] for w in ids if stage_of(w) and stage_of(w)[1] != "r"]
+                if st:
+                    pt[port] = (min(st), max(st), ids)
+            for o, reach in port_paths(cbody, cports).items():
+                so = stage_of(o) if cseq else (None, None, 0, None)
+                if o not in pt or not so:
+                    continue
+                for i, comb in sorted(reach.items()):
+                    si = stage_of(i) if cseq else (None, "c", 0, None)
+                    if i not in pt or not si or si[1] == "r":
+                        continue
+                    deficit = (so[2] - si[2]) - (pt[o][0] - pt[i][1])
+                    if deficit <= 0 or (deficit == 1 and not comb):
+                        continue
+                    key = "%s.%s" % (inst, i)
+                    if key in xdecl:
+                        used.add(key)
+                        continue
+                    e = (parent, inst, i, None, pt[i][1], si[2], deficit,
+                         "combinational" if comb else "register")
+                    hit = [x for x in entries if x[:3] == e[:3] and x[3] is None]
+                    if hit:
+                        _conn["found"].update(hit)
+                        if any(x[6] >= deficit and (x[7] == "combinational" or not comb)
+                               for x in hit):
+                            continue
+                    add("CCV-L23", ln,
+                        "%s's %s (%s): output %s (its stage %s, the parent's %02d) depends "
+                        "on input %s (its stage %s, fed at %02d)%s, so the parent tags it %d "
+                        "stage(s) earlier than %s's own latency allows: a back edge across "
+                        "the boundary. Fix it, or declare the loop in %s.feedback.json as "
+                        "\"%s\" (CCV-L23, a cross-module loop)"
+                        % (parent, inst, child, o, "%02d" % so[2] if cseq else "none",
+                           pt[o][0], i, "%02d" % si[2] if cseq else "none", pt[i][1],
+                           " combinationally" if comb else "", deficit, child, parent, key))
+        for key, d in sorted(xdecl.items()):
+            why = verify_xloop(key, d, pbody, local, idx, signers, src, fbdir)
+            if why:
+                add("CCV-L23", 1, "%s: cross-module loop %s is refused: %s" % (fp, key, why))
+            elif key not in used:
+                add("CCV-L23", 1, "%s: cross-module loop %s names no back edge the "
+                    "connections show (a stale declaration is refused)" % (fp, key))
+
+
+def instances(pbody, local, idx, fbdir=None):
+    """{instance: (child, ports, body, {port: expr})} of a parent body."""
+    out = {}
+    for m in re.finditer(r"\b([a-z]\w*)\s*(#\s*\()?", pbody):
+        child = m.group(1)
+        src = local.get(child) or (idx[child][1:] if child in idx else None)
+        if not src and fbdir and os.path.exists(os.path.join(fbdir, child + ".sv")):
+            src = module_headers(strip_comments(open(os.path.join(fbdir, child + ".sv")).read())).get(child)
+        if not src:
+            continue
+        j = m.end()
+        if m.group(2):
+            _, j = balanced(pbody, j - 1)
+        k = re.match(r"\s*([a-z]\w*)\s*(?:\[[^\]]*\]\s*)?\(\s*\.", pbody[j:])
+        if not k:
+            continue
+        txt, _ = balanced(pbody, pbody.index("(", j + k.end(1)))
+        conns = {}
+        for c in re.finditer(r"\.([a-z]\w*)\s*(\()?", txt):
+            conns[c.group(1)] = balanced(txt, c.end() - 1)[0] if c.group(2) else c.group(1)
+        out[k.group(1)] = (child, src[0], src[1], conns)
+    return out
+
+
+def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
+    """A cross-module loop (OA 481 (3)): {"<inst>.<input>": {"from":
+    "<inst>.<output>", "ahead": N, "loop": [<inst>, ...], "assert": <label>,
+    "control": <name>, "by", "date", "why"}}. by an architect; ahead the
+    stages the net feeding the input lies past the input's own tag; from the
+    output driving that net; the loop closes through the listed instances,
+    the reader's input reaching the writer's output; and an assertion with
+    that label in the parent or the reader's module, for the hazard the stale
+    read opens, with its bench control named."""
+    if d.get("by") not in signers:
+        return "not an architect's (by %r, not one of %s)" % (d.get("by"), ", ".join(signers))
+    insts = instances(pbody, local, idx, fbdir)
+    ri, rp = key.split(".", 1)
+    fr = str(d.get("from", ""))
+    if "." not in fr:
+        return "\"from\" names no <instance>.<output>"
+    wi, wp = fr.split(".", 1)
+    if ri not in insts or wi not in insts:
+        return "%s or %s is no instance of this module" % (ri, wi)
+    if rp not in insts[ri][1] or insts[ri][1][rp] != "input":
+        return "%s is no input of %s" % (rp, ri)
+    if wp not in insts[wi][1] or insts[wi][1][wp] != "output":
+        return "%s is no output of %s" % (wp, wi)
+    rnet = conn_ids(insts[ri][3].get(rp, ""))
+    wnet = conn_ids(insts[wi][3].get(wp, ""))
+    if not rnet or not wnet or set(rnet) != set(wnet):
+        return "%s.%s is not fed by %s.%s's net" % (ri, rp, wi, wp)
+    sn, sp = stage_of(rnet[0]), stage_of(rp)
+    if not sn or not sp or d.get("ahead") != sn[2] - sp[2]:
+        return "ahead is %r, but the net lies %s stage(s) past the input's tag" % (
+            d.get("ahead"), (sn[2] - sp[2]) if sn and sp else "?")
+    loop = d.get("loop") or []
+    if not loop or loop[0] != ri or loop[-1] != wi:
+        return "\"loop\" must list its instances from the reader (%s) to the writer (%s)" % (ri, wi)
+    deps, _ = dep_graph(pbody)
+    def feeds(a, b):
+        # Some output of instance a reaches some input of instance b, through
+        # the parent's own nets.
+        outs = set()
+        for o, (dr) in insts[a][1].items():
+            if dr == "output":
+                outs |= set(conn_ids(insts[a][3].get(o, "")))
+        for i, dr in insts[b][1].items():
+            if dr != "input":
+                continue
+            todo, seen = list(conn_ids(insts[b][3].get(i, ""))), set()
+            while todo:
+                n = todo.pop()
+                if n in outs:
+                    return True
+                if n in seen:
+                    continue
+                seen.add(n)
+                todo.extend(deps.get(n, ()))
+        return False
+    for a, b in zip(loop, loop[1:]):
+        if a not in insts or b not in insts or not feeds(a, b):
+            return "the loop does not close: no output of %s reaches an input of %s" % (a, b)
+    if not port_paths(insts[ri][2], insts[ri][1]) or \
+            not any(rp in r for r in port_paths(insts[ri][2], insts[ri][1]).values()):
+        return "%s's input %s reaches none of its outputs" % (ri, rp)
+    lab = d.get("assert")
+    rbody = insts[ri][2]
+    if not lab or not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(lab)),
+                                pbody + rbody):
+        return ("no assertion %r in the parent or %s: a declared loop proves its stale read "
+                "safe (OA 481 (3))" % (lab, insts[ri][0]))
+    if not d.get("control"):
+        return "it names no bench control that breaks %r" % lab
+    return None
+
+
+def check_conn_ratchet():
+    """rtl/conn-ratchet.json only shrinks: an entry not in the baseline is
+    refused, and so is one this run no longer finds, in a module it read."""
+    F = []
+    rel = os.path.relpath(_conn["path"], ROOT)
+    p = _conn["baseline"]
+    base = {conn_key(e) for e in (json.load(open(p)).get("entries", []) if os.path.exists(p) else [])}
+    for e in conn_ratchet():
+        k = conn_key(e)
+        if k not in base:
+            F.append(Finding("CCV-L23", rel, 1, "%s.%s %s was not on the list when the "
+                             "connection check was made; the list only shrinks" % k[:3]))
+        elif k[0] in _conn["seen"] and k not in _conn["found"]:
+            F.append(Finding("CCV-L23", rel, 1, "%s.%s %s now meets the rule, or is gone: "
+                             "remove it from %s" % (k[0], k[1], k[2], rel)))
     return F
 
 
@@ -2153,6 +2505,11 @@ def main():
         if a.startswith("--stage-ratchet="):
             _stage_ratchet["path"] = os.path.join(ROOT, a.split("=", 1)[1])
             ratchet_given = True
+        if a.startswith("--conn-ratchet="):
+            _conn["path"] = os.path.join(ROOT, a.split("=", 1)[1])
+            ratchet_given = True
+        if a.startswith("--conn-baseline="):
+            _conn["baseline"] = os.path.join(ROOT, a.split("=", 1)[1])
         if a.startswith("--stage-baseline="):
             _stage_ratchet["baseline"] = os.path.join(ROOT, a.split("=", 1)[1])
     targets = args or ["rtl", "test", "spike"]
@@ -2171,6 +2528,7 @@ def main():
         findings.extend(check_module_names())
     if not args or ratchet_given:
         findings.extend(check_stage_ratchet())
+        findings.extend(check_conn_ratchet())
     if names:
         findings.extend(check_module_names((names,)))
     for f in sorted(findings, key=lambda f: (f.path, f.line)):

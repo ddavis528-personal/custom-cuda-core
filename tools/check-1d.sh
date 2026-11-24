@@ -38,6 +38,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_feedback.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_table.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_table2.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_table3.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -150,13 +151,14 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv \
          rtl/lint/reference_feedback.sv rtl/lint/reference_loop.sv \
          rtl/lint/reference_table.sv rtl/lint/reference_table2.sv \
-         rtl/lint/reference_table3.sv; do
+         rtl/lint/reference_table3.sv rtl/lint/reference_top.sv \
+         rtl/lint/reference_rd.sv rtl/lint/reference_wr.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (11 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (14 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -250,6 +252,35 @@ a row compare not at the reader's stage|table mtab_cy03h's read by mrd_cy02h is 
 a row's own read not listed|table otab_cy03h is refused: its loop writer lookup reads no listed reader
 ...and the refused port's stage skip reported|upe_cy02h is at stage 02 but combinational logic over stage(s) 02,04,05 gives 05
 WANT
+
+# CCV-L23 across a connection (OA 481-483; TI-554..556): reference_top.sv,
+# the MIU L0 refill's shape, with its cross-module loop declared, passes
+# (above). bad_conn.sv's are refused: the loop undeclared, an untagged child
+# port, a wrong "ahead", a loop that does not close, and a declaration with
+# no assertion; and the ratchet excuses a listed back edge, refuses a stale
+# entry, and refuses one not in its baseline.
+while IFS='|' read -r what want; do
+  if grep -qF "$want" "$TMP/bad.log"; then
+    say "CCV-L23 connection refused: $what" "PASS"
+  else
+    bad "CCV-L23 connection refused: $what" "no finding: $want"
+  fi
+done <<'WANT'
+an undeclared back edge|reference_utop's u_rd (reference_urd): output ms_cy03h (its stage 03, the parent's 03) depends on input l0_cy02h (its stage 02, fed at 06), so the parent tags it 4 stage(s) earlier
+an untagged port on a connection|reference_ntop's u_rd.l0 is connected to nl0_cy06h, and the child's port carries no stage tag
+a wrong ahead|cross-module loop u_rd.l0_cy02h is refused: ahead is 3, but the net lies 4 stage(s) past the input's tag
+a loop that does not close|cross-module loop u_rd.l0_cy02h is refused: the loop does not close: no output of u_rd reaches an input of u_wr
+no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion 'conn_l0_fresh' in the parent or reference_ard
+WANT
+python3 tools/lint-rtl.py --conn-ratchet=rtl/lint/bad_conn_ratchet.json \
+  --conn-baseline=rtl/lint/bad_conn_baseline.json rtl/lint/bad_conn.sv >"$TMP/cratchet.log" 2>&1
+if ! grep -q "reference_utop's u_rd (reference_urd)" "$TMP/cratchet.log" &&
+   grep -q "reference_utop.u_wr ms_cy03h now meets the rule" "$TMP/cratchet.log" &&
+   grep -q "reference_utop.u_rd a_cy01h was not on the list" "$TMP/cratchet.log"; then
+  say "CCV-L23's connection ratchet excuses, and only shrinks" "PASS (listed excused; stale and unlisted refused)"
+else
+  bad "CCV-L23's connection ratchet" "$(grep 'CCV-L23' "$TMP/cratchet.log" | head -3)"
+fi
 
 # MA signs a declaration under rtl/miu/ or rtl/dcu/ only (MA-32): the
 # reference table, signed by MA, passes read as a DCU module and is refused

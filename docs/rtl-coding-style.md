@@ -616,6 +616,43 @@ the table's own stage, needs no listing.
 `reference_table3.sv` (passes) and `bad_table3.sv` (a row compare a stage
 early, refused) hold it.
 
+**Across a connection** (OA 481-483; TI-554..556; MI-35). A child's port
+tags are its own numbering, not its parent's: a parent may feed a child's
+`cq01h` input from a `cq04h` net. So a connection is held to the
+arithmetic relatively. For each instance and each child output O that
+depends, through the child's own nets and registers, on a child input I,
+the parent's nets must give P(O) - P(I) >= S(O) - S(I): no output is
+tagged earlier than the child's own latency from that input allows. The
+deficit, (S(O) - S(I)) - (P(O) - P(I)), of exactly 1 through a register
+is OI-65's same-stage feedback, exempt as it is inside a module; any
+other deficit is fixed or declared. A child with no register of its own
+(an inner helper) is its parent's logic: its ports carry no stage and a
+path through it counts zero. A connection whose port or net carries no
+tag is a finding, except a block top's own boundary ports, which carry the
+schema's channel names. Out of scope, by name: children under
+`rtl/common`, `rtl/ctech`, `rtl/macro` and `rtl/clk` (library and helper
+modules), and the generated design (`rtl/top`, `rtl/generated`), whose
+channels cross repeaters by `params/links.json` and are held there.
+
+A back edge across the boundary, a loop through two children, is declared
+in the parent's `<parent>.feedback.json`: `{"reads": {"<inst>.<input>":
+{"from": "<inst>.<output>", "ahead": N, "loop": ["<inst>", ...],
+"assert": "<label>", "control": "<name>", "by", "date", "why"}}}`. The
+lint refuses it unless `by` is the block's architect; the input is fed by
+that output's net; `ahead` is the stages that net lies past the input's
+own tag; `loop` lists the instances from the reader to the writer and each
+feeds the next through the parent; and the parent or the reader holds
+`CCV_ASSERT(<label>, ...)` for the hazard the stale read opens, run on the
+block's bench, with `control` the bench control that breaks it (OA 481
+(3)). A declaration the connections no longer show is refused. The back
+edges that stood when the check was made are on `rtl/conn-ratchet.json`,
+one per (parent, instance, input) with its tags, deficit and kind; it only
+shrinks. `tools/check-1d.sh` holds it: `reference_top.sv` (with
+`reference_rd.sv` and `reference_wr.sv`, the MIU L0 refill's shape) passes;
+`bad_conn.sv`'s undeclared back edge, untagged port, wrong `ahead`, loop
+that does not close and missing assertion are refused, and the ratchet
+excuses, and refuses a stale or an unlisted entry.
+
 ### CCV-L22 — a block runs on its own gated clock
 
 No `always_ff @(posedge core_clk)` inside a block, except the wake detector.
