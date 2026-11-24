@@ -41,6 +41,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_table3.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn2.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_tport.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn3.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -156,13 +157,14 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_table3.sv rtl/lint/reference_top.sv \
          rtl/lint/reference_rd.sv rtl/lint/reference_wr.sv \
          rtl/lint/reference_pp.sv rtl/lint/reference_pc.sv rtl/lint/reference_ph.sv \
-         rtl/lint/reference_tpp.sv rtl/lint/reference_tpr.sv rtl/lint/reference_tpw.sv; do
+         rtl/lint/reference_tpp.sv rtl/lint/reference_tpr.sv rtl/lint/reference_tpw.sv \
+         rtl/lint/reference_hp.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (20 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (21 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -257,6 +259,9 @@ a row's own read not listed|table otab_cy03h is refused: its loop writer lookup 
 ...and the refused port's stage skip reported|upe_cy02h is at stage 02 but combinational logic over stage(s) 02,04,05 gives 05
 WANT
 
+# reference_hp.sv: a register loop whose hop crosses a register-free helper,
+# traced as the parent's logic (OI-213), passes; bad_conn3.sv's hop through
+# a child with a register is refused.
 # reference_tpp/tpr/tpw: a table read through an input port (OA-492 (3)),
 # rob_w and redir's shape, passes; bad_tport.sv's wrong ahead, port fed
 # through logic and missing assertion are refused.
@@ -285,6 +290,7 @@ no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion
 a port table's wrong ahead|table rd_cy04h (an input port) is refused: ahead is 2, but rd_cy04h lies 1 stage(s) past its reader's (03)
 a port table fed through logic|table rd_cy04h (an input port) is refused: in reference_gtpp, rd_cy04h is not fed directly by u_w's register rd_cy04h
 a port table with no assertion|table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_stpr
+a loop hop through a registered child|cross-module loop u_c.v_cy01h is refused: the loop's hop to qm_cy03h is not traced
 a register loop's untraced hop|cross-module loop u_c.v_cy01h is refused: the loop's hop rm_cy03h -> rm_cy04h is not traced
 a helper whose output feeds another register|reference_hpp's u_h (reference_hph): output y (its stage none, the parent's 02) depends on input a (its stage none, fed at 03) combinationally
 a control no bench names|cross-module loop u_rd.l0_cy02h is refused: its control 'conn-l0-nosuch' is named nowhere
@@ -297,6 +303,17 @@ if ! grep -q "reference_utop's u_rd (reference_urd)" "$TMP/cratchet.log" &&
   say "CCV-L23's connection ratchet excuses, and only shrinks" "PASS (listed excused; stale and unlisted refused)"
 else
   bad "CCV-L23's connection ratchet" "$(grep 'CCV-L23' "$TMP/cratchet.log" | head -3)"
+fi
+
+# An orphan declaration (MI-44): a <module>.feedback.json beside no .sv
+# defining that module is never read, so it is refused.
+mkdir -p "$TMP/orphan"
+cp rtl/lint/reference_hp.feedback.json "$TMP/orphan/ghost_miu.feedback.json"
+python3 tools/lint-rtl.py --orphan-root="$TMP/orphan" rtl/lint/reference_hp.sv >"$TMP/orphan.log" 2>&1
+if grep -q "ghost_miu.feedback.json is declared for module ghost_miu, which no .sv beside it defines" "$TMP/orphan.log"; then
+  say "CCV-L23: an orphan feedback declaration is refused" "PASS"
+else
+  bad "CCV-L23: an orphan feedback declaration" "no finding: $(head -2 "$TMP/orphan.log" | tr '\n' ' ')"
 fi
 
 # MA signs a declaration under rtl/miu/ or rtl/dcu/ only (MA-32): the
