@@ -12,7 +12,9 @@ file holds AR's.
 - AR owns:
   - the architecture docs and the partition spec;
   - the per-block specs for blocks without a session (RAU, PCA, FET, LANE,
-    DEC, SYU, SPM; MIU and DCU are MA's since DA 118);
+    DEC, SYU, SPM; MIU and DCU are MA's since DA 118), and MLC's (and the
+    MLC/EXB params) until Daniel creates an MLC agent (DA row .135300,
+    2026-11-23);
   - the AR register tab and docs/perf-register.md (PF-30 on);
   - Q-42 (full abutment);
   - reading traces.
@@ -75,8 +77,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 414 .678467 (tab rev 418).
-  - **The next AR row inserts after .678467**, labelled AR 415.
+  - Latest row: AR 417 .684284 (tab rev 421).
+  - **The next AR row inserts after .684284**, labelled AR 418.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -85,7 +87,7 @@ Credit rules (TI-49):
 
   | Tab | Node |
   |---|---|
-  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .133923, rev 132) |
+  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .135300, rev 133) |
   | TI | e8b1d9d9-df9b |
   | OA | 4c6a3151-83eb |
   | OI | 384bc26c-cef6 |
@@ -98,8 +100,8 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 418, OA 475, TI 535, MA 178, DI 69,
-  MI 38, RA 158, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
+- **Bookmarks** (revs read through): AR 421, OA 475, TI 553 (rev 552), MA 178, DI 69,
+  MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 133, Conventions 20 (full
   sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
@@ -230,6 +232,36 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000i1. **RE-BASELINE NOW DUE (TI-553, 11-24).** b780f324 (on doowtf and
+   claude/custom-cuda-core-infra-6msg93; RESUMED SCOPED PASS) landed AR 410
+   (kSlowEnd 1 MiB, CCV_TB_LATENCY, MEMOP timeout 40960), AR 412 (1)(2)
+   (20+-5 seeded, tb_overtaken, vadd6 swap class), HIT_MAX 28. TI's default
+   gate-kernel table, 4e3dda64 -> b780f324: median +14.6%; short kernels
+   +14..40 cycles; localsp 2175->233, privwin 1161->203, slotform 4348->486,
+   waypred 1211->255; full 66 rows in TI's scratch (cyc/run-summary.txt).
+   TI gives no S1 or coremark -priv numbers. So AR re-runs perf-register's
+   baselines itself once the sweep has merged b780f324: S1 (sweep.sh's ten),
+   coremark32priv, coremark128priv in perf-register's standard config
+   (base 1, perfect fetch, warm MLC), with run-tabulate, never beside a gate.
+   Then edit perf-register: a re-baseline note (11-13 slow region and 10 ->
+   20+-5 default), mark each affected entry, a PF row for the read target
+   (AR 412 (3)), and PF-39's HIT_MAX wording (AR 413). check-docs, push.
+   Read class and AR 417's control are still TI's.
+000l. **Common credit RTL modules (TI-537/539/540, Daniel to TI: "a common
+   RTL module ... for the block interfaces"). AR 415 (.679095): at a flopped
+   end (BOUNDARY 1, the RTL default) cr_src is the counter and go only, and
+   cr_dst drives the credit from logic; their own valid/payload/credit flops
+   exist only at no_flop ends; a generated FLOPPED and DEPTH per end; one
+   module-level credit:true waiver. (5) the credit/stall -> cr_go -> valid
+   port path: Daniel ruled option A in TI's session (a named exception
+   timed as the pair of port budgets, only through cr_go, never NGD-5; TI
+   writes it into rtl-coding-style and check-ngd, with a control). AR 416
+   (.682467) on v2 (cr_cnt/cr_go/cr_src/cr_dst): confirmed; REG and LATE
+   need 4+2N+1, so the avail form is declared per end in links.json and
+   DEPTH, the checkers and AVAIL derive from it; COMB with SPEND_W>1 refused;
+   waiver max_flops = the largest instance (MIU 8); lead:true only at
+   FLOPPED=0. RA-159 confirmed with five RCU corrections, taken. TI builds
+   after the ti-tblat landing.
 000k. **MLC hit max (AR 413 .676576, 11-23; OA, TI, MA rung), re: MA rev
    178 (d).** HIT_MAX's (2^W_REQ_DCU_MLC - 1) term (AR's TI-24 (5)) counted
    DCU's in-flight misses as a port queue; it becomes 2**W_REQ_FET_MLC (4),
@@ -245,7 +277,12 @@ Credit rules (TI-49):
    in the stub; 50 stands; OI adds a false-demotion split now. AR 414
    (.678467): accepted, but an S1 cost of 0.2-0.5% goes to Daniel (OA had
    written <=0.5%).
-   OPEN WITH DANIEL: who owns MLC's spec (MLC->EXB ids for the read class).
+   TI-545: swap class on new kernel vadd6 (5 demoted/restored at 1000,
+   slot_refill_parked); 20+-5 still demotes once (credit contention). AR 417
+   (.684284): the control is both thresholds raised over the latency
+   (bins empty, class fails); W_REQ_MLC_EXB 6 -> 8 (not 7: 128 < MA's ~130
+   lines, shared with ifills and writebacks), provisional.
+   MLC's spec is AR's (DA row .135300); W_REQ_MLC_EXB 8 stands as its owner's.
 000j. **Testbench latency (DA row .133923, AR 412 .673737, 11-23; TI, MA
    rung).** Daniel: default 20 +/-5 (seeded draw keyed by CCV_TB_SEED and
    arrival order; CCV_TB_JITTER half-width; slow regions stay fixed); a swap
