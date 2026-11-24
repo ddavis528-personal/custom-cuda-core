@@ -120,6 +120,30 @@
       "by": "MA",
       "date": "2026-11-24",
       "why": "miu_agu8's (* keep *) copies of lanes 0's and 16's lines, from its flops (out 0), for miu_grp's far lanes; 25.0 at the drop flop accepted at zero margin, a third copy pre-approved if it grows (MA rev 211, re:MI-42)."
+    },
+    "fal_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
+    },
+    "ilv_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
+    },
+    "ow_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
+    },
+    "we_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
     }
   }
 }
