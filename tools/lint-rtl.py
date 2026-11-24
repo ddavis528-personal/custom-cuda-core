@@ -2313,15 +2313,47 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
     if not port_paths(insts[ri][2], insts[ri][1]) or \
             not any(rp in r for r in port_paths(insts[ri][2], insts[ri][1]).values()):
         return "%s's input %s reaches none of its outputs" % (ri, rp)
-    lab = d.get("assert")
+    # One label or several, and one control or several (MI-40 (4)).
+    labs = d.get("assert") or []
+    labs = [labs] if isinstance(labs, str) else list(labs)
     rbody = insts[ri][2]
-    if not lab or not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(lab)),
-                                pbody + rbody):
-        return ("no assertion %r in the parent or %s: a declared loop proves its stale read "
-                "safe (OA 481 (3))" % (lab, insts[ri][0]))
-    if not d.get("control"):
-        return "it names no bench control that breaks %r" % lab
+    if not labs:
+        return "it names no assertion: a declared loop proves its stale read safe (OA 481 (3))"
+    for lab in labs:
+        if not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(lab)), pbody + rbody):
+            return ("no assertion %r in the parent or %s: a declared loop proves its stale "
+                    "read safe (OA 481 (3))" % (lab, insts[ri][0]))
+    ctls = d.get("control") or []
+    ctls = [ctls] if isinstance(ctls, str) else list(ctls)
+    if not ctls:
+        return "it names no bench control that breaks %s" % ", ".join(map(str, labs))
+    # A control is the block bench's: its name appears in test/<block>/ or
+    # sim/<block>/ (a fixture's, beside it in rtl/lint/).
+    blk = os.path.relpath(fbdir or ROOT, ROOT).replace(os.sep, "/").split("/")
+    homes = ([os.path.join(ROOT, "test", blk[1]), os.path.join(ROOT, "sim", blk[1])]
+             if len(blk) > 1 and blk[0] == "rtl" and blk[1] != "lint" else [fbdir or ROOT])
+    for c in ctls:
+        if not any(control_named(h, str(c)) for h in homes):
+            return ("its control %r is named nowhere in %s: name the bench control that "
+                    "breaks the assertion, as the bench registers it"
+                    % (c, " or ".join(os.path.relpath(h, ROOT) for h in homes)))
     return None
+
+
+def control_named(home, name):
+    """Whether a file under home, a feedback declaration aside, names the
+    bench control as a word."""
+    pat = re.compile(r"(?<![\w-])%s(?![\w-])" % re.escape(name))
+    for d, _, fns in os.walk(home):
+        for fn in fns:
+            if fn.endswith(".feedback.json"):
+                continue
+            try:
+                if pat.search(open(os.path.join(d, fn), errors="ignore").read()):
+                    return True
+            except OSError:
+                pass
+    return False
 
 
 def check_conn_ratchet():

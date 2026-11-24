@@ -271,6 +271,7 @@ an untagged port on a connection|reference_ntop's u_rd.l0 is connected to nl0_cy
 a wrong ahead|cross-module loop u_rd.l0_cy02h is refused: ahead is 3, but the net lies 4 stage(s) past the input's tag
 a loop that does not close|cross-module loop u_rd.l0_cy02h is refused: the loop does not close: no output of u_rd reaches an input of u_wr
 no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion 'conn_l0_fresh' in the parent or reference_ard
+a control no bench names|cross-module loop u_rd.l0_cy02h is refused: its control 'conn-l0-nosuch' is named nowhere
 WANT
 python3 tools/lint-rtl.py --conn-ratchet=rtl/lint/bad_conn_ratchet.json \
   --conn-baseline=rtl/lint/bad_conn_baseline.json rtl/lint/bad_conn.sv >"$TMP/cratchet.log" 2>&1

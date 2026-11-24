@@ -645,13 +645,15 @@ own tag; `loop` lists the instances from the reader to the writer and each
 feeds the next through the parent; and the parent or the reader holds
 `CCV_ASSERT(<label>, ...)` for the hazard the stale read opens, run on the
 block's bench, with `control` the bench control that breaks it (OA 481
-(3)). A declaration the connections no longer show is refused. The back
+(3)); either may be a list (MI-40 (4)), and each control must be named
+somewhere under `test/<block>/` or `sim/<block>/`, as the bench registers
+it. A declaration the connections no longer show is refused. The back
 edges that stood when the check was made are on `rtl/conn-ratchet.json`,
 one per (parent, instance, input) with its tags, deficit and kind; it only
 shrinks. `tools/check-1d.sh` holds it: `reference_top.sv` (with
 `reference_rd.sv` and `reference_wr.sv`, the MIU L0 refill's shape) passes;
 `bad_conn.sv`'s undeclared back edge, untagged port, wrong `ahead`, loop
-that does not close and missing assertion are refused, and the ratchet
+that does not close, missing assertion and unnamed control are refused, and the ratchet
 excuses, and refuses a stale or an unlisted entry.
 
 ### CCV-L22 — a block runs on its own gated clock
