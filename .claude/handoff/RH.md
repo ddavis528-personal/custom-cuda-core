@@ -75,7 +75,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
 - OI OA-466 DONE+SENT 03:16Z 11-22 at a5d5cb83 (rh-oi466, rh-jobs/oi466, ~/ccv-logs/oi466), mlc, B = beat_merge=0,demote_walk=1. All clean (0 chk):
   S1(66) +0.072%, cm32p +0.149%, cm128p -0.038% (B 2,993,073: no CHECK, no hang). Walk mean/max: 14.96/34, 36.53/40, 26.87/40. OI landed the flip as c69ee1a3
-  (13:41Z 11-22) and released it: rh-oi466 and rh-oi451 DROPPED 13:42Z. Logs oi451/451b/455/455b/455c/466 are removed by trig_017ZSke7hHNiNDf8b8vZcTsR at 13:45Z 11-23.
+  (13:41Z 11-22) and released it: rh-oi466 and rh-oi451 DROPPED 13:42Z. Logs oi451/451b/455/455b/455c/466 REMOVED 13:45Z 11-23.
 - OI OA-455 11-20, WAITING on OI's next commit. Round 2 at 33b2971c SENT 07:46Z: Bm chk 1 (AR 395); Ck and Dn chk 0 but can't fail.
   Round 3 at 05ee3bdb (rh-oi455c, ~/ccv-logs/oi455c): built OK; Bm ran 49 min with no exit, STOPPED by RH ~08:34Z (OI: likely a hang, FET
   waits on a credit OOE holds in cred_pend_); Cw dropped. OI will send a new commit with a run list. Keep rh-oi455c, rh-oi455 and rh-oi451

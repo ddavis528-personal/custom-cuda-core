@@ -13,11 +13,15 @@
 // req_id, op, exclusive and part 3's store-data index).
 //
 // Requests come on five ports (DI-34 (1)): port 0 is the one retry a cycle
-// of a bank's oldest miss-wait waiter (dcu_bctl's pick across the banks: a
-// lead a cycle ahead, then the waiter's payload), ports 1 to 4 a new miss
+// of a bank's oldest miss-wait waiter, ports 1 to 4 a new miss
 // from each ccv_miu_dcu_req slot (a bank's mv names its slot). A line is one
 // bank and a bank names one request a cycle, so no two ports hold one line.
 //
+//   retry  (DI-35) at R each dcu_bctl offers its oldest waiter (valid and
+//        a stamp of when it waited); the oldest offer is granted at R+1
+//        (rgv/rgb, from flops; the bank granted at R is passed over at R+1);
+//        the granted bank's payload, held in its flops, is captured here at
+//        R+2, its D2. The bank offers again once it has read its outcome.
 //   D1 = H+3  each slot's payload, from dcu_cap's flops, is staged here
 //        under this module's own flop of the slot's valid: dcu_cap's copy is
 //        the next lookup's by D2 when lookups come back to back.
@@ -49,8 +53,8 @@
 //
 // Not here yet: part 2's writeback (an entry's turn into a writeback at W,
 // writebacks first in the request order, the request's data), part 3's
-// AcquirePerm for a full-line store (the store's mask). Where the retry's
-// payload lives is DI-34 (3).
+// AcquirePerm for a full-line store (the store's mask). The retry's payload
+// lives in dcu_bctl's queue entries (DI-34 (3)).
 //
 // Stage tags: the entries, the records, the age matrix, the credit count,
 // the next ids and the outcome flops are one stage, 05, the block's state
@@ -78,6 +82,7 @@ module dcu_mshr #(
   parameter  int NCR   = ccv_params_pkg::CCV_CREDIT_DEPTH,           // req credits, 4
   parameter  int WCID  = ccv_params_pkg::CCV_W_CORE_ID,              // 2
   parameter  int CID   = ccv_prov_pkg::CCV_P_CORE_ID,
+  parameter  int WTS   = 10,                                         // retry stamp (DI-35)
   localparam int NE    = 1 << WE,                                    // 16
   localparam int WL    = WA - WO,                                    // line, 41
   localparam int WSL   = SLOTS > 1 ? $clog2(SLOTS) : 1,              // 2
@@ -98,18 +103,26 @@ module dcu_mshr #(
   input  logic [SLOTS*WF-1:0]    fold_cc03h,
   input  logic [SLOTS*WC-1:0]    coh_cc03h,
   input  logic [SLOTS-1:0]       excl_cc03h,
-  // D2: each bank's new miss, from dcu_bctl (its slot names the payload).
-  input  logic [NBK-1:0]         mv_cc04h,
+  // D2: each bank's lookup, from dcu_bctl's flops (its slot names the
+  // payload; none while the bank holds a miss-wait waiter), and its tag
+  // result from dcu_btag's: a miss is dv && !hit.
+  input  logic [NBK-1:0]         dv_cc04h,
+  input  logic [NBK-1:0]         hit_cc04h,
   input  logic [NBK*WSL-1:0]     mslot_cc04h,
-  // The cycle's retry of one bank's oldest miss-wait waiter: a lead a cycle
-  // ahead, then the waiter's payload at D2 (its bank is its line's).
-  input  logic                   rtv_cc03h,
-  input  logic [WL-1:0]          rpa_cc04h,
-  input  logic [WI-1:0]          rrid_cc04h,
-  input  logic [1:0]             rop_cc04h,      // 0 read, 1 atomic, 2 store
-  input  logic                   rexcl_cc04h,
-  input  logic [WF-1:0]          rfold_cc04h,
-  input  logic [WST-1:0]         rsti_cc04h,
+  // The retry (DI-35): each bank's offer of its oldest miss-wait waiter
+  // (valid and stamp) from dcu_bctl's flops; the oldest is granted a cycle
+  // on, and the granted bank's payload, held in its flops, is captured here
+  // a cycle later still, for D2.
+  input  logic [NBK-1:0]         rov_cc02h,
+  input  logic [NBK*WTS-1:0]     rstp_cc02h,
+  output logic                   rgv_cc03h,
+  output logic [WB-1:0]          rgb_cc03h,
+  input  logic [NBK*WL-1:0]      rpa_cc03h,
+  input  logic [NBK*WI-1:0]      rrid_cc03h,
+  input  logic [NBK*2-1:0]       rop_cc03h,      // 0 read, 1 atomic, 2 store
+  input  logic [NBK-1:0]         rexcl_cc03h,
+  input  logic [NBK*WF-1:0]      rfold_cc03h,
+  input  logic [NBK*WST-1:0]     rsti_cc03h,
   // D3: each bank's outcome: placed (merged or allocated) or waiting, why.
   output logic [NBK-1:0]         ov_cc05h,
   output logic [NBK-1:0]         owait_cc05h,
@@ -130,6 +143,14 @@ module dcu_mshr #(
   output logic [WC-1:0]          fcoh_cc05h,
   output logic [WLC-1:0]         fcnt_cc05h,
   output logic [LD*WLE-1:0]      flist_cc05h,
+  // The fill's bank write request (DI-39, MA rev 177): its lead at F+1 from
+  // the F read (the valid and the bank, one hot; the bank holds its value
+  // only under the valid), its line and fold at F+2 (dcu_fill's buffer and
+  // ownership beside them).
+  output logic                   flv_cc05h,
+  output logic [NBK-1:0]         fbk_cc05h,
+  output logic [WL-1:0]          fwpa_cc06h,
+  output logic [WF-1:0]          fwfold_cc06h,
   // dcu_fill: an entry's line is written and its answers have left.
   input  logic                   xv_cc04h,
   input  logic [WE-1:0]          xid_cc04h
@@ -186,11 +207,87 @@ module dcu_mshr #(
     end
   end
 
-  // The retry's lead, captured every cycle (an interface lead, waived "lead").
-  logic rl_q_cc04h;
+  // Each bank's new miss at D2.
+  logic [NBK-1:0] mv_cc04h;
+  assign mv_cc04h = dv_cc04h & ~hit_cc04h;
+
+  // ---- The retry's pick (DI-35) ------------------------------------------
+  // The oldest offer by stamp, modulo 2^WTS (a stamp never ages past half
+  // of it: a waiter that waits again is stamped anew), ties to the lowest
+  // bank. The bank granted last cycle still offers (it learns of its grant
+  // only now) and is passed over.
+  logic [NBK-1:0] rok_cc02h, rwin_cc02h;
+  logic           old_cc02h [NBK][NBK];       // [i][j]: i's stamp strictly older than j's
+  logic           gvn_cc02h;
+  logic [WB-1:0]  gbn_cc02h;
+  (* keep *) logic           gm_q_cc02h, gv_q_cc03h, rgv_q_cc03h;
+  (* keep *) logic [WB-1:0]  gmb_q_cc02h, gb_q_cc03h, rgb_q_cc03h;
+  always_comb begin
+    for (int i = 0; i < NBK; i++)
+      for (int j = 0; j < NBK; j++) begin
+        logic [WTS-1:0] d;
+        d = rstp_cc02h[j*WTS +: WTS] - rstp_cc02h[i*WTS +: WTS];
+        old_cc02h[i][j] = |d && !d[WTS-1];
+      end
+    for (int i = 0; i < NBK; i++)
+      rok_cc02h[i] = rov_cc02h[i] && !(gm_q_cc02h && gmb_q_cc02h == WB'(i));
+    for (int i = 0; i < NBK; i++) begin
+      rwin_cc02h[i] = rok_cc02h[i];
+      for (int j = 0; j < NBK; j++)
+        if (j < i && rok_cc02h[j] && !old_cc02h[i][j]) rwin_cc02h[i] = 1'b0;
+        else if (j > i && rok_cc02h[j] && old_cc02h[j][i]) rwin_cc02h[i] = 1'b0;
+    end
+    gvn_cc02h = |rok_cc02h;
+    gbn_cc02h = '0;
+    for (int i = 0; i < NBK; i++)
+      if (rwin_cc02h[i]) gbn_cc02h = gbn_cc02h | WB'(i);
+  end
+  // The grant, every cycle (from offers, which are inputs), in three
+  // copies: the pick's own record of it (stage 02 state, read by the next
+  // pick), the payload capture's, and the output's, kept apart so the
+  // output's path is only its own.
+  always_ff @(posedge dcu_core_clk) begin
+    if (rst_r01h) begin
+      gm_q_cc02h  <= 1'b0;
+      gv_q_cc03h  <= 1'b0;
+      rgv_q_cc03h <= 1'b0;
+    end else begin
+      gm_q_cc02h  <= gvn_cc02h;
+      gv_q_cc03h  <= gvn_cc02h;
+      rgv_q_cc03h <= gvn_cc02h;
+    end
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    gmb_q_cc02h <= gbn_cc02h;
+    gb_q_cc03h  <= gbn_cc02h;
+    rgb_q_cc03h <= gbn_cc02h;
+  end
+  assign rgv_cc03h = rgv_q_cc03h;
+  assign rgb_cc03h = rgb_q_cc03h;
+
+  // The granted bank's payload, captured under the grant (D2's retry port).
+  logic           rl_q_cc04h;
+  logic [WL-1:0]  rpa_q_cc04h;
+  logic [WI-1:0]  rrid_q_cc04h;
+  logic [1:0]     rop_q_cc04h;
+  logic           rexcl_q_cc04h;
+  logic [WF-1:0]  rfold_q_cc04h;
+  logic [WST-1:0] rsti_q_cc04h;
   always_ff @(posedge dcu_core_clk) begin
     if (rst_r01h) rl_q_cc04h <= 1'b0;
-    else          rl_q_cc04h <= rtv_cc03h;
+    else          rl_q_cc04h <= gv_q_cc03h;
+  end
+  logic rp_en_cc03h;
+  assign rp_en_cc03h = gv_q_cc03h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (rp_en_cc03h) begin
+      rpa_q_cc04h   <= rpa_cc03h[gb_q_cc03h*WL +: WL];
+      rrid_q_cc04h  <= rrid_cc03h[gb_q_cc03h*WI +: WI];
+      rop_q_cc04h   <= rop_cc03h[gb_q_cc03h*2 +: 2];
+      rexcl_q_cc04h <= rexcl_cc03h[gb_q_cc03h];
+      rfold_q_cc04h <= rfold_cc03h[gb_q_cc03h*WF +: WF];
+      rsti_q_cc04h  <= rsti_cc03h[gb_q_cc03h*WST +: WST];
+    end
   end
   // A request may be present at D2: this module's own flops (CG-5).
   logic pres_cc04h;
@@ -206,10 +303,10 @@ module dcu_mshr #(
   logic [NBK-1:0] qbo_cc04h   [NP];           // the port's request, by bank
   always_comb begin
     pq_cc04h[0]    = rl_q_cc04h;
-    qpa_cc04h[0]   = rpa_cc04h;
-    qfold_cc04h[0] = rfold_cc04h;
-    qop_cc04h[0]   = rop_cc04h;
-    qit_cc04h[0]   = {rrid_cc04h, rop_cc04h, rexcl_cc04h, rsti_cc04h};
+    qpa_cc04h[0]   = rpa_q_cc04h;
+    qfold_cc04h[0] = rfold_q_cc04h;
+    qop_cc04h[0]   = rop_q_cc04h;
+    qit_cc04h[0]   = {rrid_q_cc04h, rop_q_cc04h, rexcl_q_cc04h, rsti_q_cc04h};
     for (int s = 0; s < SLOTS; s++) begin
       pq_cc04h[s+1] = 1'b0;
       for (int b = 0; b < NBK; b++)
@@ -247,6 +344,7 @@ module dcu_mshr #(
   // port, whether it allocated, whether it waits to be queued, whether it
   // merged; its id, the entry its line hit (one-hot) and its payload.
   logic [NP-1:0]  rcal_q_cc05h, rcmg_q_cc05h;
+  (* keep *) logic [NP-1:0] rcalh_q_cc05h;     // rcal's copy for D2's compares alone (fanout)
   logic [NE-1:0]  rcio_q_cc05h [NP];          // its id, one-hot
   logic [NE-1:0]  rcmt_q_cc05h [NP];
   logic [WL-1:0]  rcpa_q_cc05h  [NP];
@@ -332,9 +430,10 @@ module dcu_mshr #(
   always_comb begin
     for (int p = 0; p < NP; p++) begin
       for (int e = 0; e < NE; e++)
-        hent_cc05h[p][e] = ev_q_cc05h[e] && !pd_cc05h[e] && epa_q_cc05h[e] == qpa_cc04h[p];
+        // An entry being written is free (mshr_pending_free): no !pd term.
+        hent_cc05h[p][e] = ev_q_cc05h[e] && epa_q_cc05h[e] == qpa_cc04h[p];
       for (int r = 0; r < NP; r++)
-        hrec_cc05h[p][r] = rcal_q_cc05h[r] && rcpa_q_cc05h[r] == qpa_cc04h[p];
+        hrec_cc05h[p][r] = rcalh_q_cc05h[r] && rcpa_q_cc05h[r] == qpa_cc04h[p];
       hit_cc05h[p] = hent_cc05h[p];
       for (int r = 0; r < NP; r++)
         if (hrec_cc05h[p][r]) hit_cc05h[p] = hit_cc05h[p] | rcio_q_cc05h[r];
@@ -346,7 +445,7 @@ module dcu_mshr #(
   logic [NP-1:0] any_cc05h, fld_cc05h, ful_cc05h, ord_cc05h;
   logic [NP-1:0] mg_cc05h, al_cc05h, wt_cc05h;
   logic [1:0]    why_cc05h [NP];
-  logic [NE-1:0] efl_cc05h, efu_cc05h;
+  logic [NE-1:0] efl_cc05h, efu_cc05h, eflu_cc05h;
   always_comb begin
     for (int e = 0; e < NE; e++) begin
       // An entry its fill reads now is filled: a merge now would miss the
@@ -354,6 +453,7 @@ module dcu_mshr #(
       efl_cc05h[e] = est_q_cc05h[e] == ST_FILLED || fhit_cc04h[e];
       efu_cc05h[e] = ecnt_q_cc05h[e] == WLC'(LD) ||
                      (pdm_cc05h[e] && ecnt_q_cc05h[e] == WLC'(LD - 1));
+      eflu_cc05h[e] = efl_cc05h[e] || efu_cc05h[e];
     end
     for (int p = 0; p < NP; p++) begin
       any_cc05h[p] = |hent_cc05h[p] || |hrec_cc05h[p];
@@ -364,9 +464,10 @@ module dcu_mshr #(
       ord_cc05h[p] = p != 0 && owi_q_cc05h[qbk_cc04h[p]];
       mg_cc05h[p]  = pq_cc04h[p] && any_cc05h[p] && !fld_cc05h[p] && !ful_cc05h[p] && !ord_cc05h[p];
       al_cc05h[p]  = pq_cc04h[p] && !any_cc05h[p] && !ord_cc05h[p] && rok_cc05h[p];
-      // The same, written for depth.
-      wt_cc05h[p]  = pq_cc04h[p] && (ord_cc05h[p] ||
-                     (any_cc05h[p] ? fld_cc05h[p] || ful_cc05h[p] : !rok_cc05h[p]));
+      // The same, written for depth: with no entry hit, filled and full
+      // are false; a record hit is neither (unsent, one request).
+      wt_cc05h[p]  = pq_cc04h[p] && (ord_cc05h[p] || |(hent_cc05h[p] & eflu_cc05h) ||
+                     (!rok_cc05h[p] && !any_cc05h[p]));
       why_cc05h[p] = ord_cc05h[p] ? 2'd3 : fld_cc05h[p] ? 2'd2 : ful_cc05h[p] ? 2'd1 : 2'd0;
     end
   end
@@ -615,16 +716,10 @@ module dcu_mshr #(
   // ---- The records ----------------------------------------------------------
   // The decisions; then each port's id, hit entry and payload, under its own
   // request's lead (a slot's lookup or the retry's lead).
-  logic rc_en_cc05h;
-  assign rc_en_cc05h = rst_r01h || pres_cc04h || |rcal_q_cc05h || |rcmg_q_cc05h;
-  always_ff @(posedge dcu_core_clk) begin
-    if (rc_en_cc05h) begin
-      for (int p = 0; p < NP; p++) begin
-        rcal_q_cc05h[p] <= !rst_r01h && al_cc05h[p];
-        rcmg_q_cc05h[p] <= !rst_r01h && mg_cc05h[p];
-      end
-    end
-  end
+  // The decision records share the outcome's gate (oc_en_cc05h, below): a
+  // retry that waits again changes only the outcome, and a record is set
+  // only with an outcome, so oany_q_cc05h clears it (CG-3; DI-35's retry
+  // lead opens the gate on every granted bank pick).
   logic [NP-1:0] rcp_en_cc04h;
   assign rcp_en_cc04h = {lv_q_cc04h, rl_q_cc04h};
   for (genvar p = 0; p < NP; p++) begin : g_rc
@@ -700,6 +795,11 @@ module dcu_mshr #(
       owi_q_cc05h  <= rst_r01h ? '0 : own_cc05h;
       oy_q_cc05h   <= oyn_cc05h;
       oany_q_cc05h <= !rst_r01h && |ovn_cc04h;
+      for (int p = 0; p < NP; p++) begin
+        rcal_q_cc05h[p]  <= !rst_r01h && al_cc05h[p];
+        rcalh_q_cc05h[p] <= !rst_r01h && al_cc05h[p];
+        rcmg_q_cc05h[p]  <= !rst_r01h && mg_cc05h[p];
+      end
     end
   end
   assign ov_cc05h    = ov_q_cc05h;
@@ -806,6 +906,31 @@ module dcu_mshr #(
             ? mitx_cc05h[frid_cc04h] : elist_q_cc05h[frid_cc04h][k];
     end
   end
+  // The write request: the lead from the same read, the payload a cycle on.
+  logic              flv_q_cc05h;
+  logic [NBK-1:0]    fbk_q_cc05h;
+  logic [WL-1:0]     fwpa_q_cc06h;
+  logic [WF-1:0]     fwfold_q_cc06h;
+  logic [WB-1:0]     fbn_cc04h;
+  assign fbn_cc04h = epa_q_cc05h[frid_cc04h][WB-1:0];
+  always_ff @(posedge dcu_core_clk) begin
+    flv_q_cc05h <= !rst_r01h && fv_q_cc04h;
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    if (fr_en_cc04h) fbk_q_cc05h <= NBK'(1) << fbn_cc04h;
+  end
+  logic fw_en_cc05h;
+  assign fw_en_cc05h = flv_q_cc05h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (fw_en_cc05h) begin
+      fwpa_q_cc06h   <= fpa_q_cc05h;
+      fwfold_q_cc06h <= ffold_q_cc05h;
+    end
+  end
+  assign flv_cc05h    = flv_q_cc05h;
+  assign fbk_cc05h    = fbk_q_cc05h;
+  assign fwpa_cc06h   = fwpa_q_cc06h;
+  assign fwfold_cc06h = fwfold_q_cc06h;
   assign fpa_cc05h   = fpa_q_cc05h;
   assign ffold_cc05h = ffold_q_cc05h;
   assign fcoh_cc05h  = fcoh_q_cc05h;
@@ -839,6 +964,7 @@ module dcu_mshr #(
   `CCV_ASSERT(mshr_free_filled, !xv_q_cc05h ||
               (ev_q_cc05h[xid_q_cc05h] && est_q_cc05h[xid_q_cc05h] == ST_FILLED))
   `CCV_ASSERT(mshr_credit, cr_q_cc05h <= WCR'(NCR))
+  `CCV_ASSERT(mshr_pending_free, !(|(pd_cc05h & ev_q_cc05h)))
   // Credits never go negative: last cycle's send is in mvi_q, not yet in cr_q.
   `CCV_ASSERT(mshr_credit_floor, cr_q_cc05h >= WCR'(mvi_q_cc05h))
 
