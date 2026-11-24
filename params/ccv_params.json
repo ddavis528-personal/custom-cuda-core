@@ -386,11 +386,11 @@
     },
     {
       "name": "CCV_LAT_MLC_HIT_MAX",
-      "value": 39,
+      "value": 28,
       "status": "provisional",
-      "derive": "2 * CCV_LAT_HOP + CCV_LAT_MLC_PIPE + (2 ** CCV_P_W_REQ_DCU_MLC - 1) + CCV_LAT_FILL_NOTICE + CCV_LAT_MIU_FILL + CCV_LAT_HOP",
-      "source": "AR's response TI-24 (5) (2026-10-21)",
-      "doc": "MLC's worst hit, counted from the L1 miss to OOE holding the completion: DCU to MLC and back, MLC's pipe, the queue at MLC's rate-1 request port behind every other miss DCU can have in flight, the refill's notice and MIU's pass-through, and the completion's hop. A load that missed L1 and still blocks its warp's ROB head past CCV_DEMOTION_THRESHOLD_MLC, which must exceed this, has missed MLC or is queued as long; either is worth a swap, and nothing shorter is demoted by that trigger (CCV_TIER1_WARPS: true misses only).",
+      "derive": "2 * CCV_LAT_HOP + CCV_LAT_MLC_PIPE + 2 ** CCV_P_W_REQ_FET_MLC + CCV_LAT_FILL_NOTICE + CCV_LAT_MIU_FILL + CCV_LAT_HOP",
+      "source": "AR's response TI-24 (5) (2026-10-21); queue term AR 413 (re:MA rev 178 (d)), 39 -> 28",
+      "doc": "MLC's worst hit, counted from the L1 miss to OOE holding the completion: DCU to MLC and back, MLC's pipe, the queue at MLC's rate-1 request port behind FET's ifills, the other requester at MLC's pick (DCU's own misses in flight are past the port, in MLC's pipe or at EXB, not queued at it; AR 413), the refill's notice and MIU's pass-through, and the completion's hop. A load that missed L1 and still blocks its warp's ROB head past CCV_DEMOTION_THRESHOLD_MLC, which must exceed this, has missed MLC or is queued as long; either is worth a swap, and nothing shorter is demoted by that trigger (CCV_TIER1_WARPS: true misses only).",
       "decided_at": "with CCV_LAT_MLC_PIPE"
     },
     {
@@ -1603,16 +1603,16 @@
     },
     {
       "name": "CCV_P_TIMEOUT_MEMOP",
-      "value": 20480,
+      "value": 40960,
       "status": "provisional",
-      "derive": "CCV_MEMOP_CREDITS * CCV_P_TIMEOUT_MEM",
-      "source": "AR rev 350 (re TI rev 424, AR 349); MA confirms per slot",
-      "doc": "Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). The spec's MIU parks misses and never blocks one warp behind another (AR rev 321, MA-14), so a slot's memop waits behind at most its own slot's CCV_MEMOP_CREDITS - 1 others, one memory-length stall each: the CCV_P_TIMEOUT_BP rule applied to MA-5's credits. A watchdog and a sizing signal, provisional until MA's Phase 1 model: each gate run reports the channel's longest credit hold (BPAGE). The MIU stub's cross-warp head-of-line block (MA-14's deviation) is not what it is sized to.",
+      "derive": "((CCV_MEMOP_CREDITS * CCV_WARP_LANES + 2 ** CCV_P_W_REQ_DCU_MLC - 1) // 2 ** CCV_P_W_REQ_DCU_MLC) * CCV_P_TIMEOUT_MEM",
+      "source": "AR rev 350 (re TI rev 424, AR 349); AR-410 (re TI-531): derived from the fill rounds a full queue can wait",
+      "doc": "Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). A memop can wait behind the fills of every other entry of its slot: CCV_MEMOP_CREDITS entries of up to CCV_WARP_LANES lines each, fetched 2^CCV_P_W_REQ_DCU_MLC at a time (DCU's req_ids to MLC, its fills in flight), each round within CCV_P_TIMEOUT_MEM, the bound on any external latency (AR-410, re TI-531). So it is ceil(CCV_MEMOP_CREDITS x CCV_WARP_LANES / 2^CCV_P_W_REQ_DCU_MLC) rounds of CCV_P_TIMEOUT_MEM, and it moves by itself when the memory timeout follows a real DRAM latency. The skeleton's testbench refuses any latency over CCV_P_TIMEOUT_MEM (its slow regions and CCV_TB_LATENCY). The corpus's holds must stay under it: every gate run fires response_within_n past it, and check-kernel's coremark128 line runs at CCV_TB_LATENCY=1000 so its hold passes CCV_P_TIMEOUT_BP. A watchdog and a sizing signal: each gate run reports the channel's longest credit hold (BPAGE). Before AR-410 it was CCV_MEMOP_CREDITS x CCV_P_TIMEOUT_MEM (20480, AR 350), which coremark128 nearly met only because its data sat in the testbench's 1000-cycle region by accident.",
       "decided_at": "with CCV_P_TIMEOUT_MEM"
     },
     {
       "name": "CCV_P_TIMEOUT_UOP",
-      "value": 20480,
+      "value": 40960,
       "status": "provisional",
       "derive": "CCV_P_TIMEOUT_MEMOP",
       "require": "CCV_P_TIMEOUT_UOP >= CCV_P_TIMEOUT_MEMOP",

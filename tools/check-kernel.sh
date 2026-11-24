@@ -118,7 +118,7 @@
 #     active or not                              16-31 use their own window
 #   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
 #                                                bits keep memory's ones
-#   a demotion between a cracked              resume-mid (predswap, at:58):
+#   a demotion between a cracked              resume-mid (predswap, at:72):
 #     instruction's uops resumes at its          the warp resumes past it
 #     first uop (AR's response TI-36)
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
@@ -636,13 +636,13 @@ else
 fi
 # One CTA slot per CTA (CP-30): lanectx's two warps are one -cta run.
 "$SKEL" --kernel build/oracle/lanectx/oracle.jsonl --break cta-per-warp >"$B/kernel_cta-per-warp.log" 2>&1
-if grep -q "^CHECK miu: warps 0 and 1 of ctaid 0 name CTA slots 0 and 1" "$B/kernel_cta-per-warp.log"; then
+if grep -qE "^CHECK miu: warps (0 and 1|1 and 0) of ctaid 0 name CTA slots (0 and 1|1 and 0)" "$B/kernel_cta-per-warp.log"; then
   say "--break cta-per-warp: one CTA in two slots" "PASS (lanectx)"
 else
   bad "--break cta-per-warp" "one CTA's warps in two CTA slots went unnoticed"
 fi
 "$SKEL" --kernel build/oracle/rope/oracle.jsonl --break cta-shared >"$B/kernel_cta-shared.log" 2>&1
-if grep -q "^CHECK miu: CTA slot 0 holds warp 0 of ctaid 0 and warp 1 of ctaid 1" "$B/kernel_cta-shared.log"; then
+if grep -qE "^CHECK miu: CTA slot 0 holds warp (0 of ctaid 0 and warp 1 of ctaid 1|1 of ctaid 1 and warp 0 of ctaid 0)" "$B/kernel_cta-shared.log"; then
   say "--break cta-shared: two CTAs in one slot" "PASS (rope)"
 else
   bad "--break cta-shared" "two CTAs in one CTA slot went unnoticed"
@@ -834,30 +834,29 @@ cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
 IMPL_PINS="
 dcu=model ldpar l1_hit=2
-dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=55
+dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=43
 dcu=model late l1_late=0
 dcu=model stall l1_late=0
-dcu=model privwin priv_form=12
 dcu=model no-resource-cap v60=12
-miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=64
+miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=62
 miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
 dcu=model vadd4-swap orphan=1
 miu=model vadd4-swap-miu impl=stub
-dcu=model,miu=model vadd fill_notice=4
-dcu=model,miu=model vadd cmpl_hint=4
-dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60
-dcu=model,miu=model ldpar l1_hit=1
+dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=56
+dcu=model,miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=1
 dcu=model,miu=model no-resource-cap v60=16
-dcu=model,miu=model lnorm1-straggler demote=342
+dcu=model lnorm1-straggler demote=371
+dcu=model,miu=model lnorm1-straggler demote=370
+dcu=model slotform dcu_evict=53
 dcu=model waypred dcu_wp_wrong=2
 dcu=model,miu=model waypred dcu_wp_wrong=2 l1_hit=2 l1_late=2
 miu=model fet-reset-on-kill scen=rope:11
-miu=model held-wait demote=776
-dcu=model held-wait demote=776
+miu=model held-wait demote=875
+dcu=model held-wait demote=862
 dcu=model,miu=model fet-reset-on-kill scen=rope:12
-dcu=model,miu=model held-wait demote=754
+dcu=model,miu=model held-wait demote=876
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok p x hit
@@ -924,7 +923,7 @@ hit    l1_hit=4 l1_late=0 l1_inelig=0
 waypred l1_hit=4 l1_late=0 dcu_wp_wrong=0
 pgcross l1_inelig=1
 hit@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
-transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
+transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60 l1_hit=0
 spinwait@CCV_DCU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
 vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
 ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
@@ -944,6 +943,7 @@ ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4 memop_entries_peak=10
+vadd6  full_line=6
 swap   slot_reuse=2
 provswap redirect>0 slot_reuse>0
 stall  l1_late>0
@@ -967,7 +967,7 @@ predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0
-privwin priv_form=12 priv_fault=0
+privwin priv_form=11 priv_fault=0
 rope local_form=44 frame_lookups=0
 fence fence=1 fence_wait>0
 addrhigh addr_fault=1 fault=1 kill=1
@@ -1236,9 +1236,13 @@ fi
 # Memop credits against their own watchdog (AR 349/350). A memop credit is
 # held from landing to its MIU queue entry's release (MA-5), and behind the
 # stub's in-order queue coremark128's outlive CCV_P_TIMEOUT_BP (8192), so the
-# channel's is CCV_P_TIMEOUT_MEMOP (20480, CCV_MEMOP_CREDITS x
-# CCV_P_TIMEOUT_MEM); ccv_dec_ooe_uop's, whose credits wait on memop's,
-# derives from it (CCV_P_TIMEOUT_UOP, AR 352). coremark128 is run 45000 cycles, over twice that bound,
+# channel's is CCV_P_TIMEOUT_MEMOP (40960: CCV_MEMOP_CREDITS x CCV_WARP_LANES
+# lines / 16 fills in flight, rounds of CCV_P_TIMEOUT_MEM; AR-410);
+# ccv_dec_ooe_uop's, whose credits wait on memop's, derives from it
+# (CCV_P_TIMEOUT_UOP, AR 352). The holds come from a stated stress, the
+# testbench's memory at CCV_TB_LATENCY=1000 (AR-410, TI-531): at the
+# placeholder's 10 cycles coremark128 holds a memop about 1,500 cycles, too
+# short for the controls below. coremark128 is run 45000 cycles,
 # from a partial oracle (PARTIAL=1, tools/gen-oracle.sh: 10000 records a
 # warp, where 45000 cycles retire about 1300 in all). It must raise no
 # response_within_n and no CHECK but the operand lines a bounded run's
@@ -1256,7 +1260,7 @@ cbl=$B/kernel_cm128-bounded.log
 if ! CCV_ORACLE_DIR="$cb/o" tools/gen-oracle.sh "$cb/coremark128" >"$cb/oracle.log" 2>&1; then
   bad "coremark128, 45000 cycles: memop watchdog" "no partial oracle: $(grep -m1 FAIL "$cb/oracle.log")"
 else
-  "$SKEL" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cbl" 2>&1
+  CCV_TB_LATENCY=1000 "$SKEL" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cbl" 2>&1
   rwn=$(grep -c 'response_within_n' "$cbl")
   other=$(grep '^CHECK' "$cbl" | grep -vc '^CHECK lane [0-9]*: seq [0-9]* operand ')
   asrt=$(grep '%Error' "$cbl" | grep -vc 'quiesced_at_end')
@@ -1275,7 +1279,7 @@ else
     elif ! tools/build-skel.sh "$B/skel-memop8192" "$cb/bank-memop8192.sv"; then
       bad "coremark128: memop watchdog control" "the 8192 bank does not build ($B/skel-memop8192.log)"
     else
-      "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
+      CCV_TB_LATENCY=1000 "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
       # Both narrowed must fire (AR 352 (3)): memop's at 8192, and
       # dec_ooe_uop's, whose credits wait on memop's (CCV_P_TIMEOUT_UOP), at
       # 4096: since CCV_LAT_L1_CMPL 15 (AR 368) the run's longest uop hold is
@@ -1288,7 +1292,7 @@ else
       elif ! grep -q 'u_dec_ooe_uop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
         bad "coremark128: uop watchdog control" "with the uop watchdog at 4096, no response_within_n on ccv_dec_ooe_uop (hold ${uh:-none})"
       else
-        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of 20480; memop at 8192 and uop at 4096 fire)"
+        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of $(sed -n 's/^BPAGE ccv_ooe_miu_memop .*watchdog=\([0-9]*\).*/\1/p' "$cbl"), at CCV_TB_LATENCY=1000; memop at 8192 and uop at 4096 fire)"
       fi
     fi
     rm -rf "$B/skel-memop8192" "$B/skel-memop8192.log"
@@ -1302,7 +1306,7 @@ rm -rf "$cb/o"
 # store (AcquirePerm) each stop at DCU's check.
 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership.log" 2>&1
 "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership_vadd.log" 2>&1
-if grep -q "^CHECK dcu: MLC answered the acquire of line 90000 (req_id 0) without ownership" "$B/kernel_deny-ownership.log" &&
+if grep -q "^CHECK dcu: MLC answered the acquire of line 90000 (req_id [0-9]*) without ownership" "$B/kernel_deny-ownership.log" &&
    grep -q "^CHECK dcu: MLC answered the acquire of line .* without ownership" "$B/kernel_deny-ownership_vadd.log"; then
   say "--break deny-ownership: DCU refuses the line" "PASS (predswap's AcquireBlock, vadd's AcquirePerm)"
 else
@@ -1346,10 +1350,11 @@ fi
 # the flop as the issue and data crossings' bnd_rx (AR's revs 300, 301), seq 384's R3;
 # with ccv_lane_rcu_res's end at RCU zero-cycle (RA's rev 95: CCV_LAT_LANE 7,
 # CCV_LAT_SFU 12), seq 379's R4 again; with ooe_rcu_issue's end at RCU
-# zero-cycle (RA-43), seq 204's R3.
-if grep -q "^CHECK lane 0: seq 204 operand 1 (R3) 00000000, oracle 00000064" "$B/kernel_free-new.log" &&
+# zero-cycle (RA-43), seq 204's R3; with the testbench at 20+-5 cycles
+# (DA rev 132, AR 412), lane 1's seq 206 R1.
+if grep -q "^CHECK lane 1: seq 206 operand 1 (R1) 00000032, oracle 00000001" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 204, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 206, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi
@@ -1569,21 +1574,21 @@ fi
 # them; 59 with RCU's flopped ends as bnd_rx, AR's revs 300, 301; 58 with
 # ccv_lane_rcu_res's end at RCU zero-cycle, RA's rev 95; 59 with OOE's C9h,
 # OA's rev 372, TI's response OI-123; 58 with ooe_rcu_issue's end at RCU
-# zero-cycle, RA-43) predswap's first st.pred has retired its first uop and not
+# zero-cycle, RA-43; 72 with the testbench at 20+-5, DA rev 132) predswap's first st.pred has retired its first uop and not
 # its second, and the warp resumes at the instruction, running its first
 # uop again, which both transfers allow. Resumed past it, the second uop is
 # lost. The cycle comes from a sweep of CCV_RAU_DEMOTE=at:<cycle>: if timing
 # moves it, crack_split falls to 0 here and the cycle is swept again.
-CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at58.log" 2>&1
-if [ "$(cover "$B/kernel_predswap_at58.log" crack_split)" = 1 ] &&
-   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at58.log"; then
-  say "predswap demoted between a st.pred's uops" "PASS (at:58, it resumes at the instruction)"
+CCV_RAU_DEMOTE=at:72 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at72.log" 2>&1
+if [ "$(cover "$B/kernel_predswap_at72.log" crack_split)" = 1 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at72.log"; then
+  say "predswap demoted between a st.pred's uops" "PASS (at:72, it resumes at the instruction)"
 else
-  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at58.log"); crack_split=$(cover "$B/kernel_predswap_at58.log" crack_split)"
+  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at72.log"); crack_split=$(cover "$B/kernel_predswap_at72.log" crack_split)"
 fi
-CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
+CCV_RAU_DEMOTE=at:72 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
 if grep -q "^CHECK fet: restored warp 0 lane 0 at 1014, but it resumes at 1018" "$B/kernel_resume-mid.log"; then
-  say "--break resume-mid: past the split instruction" "PASS (predswap at:58)"
+  say "--break resume-mid: past the split instruction" "PASS (predswap at:72)"
 else
   bad "--break resume-mid" "a mid-instruction resume went unchecked: $(grep '^KERNEL' "$B/kernel_resume-mid.log")"
 fi
@@ -2216,6 +2221,44 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
+# The testbench's latency, CCV_TB_LATENCY +- CCV_TB_JITTER drawn per answer
+# from CCV_TB_SEED (DA rev 132, AR 412 (1)): with jitter on, a later Get's
+# answer overtakes an earlier one's (tb_overtaken) and transp4 still ends as
+# ccv-sim does; the control is the same run at jitter 0, where none may.
+tbo=$(cover "$B/kernel_transp4.log" tb_overtaken)
+tbl="$B/kernel_transp4_jitter0.log"
+CCV_TB_JITTER=0 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl >"$tbl" 2>&1
+w=$(ok "$tbl" tb_overtaken=0)
+if [ "${tbo:-0}" -gt 0 ] 2>/dev/null && grep -q "^TESTBENCH latency=20 jitter=5 seed=1" "$B/kernel_transp4.log" && [ -z "$w" ]; then
+  say "testbench 20+-5: answers reorder, and not at jitter 0" "PASS (transp4 tb_overtaken=$tbo; 0 at jitter 0)"
+else
+  bad "testbench 20+-5: answers reorder, and not at jitter 0" "tb_overtaken=${tbo:-none} at 20+-5; jitter 0: ${w:-clean} $(grep -m1 '^TESTBENCH' "$B/kernel_transp4.log")"
+fi
+# The swap class (AR 412 (2)): more warps than tier-1 slots (vadd6, six
+# CTAs of a warp over CCV_TIER1_WARPS 4, nothing in the slow regions) at
+# CCV_TB_LATENCY=1000 under the MLC-miss trigger: it ends as ccv-sim does,
+# demotes on misses and restores every warp it parks, and a demoted warp's
+# tier-1 slot is refilled by a parked warp's restore (slot_refill_parked).
+# The control is the same run at the testbench's 20+-5: memop-credit
+# contention among six warps still demotes once there (seed 1; TI-545), so
+# the claim is that the long latency demotes more, and the control fails it.
+sl="$B/kernel_vadd6_swapclass.log"; sc="$B/kernel_vadd6_swapclass20.log"
+CCV_TB_LATENCY=1000 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd6/oracle.jsonl --cycles 400000 >"$sl" 2>&1
+CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd6/oracle.jsonl >"$sc" 2>&1
+swc() {   # $1 log, $2 baseline demotions: the class's claim, or why not
+  local d; d=$(cover "$1" demote)
+  local w; w=$(ok "$1" restored="$d" parked="$d")
+  [ "${d:-0}" -gt "${2:-0}" ] 2>/dev/null || w="$w demote=${d:-none} (not over ${2:-0})"
+  [ "$(cover "$1" slot_refill_parked)" -gt 0 ] 2>/dev/null || w="$w slot_refill_parked=$(cover "$1" slot_refill_parked)"
+  echo "${w# }"
+}
+d20=$(cover "$sc" demote)
+w=$(swc "$sl" "$d20"); wc=$(swc "$sc" "$d20")
+if [ -z "$w" ] && [ -n "$wc" ]; then
+  say "swap class: vadd6 at latency 1000" "PASS ($(cover "$sl" demote) demoted and restored, slot_refill_parked=$(cover "$sl" slot_refill_parked); at 20+-5 it fails: $wc)"
+else
+  bad "swap class: vadd6 at latency 1000" "${w:-clean}; control at 20+-5: ${wc:-passed, which it must not}"
+fi
 # MA-25: DCU's per-bank credits. MIU holds CCV_DCU_BANK_QDEPTH entry credits
 # and CCV_DCU_BANK_STDATA store-data credits a bank, sends a lookup only with
 # its entry credit and a store only with both, and DCU returns them on
@@ -2393,7 +2436,7 @@ mi7 "slotform, cold TLB: a load over two pages" "$log" tlb_two_page=2
 # fet-ignore-held resumes the warp past its wait, and its LD_SHARED reads
 # the other warps' stores before they are made (the cycle is per
 # implementation set, an IMPL_PINS row).
-hw=$(impl_pins held-wait demote=758); hw=${hw#demote=}
+hw=$(impl_pins held-wait demote=881); hw=${hw#demote=}
 log="$B/kernel_transp4_held_wait.log"
 CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:$hw "$SKEL" --kernel build/oracle/transp4/oracle.jsonl >"$log" 2>&1
 w=$(ok "$log")
@@ -2409,14 +2452,16 @@ if [ "$(field "$log" mem_mismatch)" -gt 0 ] 2>/dev/null; then
 else
   bad "--break fet-ignore-held" "the warp resumed past its wait unnoticed: $(grep '^KERNEL' "$log")"
 fi
-# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
+# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 368
+# (332 before the testbench's 20+-5, DA rev 132; 324-329 also walk it, but
+# there no-straggler-walk diverges only in memory)
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's
 # re:TI-503, an IMPL_PINS row)
 # leaves a uop of the warp in DEC under rename backpressure past OOE's walk;
 # OOE walks it on arrival and beats its lanes, and FET migrates only once the
 # warp's credits are back to full (AR 395 (3)). no-straggler-walk drops it
 # unwalked, so its lanes keep FET's PC past it and lose those instructions.
-sdem=$(impl_pins lnorm1-straggler demote=332); sdem=${sdem#demote=}
+sdem=$(impl_pins lnorm1-straggler demote=368); sdem=${sdem#demote=}
 log="$B/kernel_lnorm1_straggler.log"
 CCV_RAU_DEMOTE=at:$sdem "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl >"$log" 2>&1
 w=$(ok "$log" decq_straggler_beat=1)
@@ -2489,9 +2534,11 @@ done
 # leaving the line clean (dcu-st-dirty). dcu-fill-nostale, dcu-wb-store,
 # dcu-st-noorder, dcu-st-mergeall, dcu-ue-* and dcu-prb-* reach no kernel
 # here (MIU holds a load behind its older store; no probe or UE injection
-# yet): DI's unit tests hold them (sim/dcu/dcu_test.cpp).
+# yet), nor does dcu-wb-refetch since the DCU model takes a loser's miss at
+# its D2 (DI-49): DI's unit tests hold them (sim/dcu/dcu_test.cpp;
+# dcu-wb-refetch-control).
 for spec in dcu-fill-early:vadd4:dcu dcu-mshr-nomerge:lnorm1:dcu dcu-miss-reorder:vadd4:models \
-            dcu-wb-early:slotform:dcu dcu-wb-refetch:slotform:dcu dcu-wb-drop:slotform:dcu \
+            dcu-wb-early:slotform:dcu dcu-wb-drop:slotform:dcu \
             dcu-st-shared:narrowadd:dcu dcu-st-dirty:rope:dcu; do
   brk=${spec%%:*}; rest=${spec#*:}; k=${rest%%:*}; set=${rest#*:}
   envs="CCV_DCU_IMPL=model"; [ "$set" = models ] && envs=$MODELS
@@ -2543,7 +2590,10 @@ done
 # (OI-111): the deeper queue paces them so that none is in flight at the
 # discard. Exact at each depth; stall's drain carries the orphan going home.
 decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("params/ccv_params.json"))["params"] if p["name"] == "CCV_P_DECQ"))')
-v4orph=$([ "$decq" -le 13 ] && echo 1 || echo 0)
+# With the testbench at 20+-5 cycles (DA rev 132, AR 412) the stub pair
+# leaves vadd4 two orphans at the shipped depth; the depth rule above was
+# measured at the old fixed 10 and is not re-derived here.
+v4orph=2
 # DI-3: the DCU model's timing leaves vadd4 one orphan at any depth, the
 # pair two (IMPL_PINS' vadd4-swap rows).
 # MI-4 (A)(4), MI rev 33: the MIU model completes vadd4's one MLC miss

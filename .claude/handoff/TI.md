@@ -38,9 +38,8 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-23: TI 527,
-MI 38, AR 413, DI 55, OI 405, OA 474, RA 158; the rest as of the 11-22 sweep.
-Last row TI-529. Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). 11-23 late: TI 542,
+MA 190; see the file. Last row TI-544. Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -77,18 +76,27 @@ background `while pgrep` wait.
   coremark128). AR 405 leaves MA to state the mispredict path; a DCU
   response field for it would be a new TI row.
 
-## In flight (11-23)
-- ti-fold fc32593d: CCV_DCU_FILL_AGE=4 (MA re:DI-37, task 71). Gate OOM-killed
-  (my measurement beside it); rerun gate-push once measurements end, then row
-  to MA, DI.
-- ti-drop branch ti-tblat 8daf7a2c (gate-scratch/TI-tblat): AR-410, kSlowEnd
-  1 MiB, CCV_TB_LATENCY, derived CCV_P_TIMEOUT_MEMOP 40960; cm128 bounded line
-  at CCV_TB_LATENCY=1000. Before/after table in scratchpad tblat-measure.tsv
-  (coremarkpl32priv before must be re-run: OOM). Then: row to AR (cc MA, DI,
-  MI), full check-kernel on ti-tblat (localsp/privwin/slotform/waypred moved:
-  re-pin expectations), merge onto FILL_AGE tip, gate-push.
-- 11-23 daily sweep repo half not run yet: after the FILL_AGE gate.
-- TI-530 (DI-38 1-4: lands with DI's tip), TI-531 (cm128 root cause, AR-410).
+## In flight (11-23, late)
+- 11-23 sweep landed 4e3dda64 (full clean gate; release 1ae46ca1, tag
+  refused, local only); ccr-80102643 and ccr-9eb50716 each have 1 commit
+  for the next sweep. FILL_AGE (608f8711) landed before it.
+- ti-drop branch ti-tblat (gate-scratch/TI-tblat), gate-push next: AR-410
+  (kSlowEnd 1 MiB, CCV_TB_LATENCY, TIMEOUT_MEMOP 40960, cm128 at 1000),
+  AR 412 (1) testbench 20+-5 seeded (tb_overtaken + jitter-0 control),
+  (2) swap class on new kernel vadd6 (bin slot_refill_parked; control at
+  20+-5 = fewer demotions, since credit contention demotes once there:
+  tell AR, TI-545 to write), MLC_HIT_MAX 28 (AR 413), stub and model
+  re-pins (TI-544; DI-48: land, DI fixes vadd4's MSHR-port race), MA-32
+  merged (lint admits by MA under rtl/miu, rtl/dcu; TI-542/543).
+- After landing: row to AR (re-baseline, old vs new cycles, AR 411 (4)),
+  MA, DI, MI. Then AR 412 (3) read class: colwalk-p128b-like streaming
+  read at 1000, B/cycle, per-queue peaks vs caps (needs IdPool peak
+  instrumentation), longest hold vs TIMEOUT_MEM; 128 MLC->EXB ids:
+  ask AR (W_REQ_MLC_EXB 6 -> 7 vs a class-only build). Report, not a gate
+  failure.
+- Waiting on Daniel: is OA-479 (b) approved (DI-42 relays it; no DA row)?
+  Then task 77 (two-writer table lint + check-1d) and 78 (DI-43 control).
+- Task 76 (common credit modules, TI-537..541) after the read class.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).

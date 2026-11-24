@@ -265,6 +265,21 @@ def stage_ratchet():
 # architect, "date", "why"}}}. The lint finds the loop itself and refuses a
 # declaration it cannot find, so the exemption is no wider than the loop.
 FEEDBACK_BY = ("OA", "AR", "DA")
+# MA is the MIU and DCU architect (MA-32): it signs a declaration of a module
+# under rtl/miu/ or rtl/dcu/ only, and nowhere else.
+FEEDBACK_BY_DIR = {"MA": ("rtl/miu/", "rtl/dcu/")}
+
+
+# check-1d reads a fixture as if it stood at this repo path (--signer-path=).
+_signer_path = {"rel": None}
+
+
+def feedback_signers(path):
+    """The architects who may sign a CCV-L23 declaration beside this module."""
+    rel = (_signer_path["rel"] or
+           os.path.relpath(os.path.abspath(path), ROOT)).replace(os.sep, "/").rstrip("/") + "/"
+    return FEEDBACK_BY + tuple(b for b, dirs in sorted(FEEDBACK_BY_DIR.items())
+                               if any(rel.startswith(d) for d in dirs))
 IDENT_RE = re.compile(r"\b[a-z]\w*\b")
 
 
@@ -1403,6 +1418,7 @@ def check_file(path, rel):
         byp_ok = {}
         for s0, e0, n, ln0 in spans:
             fp, decl, byp, tbl = feedback_decls(os.path.dirname(path), n)
+            signers = feedback_signers(os.path.dirname(path))
             body = src[s0:e0]
             # A declared table (DA rev 131, OA 452): verified against all seven
             # conditions, the timing's (6) being check-ngd's, which measures
@@ -1412,9 +1428,9 @@ def check_file(path, rel):
                 why = None
                 sa = stage_of(arr)
                 words, dtext = array_decl(body, arr)
-                if d.get("by") not in FEEDBACK_BY:              # (1)
+                if d.get("by") not in signers:                  # (1)
                     why = ("not an architect's (by %r, not one of %s): each is reviewed "
-                           "alone before it is listed" % (d.get("by"), ", ".join(FEEDBACK_BY)))
+                           "alone before it is listed" % (d.get("by"), ", ".join(signers)))
                 elif not isinstance(readers, list) or not readers:
                     why = "it names no reader: write \"readers\": [\"<reader>\", ...]"
                 elif dtext is None:
@@ -1536,11 +1552,11 @@ def check_file(path, rel):
             # on from a register at the reader's stage in its pipeline.
             for reader, d in sorted(byp.items()):
                 reads = d.get("from", {})
-                if d.get("by") not in FEEDBACK_BY:
+                if d.get("by") not in signers:
                     add("CCV-L23", ln0,
                         "%s: %s's declared bypass is not an architect's (by %r, not one of "
                         "%s): each is reviewed before it is listed"
-                        % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
+                        % (fp, reader, d.get("by"), ", ".join(signers)))
                     continue
                 if not isinstance(reads, dict) or not reads:
                     add("CCV-L23", ln0,
@@ -1578,11 +1594,11 @@ def check_file(path, rel):
                             byp_ok.setdefault(reader, {})[rd] = ahead
             for reader, d in sorted(decl.items()):
                 reads = d.get("from", [])
-                if d.get("by") not in FEEDBACK_BY:
+                if d.get("by") not in signers:
                     add("CCV-L23", ln0,
                         "%s: %s's declared feedback reads are not an architect's (by %r, "
                         "not one of %s): each is reviewed before it is listed"
-                        % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
+                        % (fp, reader, d.get("by"), ", ".join(signers)))
                     continue
                 # Each read with the alignment it is declared at (DA, 2026-10-23):
                 # how many stages its tag lies ahead of its reader's. The
@@ -1950,6 +1966,8 @@ def main():
             schema = a.split("=", 1)[1]
         if a.startswith("--blocks="):
             blocks = a.split("=", 1)[1]
+        if a.startswith("--signer-path="):
+            _signer_path["rel"] = a.split("=", 1)[1]
         # CCV-L29's ratchet and baseline, pointed at fixtures by check-1d.
         if a.startswith("--stage-ratchet="):
             _stage_ratchet["path"] = os.path.join(ROOT, a.split("=", 1)[1])

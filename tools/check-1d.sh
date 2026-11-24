@@ -222,6 +222,20 @@ no assertion|table apark_cy04h is refused: reference_tnoassert holds no assertio
 undeclared, the arithmetic refuses it|urd_cy01h is at stage 01 but combinational logic over stage(s) 01,04 gives 04
 WANT
 
+# MA signs a declaration under rtl/miu/ or rtl/dcu/ only (MA-32): the
+# reference table, signed by MA, passes read as a DCU module and is refused
+# read as an OOE one.
+mkdir -p "$TMP/ma"
+cp rtl/lint/reference_table.sv "$TMP/ma/"
+sed 's/"by": "OA"/"by": "MA"/' rtl/lint/reference_table.feedback.json >"$TMP/ma/reference_table.feedback.json"
+python3 tools/lint-rtl.py --signer-path=rtl/dcu "$TMP/ma/reference_table.sv" >"$TMP/ma-dcu.log" 2>&1; ma_dcu=$?
+python3 tools/lint-rtl.py --signer-path=rtl/ooe "$TMP/ma/reference_table.sv" >"$TMP/ma-ooe.log" 2>&1
+if [ "$ma_dcu" = 0 ] && grep -q "table park_cy04h is refused: not an architect's (by 'MA'" "$TMP/ma-ooe.log"; then
+  say "CCV-L23: MA signs only for MIU and DCU" "PASS (a DCU table passes; an OOE one is refused)"
+else
+  bad "CCV-L23: MA signs only for MIU and DCU" "dcu exit $ma_dcu: $(grep -m1 'CCV-L' "$TMP/ma-dcu.log"); ooe: $(grep -m1 'CCV-L23' "$TMP/ma-ooe.log")"
+fi
+
 # CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a
 # generate block are refused, and ccv_reference.sv's struct field, function
 # local and procedural local, which are not nets, pass (above). Its ratchet
