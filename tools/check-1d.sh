@@ -44,6 +44,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_tport.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn3.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn4.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_tport2.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn5.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -162,13 +163,14 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_tpp.sv rtl/lint/reference_tpr.sv rtl/lint/reference_tpw.sv \
          rtl/lint/reference_hp.sv rtl/lint/reference_xp.sv rtl/lint/reference_xc.sv \
          rtl/lint/reference_cnp.sv rtl/lint/reference_rhp.sv rtl/lint/reference_dc.sv \
-         rtl/lint/reference_mtpp.sv rtl/lint/reference_mtpr.sv rtl/lint/reference_mtpw.sv; do
+         rtl/lint/reference_mtpp.sv rtl/lint/reference_mtpr.sv rtl/lint/reference_mtpw.sv \
+         rtl/lint/reference_ttp.sv rtl/lint/reference_ttr.sv rtl/lint/reference_ttw.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (29 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (32 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -272,6 +274,10 @@ WANT
 # traced as the parent's logic (OI-213), passes; reference_xp.sv names a
 # crossing of a child's combinational path, "u_x.a_cy02h>y_cy02h" (OA-494),
 # and passes; bad_conn3.sv's named crossing of a registered path is refused.
+# reference_ttp/ttr/ttw: a sibling table's writer fed from later registers,
+# its inputs reaching its output only through the table register, excused
+# by the verified table (OI-217); bad_conn5.sv's writer input reaching the
+# output around the register is reported.
 # reference_mtpp/mtpr/mtpw: a sibling's table register reaching its output
 # through a select, read by u_r (OA-496), passes; bad_tport2.sv's register
 # reaching the output through a second register is refused.
@@ -302,6 +308,7 @@ a loop that does not close|cross-module loop u_rd.l0_cy02h is refused: the loop 
 no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion 'conn_l0_fresh' in the parent or reference_ard
 a port table's wrong ahead|table rd_cy04h (an input port) is refused: ahead is 2, but rd_cy04h lies 1 stage(s) past its reader's (03)
 a port table fed through logic|table rd_cy04h (an input port) is refused: in reference_gtpp, rd_cy04h is not fed directly by u_w's register rd_cy04h
+a table writer's input around its register|reference_lttp's u_w (reference_lttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy01h (its stage 01, fed at 04) combinationally
 a sibling table through a second register|table rd_cy04h (an input port) is refused: u_w.tab_cy03h is not a register reaching an output of reference_qtpw through combinational logic only
 a port table with no assertion|table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_stpr
 a cone missing a register|cross-module loop u_c.v_cy01h is refused: register(s) kk_cy04h reach u_c.v_cy01h through the cone but are not listed
