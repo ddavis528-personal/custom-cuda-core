@@ -429,7 +429,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       h_.hit("store_hit");
       return;
     }
-    missOrWait(r, now_ - dOff() + 1);
+    missOrWait(r, now_ - dOff() + 1, late || r.reread);
     return;
   }
   const bool hit = w && (r.op == Op::Read || w->owned);
@@ -462,7 +462,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
     }
   }
   if (!hit) {
-    missOrWait(r, now_ - dOff() + 1);
+    missOrWait(r, now_ - dOff() + 1, late || r.reread);
     return;
   }
   // CHECK (part 3): no load reads a line an older store to it has not yet
@@ -537,7 +537,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, r, 0, {}});
       return;
     }
-    missOrWait(r, now_ - dOff() + 1);
+    missOrWait(r, now_ - dOff() + 1, late || r.reread);
     return;
   }
   entLeave(b, r, hit_ret);
@@ -899,8 +899,8 @@ void Core::schedule() {
       // only hits join the queue (DI-48). One that waits for order (a held
       // line, an older lookup of its line, its writeback, an earlier lookup
       // of its line now) keeps the queue's order. dcu-loser-miss-late, the
-      // control, decides it at its access instead, so a slot's two misses
-      // can reach its port in one cycle (the id CHECK in startMiss).
+      // control, decides it at its access instead, a late miss that retries
+      // on port 0 (MA-33), so it leaves the winner's cycle late.
       if (r.op == Op::Read && !find(r.pa) && !wb && !ord && !earlier &&
           c_.brk != "dcu-loser-miss-late") {
         h_.hit("dcu_loser_miss");
@@ -941,8 +941,20 @@ void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t ti
 /// miss also waits while its bank already holds a waiting one, so a line's
 /// requests stay in arrival order (one line is one bank); dcu-miss-reorder,
 /// the control, lets a new miss pass a waiting one of its line.
-void Core::missOrWait(const Req &r, uint64_t d2) {
+void Core::missOrWait(const Req &r, uint64_t d2, bool late) {
   const unsigned b = bankOf(r.pa);
+  // A late lookup's miss (MA-33): a waiter, or a re-read, decides its miss
+  // at its access, cycles past its D; its slot's port belongs to the slot's
+  // on-time lookups then, so it waits and retries on port 0 (dcu_mshr's
+  // ids leave only by a port pick). dcu-late-miss-port, the control, puts
+  // it on its slot's port, where it meets the slot's next miss with one
+  // id (the CHECK in startMiss).
+  if (late && c_.brk != "dcu-late-miss-port") {
+    h_.hit("dcu_late_miss_retry");
+    h_.hit("dcu_miss_wait");
+    bq_[b].push_back(Acc{Acc::MissW, now_, d2 + kRetryLag, r.pa, r, 0, {}});
+    return;
+  }
   bool waits = false;
   for (const Acc &x : bq_[b]) {
     if (x.k != Acc::MissW) continue;

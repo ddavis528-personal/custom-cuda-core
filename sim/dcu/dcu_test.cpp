@@ -755,8 +755,8 @@ int main(int argc, char **argv) {
   // A bank loser that misses (DI-48): its tag result is known at its D2,
   // so its miss goes to the MSHR then, on its slot's port, and its slot's
   // next miss (another bank, a cycle or more later) has the port to itself.
-  // dcu-loser-miss-late decides the loser's miss at its access, where it
-  // meets the slot's next miss on one port with one id (the id CHECK).
+  // dcu-loser-miss-late decides the loser's miss at its access, a late
+  // miss that retries on port 0 (MA-33), so it leaves after the winner's.
   for (bool ctl : {false, true})
     test(ctl ? "dcu-loser-miss-late-control" : "loser-miss-at-d2", [&] {
       unsigned caught = 0, early = 0;
@@ -782,7 +782,8 @@ int main(int argc, char **argv) {
         }
       }
       if (ctl) {
-        EXPECT(caught >= 1, "the control is refused at some spacing");
+        EXPECT(early != 4 && caught == 0, "the control's miss leaves late (%u of 4 early), no id reused (%u)",
+               early, caught);
         return;
       }
       EXPECT(early == 4, "the loser's miss leaves with the winner's (its D2): %u of 4", early);
@@ -840,6 +841,46 @@ int main(int argc, char **argv) {
              (unsigned long long)b.h.bins["dcu_tag_stale_relook"]);
       EXPECT(r && !r->hit && r->line[0] == pat(v, 0), "a miss, refilled with its own line");
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // A late lookup's miss (MA-33): tag-stale's relook misses at its access,
+  // cycles past its D, so it waits and retries on port 0, and its slot's
+  // next miss (another bank) has the slot's port and its id to itself.
+  // dcu-late-miss-port places the late miss on its slot's port, where the
+  // two meet with one id at some spacing (the id CHECK in startMiss).
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-late-miss-port-control" : "late-miss-retry", [&] {
+      unsigned caught = 0, retried = 0;
+      for (unsigned d = 0; d != 8; ++d) {
+        Config c = cfg(9);
+        c.ways = 1;
+        if (ctl) c.brk = "dcu-late-miss-port";
+        Bench b(c);
+        const uint64_t v = bank0(1), n = v + uint64_t(c.sets) * kLineBytes, o = bank0(2);
+        const uint64_t x = bank0(3) + kLineBytes;   // bank 1, its own set
+        warm(b, v, 60);
+        warm(b, o, 61);
+        const uint64_t P = b.t;
+        b.reqs[P] = {rd(0, 1, n)};
+        b.run(P + 3);
+        const uint64_t F = b.mlc.back().first + b.mlc_lat;
+        b.reqs[F + 1] = {rd(0, 2, o), rd(1, 3, v)};
+        b.reqs[F + 1 + d].push_back(rd(1, 4, x));
+        b.run(F + 120);
+        if (refused(b, "offered while in use")) ++caught;
+        retried += b.h.bins["dcu_late_miss_retry"] != 0;
+        if (!ctl) {
+          EXPECT(b.h.fails.empty(), "d %u: %s", d, b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+          EXPECT(b.rsp(2) && b.rsp(3) && b.rsp(4), "d %u: every read answered", d);
+          const Rsp *r = b.rsp(3);
+          EXPECT(r && !r->hit && r->line[0] == pat(v, 0), "d %u: the relook misses, refilled", d);
+        }
+      }
+      if (ctl) {
+        EXPECT(caught >= 1, "the control is refused at some spacing");
+        return;
+      }
+      EXPECT(retried == 8, "the late miss retries on port 0: %u of 8", retried);
     });
 
   // Part 2's controls on one dirty eviction: one way a set, a store makes

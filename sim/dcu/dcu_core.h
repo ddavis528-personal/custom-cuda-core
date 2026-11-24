@@ -407,7 +407,7 @@ private:
   bool startMiss(const Req &r, uint64_t d2, unsigned port, const char **why = nullptr);
   /// A miss whose entry credit has gone home: merge or allocate now, or wait
   /// in its bank's queue (MissW), taking the credit back until it leaves.
-  void missOrWait(const Req &r, uint64_t d2);
+  void missOrWait(const Req &r, uint64_t d2, bool late = false);
   void retryWaits();                   ///< each bank's oldest waiting miss, one a cycle
   bool needsMlc(const Req &r) const;
   /// A dirty victim a fill has reserved (slice 2, part 2): its stores wait.
