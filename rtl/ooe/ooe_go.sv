@@ -101,7 +101,7 @@ module ooe_go #(
   // predicate names): the counter less its floors owed, saturated at XM;
   // and each slot's unmet floors.
   input  logic [4*LX-1:0]   px_cq01h,
-  input  logic [4*(R+1)-1:0] pl_cq01h,    // each credit's correction: last cycle's take of it, one-hot 0 to R
+  input  logic [4*(R+1)-1:0] pl_cq02h,    // each credit's correction: last cycle's take of it, one-hot 0 to R
   input  logic [S*LU-1:0]   unmet_g_cq01h,
   input  logic [S*LU-1:0]   unmet_p_cq01h,
   // And each slot's room to its ceiling, per class (GPR rows, predicates),
@@ -472,21 +472,21 @@ module ooe_go #(
   logic [2*R:0]        hk_cq02h;    // the allowances held and the correction, one-hot to 2R
   // Each correction is one-hot (or none, as its register stands before the
   // first reset edge, which this assertion sees).
-  logic [3:0] pl_ok_cq01h;
+  logic [3:0] pl_ok_cq02h;
   always_comb
     for (int c = 0; c < 4; c++) begin
-      pl_ok_cq01h[c] = pl_cq01h[c * (R + 1) +: R + 1] == '0;
+      pl_ok_cq02h[c] = pl_cq02h[c * (R + 1) +: R + 1] == '0;
       for (int k = 0; k < R + 1; k++)
-        if (pl_cq01h[c * (R + 1) +: R + 1] == (R + 1)'(1) << k) pl_ok_cq01h[c] = 1'b1;
+        if (pl_cq02h[c * (R + 1) +: R + 1] == (R + 1)'(1) << k) pl_ok_cq02h[c] = 1'b1;
     end
-  `CCV_ASSERT(pl_one_hot, pl_ok_cq01h == '1)
+  `CCV_ASSERT(pl_one_hot, pl_ok_cq02h == '1)
   always_comb
     for (int c = 0; c < 4; c++) begin
       pxc_cq01h = px_cq01h[c * LX +: LX];
       hk_cq02h = '0;
       for (int h = 0; h < R + 1; h++)
         for (int k = 0; k < R + 1; k++)
-          if (he_cq02h[c * (R + 1) + h] && pl_cq01h[c * (R + 1) + k]) hk_cq02h[h + k] = 1'b1;
+          if (he_cq02h[c * (R + 1) + h] && pl_cq02h[c * (R + 1) + k]) hk_cq02h[h + k] = 1'b1;
       // The pool saturates at 0 below the allowances held: 0 or more always.
       pth_cq02h[c * (PM + 1)] = |hk_cq02h;
       for (int p = 1; p < PM + 1; p++) begin
