@@ -96,6 +96,62 @@
   },
   {
    "parent": "ooe_rename",
+   "instance": "u_cg",
+   "port": "op",
+   "net": null,
+   "net_stage": 4,
+   "port_stage": null,
+   "deficit": 1,
+   "kind": "combinational",
+   "outputs": [
+    "pair",
+    "sum"
+   ]
+  },
+  {
+   "parent": "ooe_rename",
+   "instance": "u_cp",
+   "port": "op",
+   "net": null,
+   "net_stage": 4,
+   "port_stage": null,
+   "deficit": 1,
+   "kind": "combinational",
+   "outputs": [
+    "pair",
+    "sum"
+   ]
+  },
+  {
+   "parent": "ooe_rename",
+   "instance": "u_fg",
+   "port": "op",
+   "net": null,
+   "net_stage": 4,
+   "port_stage": null,
+   "deficit": 1,
+   "kind": "combinational",
+   "outputs": [
+    "pair",
+    "sum"
+   ]
+  },
+  {
+   "parent": "ooe_rename",
+   "instance": "u_fp",
+   "port": "op",
+   "net": null,
+   "net_stage": 4,
+   "port_stage": null,
+   "deficit": 1,
+   "kind": "combinational",
+   "outputs": [
+    "pair",
+    "sum"
+   ]
+  },
+  {
+   "parent": "ooe_rename",
    "instance": "u_gfree",
    "port": "rt_l_cq00h",
    "net": null,

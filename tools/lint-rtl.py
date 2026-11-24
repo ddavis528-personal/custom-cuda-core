@@ -2002,9 +2002,11 @@ def check_file(path, rel):
 # declared as a cross-module loop in the parent's <parent>.feedback.json, or
 # stood when the check was made (rtl/conn-ratchet.json, shrink-only). A
 # connection with an untagged port or net is a finding too (OA 481 (1)).
-# Out of scope, by name: children under rtl/common, rtl/ctech, rtl/macro and
-# rtl/clk (library and helper modules, whose ports carry no stage: CCV-L29
-# holds a block's sequential modules only), and the generated design
+# Out of scope, by name: children with a register under rtl/common,
+# rtl/ctech, rtl/macro and rtl/clk (library modules, whose ports carry no
+# stage: CCV-L29 holds a block's sequential modules only); a register-free
+# one there is a helper like any other, traced at zero latency (OA 485). And
+# the generated design
 # (rtl/top, rtl/generated), outside the per-file walk, whose channels cross
 # repeaters by params/links.json and are held there by check-links.
 CONN_RATCHET = os.path.join(ROOT, "rtl", "conn-ratchet.json")
@@ -2141,7 +2143,10 @@ def check_connections(src, rel, add, signers, fbdir):
                 cports, cbody = sib[child]
             else:
                 continue
-            if crel.startswith(CONN_OUT):
+            # A library module with a register (a macro, a clock gate) is out of
+            # scope; one with none is a helper like any other (OA 485).
+            if crel.startswith(CONN_OUT) and (dep_graph(cbody)[1] or
+                                              re.search(r"\balways_latch\b", cbody)):
                 continue
             j = m.end()
             if m.group(2):

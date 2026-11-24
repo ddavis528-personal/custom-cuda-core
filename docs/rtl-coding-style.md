@@ -629,9 +629,10 @@ other deficit is fixed or declared. A child with no register of its own
 (an inner helper) is its parent's logic: its ports carry no stage and a
 path through it counts zero. A connection whose port or net carries no
 tag is a finding, except a block top's own boundary ports, which carry the
-schema's channel names. Out of scope, by name: children under
-`rtl/common`, `rtl/ctech`, `rtl/macro` and `rtl/clk` (library and helper
-modules), and the generated design (`rtl/top`, `rtl/generated`), whose
+schema's channel names. Out of scope, by name: children with a register
+under `rtl/common`, `rtl/ctech`, `rtl/macro` and `rtl/clk` (library
+modules); a register-free one there is a helper like any other (OA 485).
+And the generated design (`rtl/top`, `rtl/generated`), whose
 channels cross repeaters by `params/links.json` and are held there.
 
 A back edge across the boundary, a loop through two children, is declared
