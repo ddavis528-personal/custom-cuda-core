@@ -30,8 +30,14 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 519, OI 401, CP 160, RA 157, RI 91,
-  MA 157, MI 36, DI 41, DA 131, Conventions 20; specs MIU 161, Common 9, DCU 84. Next pings: Friday.
+- Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
+  MA 173, MI 39, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
+  MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
+  deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
+  TI-532 (FYI, rev 530): ti-tblat 8daf7a2c ends the tb slow region at 1 MiB; kernels with data >= 0xC0000
+  drop (localsp 2144->164, privwin, waypred...). When it lands, recheck MI's IMPL_PINS (privwin priv_form=10)
+  and any waypred/localsp numbers taken before.
   AR 403/404: MIU corrects CE (syndrome R2, completion withheld 1, fix in the stage after on flopped
   data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
   AR 405 / DCU tab 84: mispredict = late answer at due+2 under the original req_id, no credit;
@@ -71,13 +77,12 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
-0a. UE two answers: model done 012519d8 (mi-dev, unpushed; 66 kernels clean both DCUs). MI-20 to TI
-   (rev 38, rung; DI rung): bin ue_second_answer, control ue-close-first (whitelist-only until DCU
-   sends the first answer), MIU stub's part. TI did MI-20 (TI-528, a3d17bb2 on
-   gate-scratch/TI-mi20, lands after TI's sweep): merge it, check ue-close-first, close MI-20. Gate in flight on 512d2315 (miu_mq + miu_pair budget
-   fix a2c9d3e2; first gate failed: miu_pair 9 ungated > 8.98): job-gate-push-20261123-010405-22813.
-   Push 012519d8 with the next gate.
-1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq e5d50b8b, a2c9d3e2.
+0a. UE two answers: model pushed at df60fee4 (SCOPED PASS). TI-529 (ba085cda, MI-20 + DI-33 (a)(b),
+   pc_kept on rau_drained) merged into mi-dev 059cb0b5 + regen; not pushed (next sweep's full gate).
+   Checked: neither DCU sends a UE first answer yet (DI-33 (d)), so ue_second_answer = 0 and
+   ue-close-first is vacuous on vadd/ldpar UE_INJECT=1. Close MI-20 once DI's first answer lands
+   and ue-close-first fails.
+1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq pushed at 512d2315 (SCOPED PASS).
    check-cg --unit exit 0 does not apply the module budget: read the ungated count vs 2%. miu_mq: 40 entries by arrival
    slot, psel one-hot + pre keep copy (me), rel decoded before its flop, dis (mem_op 0xF) muxes
    last; cg 5136/5205 gated, ngd 23.6/11.2. miu_pair reads mqa_cm02h (A1 view, FW 63) at H-1;
@@ -106,6 +111,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   rows of cells of paragraphs. Opens m8yvbw8rqgz.613 (6 cells), Responses m8yvbw8rqgz.675 (4).
 
 ## Pushed
+- ccr-58815650-0ch1hh at 1f9ce5c5: full PASS (sweep 2026-11-23: mi-dev 136 incl. TI ba085cda,
+  ccr-5e4d6c70 8, ccr-80102643 6, ccr-9eb50716 3, MA's spec branch 3).
 - ccr-58815650-0ch1hh at 073943f3: SCOPED PASS (mi-dev 6f7d98a4: MI-19 drop/syndrome, miu_pair
   RTL, merged over DI 818285df and TI b8233a39).
 - ccr-58815650-0ch1hh at d26849c3: full PASS (sweep 2026-11-21: ccr-183cc441, ccr-5e4d6c70,

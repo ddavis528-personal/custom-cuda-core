@@ -123,6 +123,12 @@ struct Bench {
       if (l.r.req_id == id) return &l.r;
     return nullptr;
   }
+  const Rsp *rspLast(unsigned id) const {
+    const Rsp *p = nullptr;
+    for (const Launch &l : rsps)
+      if (l.r.req_id == id) p = &l.r;
+    return p;
+  }
 };
 
 Req rd(unsigned slot, unsigned id, uint64_t pa) {
@@ -465,7 +471,12 @@ int main(int argc, char **argv) {
     warm(b, 0x7000);
     b.reqs[b.t] = {rd(0, 1, 0x7000)};
     b.run(b.t + 80);
-    EXPECT(b.h.bins["ue_recover"] == 1 && b.rsp(1) && !b.rsp(1)->hit, "recovered as a miss");
+    // The first answer carries a double-bit syndrome (TI-528); the second,
+    // the refetch's, is a clean miss.
+    EXPECT(b.rsp(1) && b.rsp(1)->ue_first && b.rsp(1)->flip >= 0 && b.rsp(1)->flip2 >= 0,
+           "first answer: a double-bit syndrome");
+    EXPECT(b.h.bins["ue_recover"] == 1 && b.rspLast(1) && !b.rspLast(1)->hit && b.rspLast(1)->flip < 0 &&
+               b.rspLast(1)->flip2 < 0, "recovered as a miss");
   });
 
   // A UE in a dirty line is core-fatal: DCU withholds the read (AR 389,
@@ -1085,7 +1096,8 @@ int main(int argc, char **argv) {
         EXPECT(!b.h.fails.empty(), "the control is refused");
         return;
       }
-      EXPECT(b.rsp(1) && b.rsp(1)->fid >= 0, "answered from a fill");
+      EXPECT(b.rsp(1) && b.rsp(1)->ue_first, "first answer before the fill");
+      EXPECT(b.rspLast(1) && b.rspLast(1)->fid >= 0, "answered from a fill");
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 

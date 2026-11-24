@@ -2903,6 +2903,46 @@ void testRestore() {
   EXPECT(refused, "a restore-activate before the map was accepted");
 }
 
+/// A demotion's map and a restore's in the same cycle, on two slots: warp 5
+/// demotes from slot 1 while warp 0 restores into slot 0, the restore's
+/// acceptance swept against the demotion until both maps leave together.
+/// ooe_ratmap's bench takes it for its restore-first control (a restore's
+/// request older than a demotion's arriving beside it), which the random
+/// tests no longer reach since a demoting warp keeps its slot (OA 460).
+[[maybe_unused]] void testRestoreBesideDemote() {
+  g_test = "restore beside demote";
+  bool together = false;
+  for (unsigned d = 0; d != 60 && !together; ++d) {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::mt19937 rng(7);
+    e.launch(5, 1, randomProgram(rng, 80, false));
+    for (unsigned k = 0; k != 6; ++k) e.step();
+    e.core.demote(5);
+    for (auto &x : e.w) if (x.id == 5) x.exited = true;
+    for (auto it = e.fetched.begin(); it != e.fetched.end();)
+      it = it->second.warp == 5 ? e.fetched.erase(it) : std::next(it);
+    for (unsigned k = 0; k != 200 && !together; ++k) {
+      if (k == d) {
+        Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc; ra.cta_slot = Env::ctaSlotOf(0);
+        e.core.alloc(ra);
+      }
+      e.step();
+      bool dm = false, rm = false;
+      for (const RatMap &m : e.log.back().maps) (m.direction ? rm : dm) = true;
+      together = dm && rm;
+      e.log.clear();
+    }
+    // Run on, so a bench sees both maps leave its queue.
+    if (together)
+      for (unsigned k = 0; k != 20; ++k) { e.step(); e.log.clear(); }
+    for (const std::string &x : e.errors) EXPECT(false, "offset %u: %s", d, x.c_str());
+  }
+  EXPECT(together, "no restore offset put a restore's map beside a demotion's");
+}
+
 /// A consumer final long before its producer: an SFU op of 30 cycles,
 /// bypassed to a lane op that issues at 9 and is final at 16, then waits on
 /// its row until the SFU op confirms. ooe_rs leads that confirmation from
@@ -4365,11 +4405,12 @@ void testRandom(unsigned seeds) {
 /// state meets a kill (resident, demoting, draining, parked, killing again),
 /// kills name nothing OOE holds, and kills land beside frees and launches.
 /// The model's own errors fail it.
-[[maybe_unused]] void testSlotRandom(unsigned seeds) {
+[[maybe_unused]] void testSlotRandom(unsigned seeds, bool sectioned = false) {
   for (unsigned seed = 1; seed <= seeds; ++seed) {
-    g_test = "slot random seed " + std::to_string(seed);
+    g_test = std::string(sectioned ? "sectioned " : "") + "slot random seed " + std::to_string(seed);
     Config c = baseConfig();
     c.l1_spec = false;
+    c.sectioned = sectioned;
     std::mt19937 rng(seed * 13 + 1);
     Env e(c, seed);
     e.keep_log = true;
@@ -6440,6 +6481,21 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
     testMlcTrigger();
     testBarrierTimer();
     testSlotRandom(seeds * 4);
+  } else if (scenario == "ratmap") {
+    // ooe_ratmap's bench (test/ooe/ratmap_tb.cpp): slot's, with the parked
+    // layout's test and the slot random tests sectioned too, so maps carry
+    // positions and narrow widths.
+    testRandom(seeds);
+    testSwap();
+    testDemote();
+    testRestore();
+    testKill();
+    testAtomicDemote();
+    testBarrierDemote();
+    testParkedLayout();
+    testRestoreBesideDemote();
+    testSlotRandom(seeds * 2);
+    testSlotRandom(seeds * 2, true);
   } else if (scenario == "idle") {
     for (int mode = 0; mode != 8; ++mode) {
       Env e(randomConfig(2, mode));

@@ -18,7 +18,7 @@ so this is a build artifact rather than something to remember.
 | File | Preliminary | Provisional |
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
-| `rtl/dcu/dcu_bctl.sv` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
+| `rtl/dcu/dcu_bctl.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_btag.sv` | — | `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_cap.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_mshr.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_CORE_ID`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_DCU_MLC`, `CCV_P_W_REQ_MIU_DCU` |
@@ -81,7 +81,7 @@ so this is a build artifact rather than something to remember.
 | `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU`, `CCV_LAT_RCU_KILL_DRAIN` |
 | `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_ADDR`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/skel/kernel.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA` |
+| `sim/skel/kernel.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA`, `CCV_P_TIMEOUT_MEM`, `CCV_P_TIMEOUT_MEMOP` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | `CCV_DCU_WAYPRED_BITS` |

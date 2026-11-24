@@ -486,7 +486,8 @@ A declaration lives beside the module's RTL, in `<module>.feedback.json`:
 per reading net. The lint refuses it, and the stage skip stays reported,
 unless:
 
-- `by` is an architect (OA, AR or DA): a declaration is reviewed before it
+- `by` is an architect (OA, AR or DA; MA for a module under `rtl/miu/` or
+  `rtl/dcu/` only, MA-32): a declaration is reviewed before it
   is listed, and the list shrinks only by review;
 - the reader reads it: a stale declaration is refused;
 - the reader and the read both carry stage tags, and the read's tag lies
