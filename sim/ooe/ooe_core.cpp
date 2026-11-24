@@ -4435,6 +4435,22 @@ void Core::rename() {
         // This cycle takes at most the width from each credit (a class's
         // ports; a name per uop), so no more need be held back.
         held = std::min(held, cfg_.rename_width);
+        if (r == 2) {   // RA-11 debug: the pool's identity, and the first violation
+          static bool once_id = false, once_v = false;
+          unsigned sh = 0, shs = 0;
+          for (unsigned si = 0; si != slot_.size(); ++si) { sh += slot_[si].held_gpr; shs += heldSeen(si, false); }
+          const bool idbad = cfg_.phys_regs - sh != gfree_.size();
+          if ((idbad && !once_id) || (held > c[r] && !once_v)) {
+            once_id = once_id || idbad; const bool v = held > c[r]; once_v = once_v || v;
+            std::fprintf(stderr, "RA11 now=%llu viol=%d idbad=%d phys=%u sum_held=%u sum_seen=%u size=%zu ready=%zu prev=%zu prev2=%zu c2=%u held=%u tk1=%u tk2=%u\n",
+              (unsigned long long)now_, v, idbad, cfg_.phys_regs, sh, shs, gfree_.size(), gfree_.ready(), gfree_.prevFrees(), gfree_.prev2Frees(), c[2], held, pool_tk1_[0], pool_tk2_[0]);
+            for (unsigned si = 0; si != slot_.size(); ++si)
+              std::fprintf(stderr, "RA11  slot %u st=%d held=%u seen=%u hl_prev=%u share=%u unmet=%u restore=%u\n", si, int(slot_[si].st),
+                slot_[si].held_gpr, heldSeen(si, false), si < pool_hl_prev_.size() ? pool_hl_prev_[si][0] : 0u,
+                share_reg_[si][2], unmetFloor(si, false), unsigned(slot_[si].restore_gpr));
+            if (v) std::exit(7);
+          }
+        }
         if (held > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, held, c[r]);
         pool[r] = c[r] - std::min(held, c[r]);
         // The names (OA's rev 138): the credit is held as two counts, each
