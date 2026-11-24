@@ -265,24 +265,6 @@
   {
    "parent": "ooe_rename",
    "instance": "u_go",
-   "port": "pl_cq01h",
-   "net": null,
-   "net_stage": 3,
-   "port_stage": 1,
-   "deficit": 2,
-   "kind": "combinational",
-   "outputs": [
-    "lane_c_cq02h",
-    "lane_v_cq02h",
-    "sel_cq02h",
-    "take_cq02h",
-    "wb_cq02h",
-    "wt_cq02h"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
-   "instance": "u_go",
    "port": "pool_en_cq01h",
    "net": null,
    "net_stage": 4,
