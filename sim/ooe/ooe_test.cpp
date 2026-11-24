@@ -5436,6 +5436,11 @@ int main(int argc, char **argv) {
     sweepSections();
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--dbg-partial") {
+    const int from = std::atoi(std::getenv("DBG_FROM"));
+    std::vector<std::function<void()>> ts = {[]{ testWakeTimes(); }, []{ testBypassGroups(); }, []{ testL1Spec(); }, []{ testL1WakeAfterCmpl(); }, []{ testMaskedLoad(); }, []{ testSquash(); }, []{ testSquashSaturated(); }, []{ testFinalBeforeProducer(); }, []{ testFloorCeiling(); }, []{ testResolveLagRetire(); }, []{ testRetHold(); }, []{ testIdleR(); }, []{ testRClass(); }, []{ testPredSources(); }, []{ testCeilingGo(); }, []{ testDemote(); }, []{ testRestore(); }, []{ testKill(); }, []{ testFault(); }, []{ testBarrier(); }, []{ testBarrierDemote(); }, []{ testBarrierTimer(); }, []{ testBarrierFault(); }, []{ testMemFault(); }, []{ testChwidth(); }, []{ testChwidthMulti(); }, []{ testRet(); }};
+    for (int i = from; i < int(ts.size()); ++i) ts[i]();
+    const int f0 = g_fail; testPartialTaken(); std::printf("partial fails %d\n", g_fail - f0); return 0; }
   if (argc > 1 && std::string(argv[1]) == "--atomic") {   // the atomics' tests alone
     testAtomic();
     testAtomicRandom(2, randomConfig);

@@ -486,6 +486,12 @@ struct Config {
   /// Meanwhile the slot runs on: rename takes the wrong path, select issues
   /// it, and the squash takes all of it.
   unsigned squash_act_lag = 1;
+  /// RI-11 pricing (OA rev 340): an interface flop in front of each OOE
+  /// receiver that acts on its payload in its arrival cycle moves that act a
+  /// cycle. Bits: 1 rau alloc, 2 rau demote, 4 syu release, 8 rcu done,
+  /// 16 cmpl hint, 32 miu cmpl, 64 dec uop (taken a cycle after it lands).
+  /// The message is taken as it lands (credits unchanged), its act deferred.
+  unsigned rx_lag = 0;
   /// The go's run from the tail sees a held entry's release a cycle late
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
   /// scan that forms the run, so the scan reads it as held one cycle more.

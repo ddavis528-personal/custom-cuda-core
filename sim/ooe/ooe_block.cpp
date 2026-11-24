@@ -1,3 +1,4 @@
+#include <functional>
 //===-- ooe_block.cpp - the OOE model at the swap boundary ---------------===//
 //
 // Packs and unpacks OOE's channels around ooe::Core, and nothing else: the
@@ -304,8 +305,18 @@ private:
     return u;
   }
 
+  /// RI-11 pricing: acts deferred a cycle (Config::rx_lag), in arrival order.
+  std::vector<std::function<void()>> rx_due_, rx_next_;
+  void rxAct(unsigned bit, std::function<void()> f) {
+    if (core_.config().rx_lag & bit) rx_next_.push_back(std::move(f));
+    else f();
+  }
   void takeInputs() {
     const Ch &c = ch();
+    rx_due_.swap(rx_next_);
+    rx_next_.clear();
+    for (auto &f : rx_due_) f();
+    rx_due_.clear();
     if (has(c.rau_ooe, 0)) {
       Receiver::Msg m = take(c.rau_ooe, 0);
       ooe::Alloc a;
@@ -316,16 +327,18 @@ private:
       a.warp_in_cta = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
       a.barrier_count = unsigned(get(m.payload, c.rau_ooe, "barrier_count"));
       a.cta_slot = unsigned(get(m.payload, c.rau_ooe, "cta_slot"));
-      core_.alloc(a);
+      rxAct(1, [this, a] { core_.alloc(a); });
     }
     if (hasIn(demote_) && has(unsigned(demote_), 0)) {
       Receiver::Msg m = take(unsigned(demote_), 0);
-      core_.demote(unsigned(get(m.payload, unsigned(demote_), "warp_id")));
+      const unsigned dw = unsigned(get(m.payload, unsigned(demote_), "warp_id"));
+      rxAct(2, [this, dw] { core_.demote(dw); });
     }
     if (hasIn(rel_) && has(unsigned(rel_), 0)) {
       Receiver::Msg m = take(unsigned(rel_), 0);
       // A held wait's answer names its warp (TI-40); the core takes a mask.
-      core_.barRelease(uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id"));
+      const uint32_t bm = uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id");
+      rxAct(4, [this, bm] { core_.barRelease(bm); });
       cred_rel_ |= uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id");
     }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
@@ -361,7 +374,7 @@ private:
         // TI's d347d2c names the field branch_aux, renamed aux after it.
         for (const char *f : {"aux", "branch_aux"})
           if (hasField(c.rcu_ooe, f)) d.aux = uint32_t(get(m.payload, c.rcu_ooe, f));
-        core_.done(d);
+        rxAct(8, [this, d] { core_.done(d); });
       }
     // Completion hints (OA-23), taken as they land, as a fixed-latency
     // channel's must be: each names the memop's RS entry, and the model
@@ -375,7 +388,7 @@ private:
         auto e = rs_sent_.find(tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u hinted for RS entry %u, but its memop named entry %u", tag, rs, e->second);
-        core_.hint(tag);
+        rxAct(16, [this, tag] { core_.hint(tag); });
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
@@ -401,7 +414,7 @@ private:
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "
                   "named entry %u", x.rob_tag, rs, e->second);
-        core_.cmpl(x);
+        rxAct(32, [this, x] { core_.cmpl(x); });
       }
   }
 
@@ -442,6 +455,7 @@ private:
         if (taken.count(s)) { held.insert(w); continue; }
         if (held.count(w) || oldest[w] != std::make_tuple(r->front().arrived, s, size_t(0)))
           continue;
+        if ((core_.config().rx_lag & 64) && r->front().arrived + 1 > now_) continue;
         if (best < 0 || r->front().arrived < when) { best = int(s); when = r->front().arrived; }
       }
       if (best < 0) return;
