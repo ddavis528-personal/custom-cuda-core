@@ -2029,6 +2029,27 @@ _conn = {"path": CONN_RATCHET, "baseline": CONN_BASELINE, "entries": None,
          "found": set(), "seen": set(), "index": None}
 
 
+_units = {"mods": None}
+
+
+def unit_modules():
+    """Modules with a timing unit (test/**/cg-units.json or ngd-units.json)."""
+    if _units["mods"] is None:
+        mods = set()
+        for d, _, fns in os.walk(os.path.join(ROOT, "test")):
+            for fn in fns:
+                if fn in ("cg-units.json", "ngd-units.json"):
+                    try:
+                        u = json.load(open(os.path.join(d, fn))).get("units", [])
+                    except (OSError, ValueError):
+                        continue
+                    for e in (u.values() if isinstance(u, dict) else u):
+                        if isinstance(e, dict) and e.get("module"):
+                            mods.add(e["module"])
+        _units["mods"] = mods
+    return _units["mods"]
+
+
 def conn_ratchet():
     if _conn["entries"] is None:
         p = _conn["path"]
@@ -2599,14 +2620,24 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
                             % (g, insts[ci][0], cin, cout))
                 xsrc["%s.%s" % (ci, cout)] = g
             elif "." in g:
-                return ("cone source %s: name a sibling's output as a crossing "
-                        "\"<inst>.<input>><output>\" traced to listed registers (OA-498)" % g)
+                # A sibling's output named directly (TI-575, OA-499): only
+                # where that sibling's tags are verified in this same run,
+                # it has a timing unit and is not on the stage ratchet.
+                oi, op = g.split(".", 1)
+                if oi not in insts or insts[oi][1].get(op) != "output":
+                    return "cone output %s is no output of an instance here" % g
+                if insts[oi][0] not in unit_modules() or insts[oi][0] in stage_ratchet():
+                    return ("cone output %s: %s's tags are not verified (no timing unit, or on "
+                            "rtl/stage-ratchet.json): name it as a crossing traced to listed "
+                            "registers instead (OA-498, OA-499)" % (g, insts[oi][0]))
+                cone_regs.append(g)
             elif g not in flops:
                 return "cone register %s is no register of this module" % g
             else:
                 cone_regs.append(g)
         reached_out = set(outnet[nn] for nn in nets if nn in outnet)
-        for o in sorted(reached_out):
+        rr = set(rr) | (reached_out & set(cone_regs))
+        for o in sorted(reached_out - set(cone_regs)):
             if o not in xsrc:
                 return ("%s reaches %s.%s through the cone but no listed crossing names "
                         "it: a cone lists every source it reads" % (o, ri, rp))
@@ -2630,7 +2661,11 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
             return ("cone register(s) %s do not reach %s.%s through combinational logic"
                     % (", ".join(extra), ri, rp))
         for g in cone_regs:
-            sg = stage_of(g)
+            gn = g
+            if "." in g:
+                oi, op = g.split(".", 1)
+                gn = (conn_ids(insts[oi][3].get(op, "")) or [op])[0]
+            sg = stage_of(gn)
             if not sg or not sp or aheads.get(g) != sg[2] - sp[2]:
                 return "ahead for %s is %r, but it lies %s stage(s) past the input's tag" % (
                     g, aheads.get(g), (sg[2] - sp[2]) if sg and sp else "?")

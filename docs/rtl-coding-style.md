@@ -687,7 +687,10 @@ of them (`reference_cnp.sv`). A cone may also name a crossing of a sibling,
 `"<inst>.<input>><output>"`, whose output it reads and whose input traces
 back, through the parent's combinational nets, only to listed registers;
 every sibling output the cone reads must be so named (OA-498;
-`reference_kp.sv`, `bad_conn6.sv`). And a hop may cross a child through one of
+`reference_kp.sv`, `bad_conn6.sv`). Or the cone may name the sibling's
+output directly, `"<inst>.<output>"`, its `ahead` from its net's tag, only
+where that sibling's tags are verified in the same run: it has a timing
+unit and is not on `rtl/stage-ratchet.json` (OA-499). And a hop may cross a child through one of
 its registers, `"<inst>.<input>><register>><output>"`, where the input
 reaches that register's next value or enable and the register reaches the
 output, each combinationally (`reference_rhp.sv`); `bad_conn4.sv` holds
