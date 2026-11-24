@@ -1,0 +1,31 @@
+{
+  "_comment": "OI-218's cone with a sibling output for reference_kp.sv.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "from": {
+        "cone": [
+          "m_cy04h",
+          "u_k.y_cy04h"
+        ],
+        "ahead": {
+          "m_cy04h": 3,
+          "u_k.y_cy04h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "m_cy03h",
+        "m_cy04h"
+      ],
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "a cone over a parent register and a sibling's output, as u_gfree's leads over u_ren1 (OI-218)"
+    }
+  }
+}

@@ -2226,7 +2226,7 @@ def check_connections(src, rel, add, signers, fbdir):
                     # A verified table (OI-217, OA-496): this child is a
                     # sibling's declared table writer, and its input reaches
                     # the output only through the table register.
-                    if any(only_through(cbody, i, o, g) for g in table_regs.get(inst, ())):
+                    if inst in table_regs and only_into(cbody, cports, i, table_regs[inst]):
                         continue
                     e = (parent, inst, i, None, pt[i][1], si[2], deficit,
                          "combinational" if comb else "register")
@@ -2348,31 +2348,43 @@ def sibling_tables(pbody, local, idx, fbdir):
         for port, d in tbl.items():
             w = str(d.get("writer", "")) if isinstance(d, dict) else ""
             if "." in w and ports.get(port) == "input":
+                # The table must verify in this same run (OA-497).
+                cpath = os.path.join(cdir, child + ".sv")
+                cg = dep_graph(body)
+                if verify_port_table(child, port, d, body, cg,
+                                     feedback_signers(cdir), cpath):
+                    continue
                 wi, wreg = w.split(".", 1)
                 out.setdefault(wi, set()).add(wreg)
     return out
 
 
-def only_through(body, i, o, reg):
-    """Whether every path in a module from input i to output o passes
-    through register reg: i reaches reg's next value or enable, and with
-    reg cut, i no longer reaches o."""
+def only_into(body, ports, i, regs):
+    """OA-497: input i's forward cone inside the module, through its
+    combinational nets, ends solely at the declared table registers' next
+    value or enable: it reaches at least one, and no other register and no
+    output."""
     deps, flops = dep_graph(body)
-    if reg not in flops:
-        return False
-    def reaches(start, cut):
-        seen, todo = set(), [start]
-        while todo:
-            n = todo.pop()
-            for x in deps.get(n, ()):
-                if x == i:
-                    return True
-                if x in seen or x == cut:
-                    continue
-                seen.add(x)
-                todo.append(x)
-        return False
-    return reaches(reg, None) and not reaches(o, reg)
+    users = {}
+    for n, ds in deps.items():
+        for x in ds:
+            users.setdefault(x, set()).add(n)
+    seen, todo, hit = set(), [i], set()
+    while todo:
+        n = todo.pop()
+        for u in users.get(n, ()):
+            if u in seen:
+                continue
+            seen.add(u)
+            if u in flops:
+                if u not in regs:
+                    return False
+                hit.add(u)
+            elif ports.get(u) == "output":
+                return False
+            else:
+                todo.append(u)
+    return bool(hit)
 
 
 def helper_self_loop(pbody, inets, onets, inst):
@@ -2541,14 +2553,33 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
         # A combinational cone over listed parent registers (OA-495 (a)):
         # exactly the listed registers reach the input through the parent's
         # combinational nets and crossings, each ahead matching its tags.
-        cone_regs = [str(x) for x in (fr.get("cone") or [])]
+        listed = [str(x) for x in (fr.get("cone") or [])]
         aheads = fr.get("ahead") or {}
-        if not cone_regs:
+        if not listed:
             return "a cone \"from\" lists no register"
         nets, rr = cone(deps, flops, conn_ids(insts[ri][3].get(rp, "")))
-        for g in cone_regs:
-            if g not in flops:
+        # A cone may also list a sibling's output, "<inst>.<output>" (OI-218):
+        # its net is a source as a register is, held to the same terms.
+        outnet = {}
+        for oi, (och, opt, obody, oconns) in insts.items():
+            if not dep_graph(obody)[1]:
+                continue
+            for o, dr in opt.items():
+                if dr == "output":
+                    for nn in conn_ids(oconns.get(o, "")):
+                        outnet[nn] = "%s.%s" % (oi, o)
+        cone_regs = []
+        for g in listed:
+            if "." in g:
+                oi, op = g.split(".", 1)
+                if oi not in insts or insts[oi][1].get(op) != "output":
+                    return "cone output %s is no output of an instance here" % g
+                cone_regs.append(g)
+            elif g not in flops:
                 return "cone register %s is no register of this module" % g
+            else:
+                cone_regs.append(g)
+        rr = set(rr) | set(outnet[nn] for nn in nets if nn in outnet)
         missing = sorted(rr - set(cone_regs))
         extra = sorted(set(cone_regs) - rr)
         if missing:
@@ -2558,11 +2589,15 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
             return ("cone register(s) %s do not reach %s.%s through combinational logic"
                     % (", ".join(extra), ri, rp))
         for g in cone_regs:
-            sg = stage_of(g)
+            gn = g
+            if "." in g:
+                oi, op = g.split(".", 1)
+                gn = (conn_ids(insts[oi][3].get(op, "")) or [op])[0]
+            sg = stage_of(gn)
             if not sg or not sp or aheads.get(g) != sg[2] - sp[2]:
                 return "ahead for %s is %r, but it lies %s stage(s) past the input's tag" % (
                     g, aheads.get(g), (sg[2] - sp[2]) if sg and sp else "?")
-        ends = set(cone_regs)
+        ends = set(g for g in cone_regs if "." not in g) or set(cone_regs)
     else:
         if fr not in flops:
             return ("\"from\" %s is neither <instance>.<output> nor a register of this "
@@ -2581,7 +2616,10 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
     while n_out < len(loop) and "." in loop[n_out] and ">" not in loop[n_out]:
         n_out += 1
     outs, hops = loop[:n_out], loop[n_out:]
-    if not outs or not hops or hops[-1] not in ends or any(
+    last = hops[-1] if hops else ""
+    last_ok = last in ends or (">" in last and "%s.%s" % (
+        last.split(".", 1)[0], last.rsplit(">", 1)[-1]) in ends)
+    if not outs or not hops or not last_ok or any(
             "." in h and ">" not in h for h in hops):
         return ("\"loop\" lists the reader's output(s), then the hops in order (parent "
                 "registers, \"<inst>.<input>><output>\" crossings or \"<inst>.<input>>"
