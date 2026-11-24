@@ -22,6 +22,8 @@ case "$unit" in
     vl miu_mq "" "" "$PWD/rtl/miu/miu_mq.sv" "$PWD/test/miu/mq_tb.cpp" ;;
   miu_agu8)
     vl miu_agu8 "" "" "$PWD/rtl/miu/miu_agu8.sv" "$PWD/test/miu/agu8_tb.cpp" ;;
+  miu_agu8_lc)
+    vl miu_agu8 "-GLC=1" "-DCCV_AGU8_LC=1" "$PWD/rtl/miu/miu_agu8.sv" "$PWD/test/miu/agu8_tb.cpp" ;;
   miu_cred)
     vl miu_cred "" "" "$PWD/rtl/miu/miu_cred.sv" "$PWD/test/miu/cred_tb.cpp" ;;
   miu_form)
@@ -35,6 +37,6 @@ case "$unit" in
   miu_tlb)
     vl miu_tlb "-DCCV_CHECK" "" "$PWD/rtl/miu/miu_tlb.sv" "$PWD/test/miu/tlb_tb.cpp" ;;
   miu_a2)
-    vl miu_a2 "" "" "$PWD/rtl/miu/miu_a2.sv" "$PWD/test/miu/a2_tb.cpp" ;;
+    vl miu_a2 "--trace-max-width 8192" "" "$PWD/rtl/miu/miu_grp.sv" "$PWD/rtl/miu/miu_a2.sv" "$PWD/test/miu/a2_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

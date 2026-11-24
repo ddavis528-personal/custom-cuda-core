@@ -66,6 +66,7 @@ module miu_agu8 #(
   parameter  int VW = 50,                                 // the exact sum
   parameter  int IW = ccv_params_pkg::CCV_W_LANE_MASK,    // a slot's lanes, 32
   parameter  int PW = ccv_prov_pkg::CCV_PRIV_WINDOWS,     // 1
+  parameter  int LC = 0,                                  // 1: lc_cm06h, lane 0's line again (MA rev 209)
   localparam int PK = $clog2(PW),                         // k
   localparam int WHW = 32 - PK                            // wh: W >> k
 ) (
@@ -100,7 +101,10 @@ module miu_agu8 #(
   output logic [NL*VW-1:0] va_cm06h,
   output logic [NL-1:0]    fal_cm06h,
   output logic             ilv_cm06h,
-  output logic             loc_cm06h
+  output logic             loc_cm06h,
+  // Lane 0's line, VA[47:7], a (* keep *) copy for miu_grp's far compares
+  // (MA rev 209); 0 and no flops at LC = 0.
+  output logic [40:0]      lc_cm06h
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
@@ -179,7 +183,7 @@ module miu_agu8 #(
 
   // ---- Flops: A2's lanes -------------------------------------------------
   wire va_en_cm05h = v_q_cm05h;
-  logic [NL*VW-1:0] va_q_cm06h;
+  (* keep *) logic [NL*VW-1:0] va_q_cm06h;   // never merged with lc_q (NGD-7)
   logic [NL-1:0]    fal_q_cm06h;
   logic             ilv_q_cm06h, loc_q_cm06h;
   always_ff @(posedge miu_core_clk) begin
@@ -194,6 +198,16 @@ module miu_agu8 #(
   assign fal_cm06h = fal_q_cm06h;
   assign ilv_cm06h = ilv_q_cm06h;
   assign loc_cm06h = loc_q_cm06h;
+
+  if (LC != 0) begin : g_lc
+    (* keep *) logic [40:0] lc_q_cm06h;
+    always_ff @(posedge miu_core_clk) begin
+      if (va_en_cm05h) lc_q_cm06h <= va_d_cm05h[7 +: 41];
+    end
+    assign lc_cm06h = lc_q_cm06h;
+  end else begin : g_nlc
+    assign lc_cm06h = '0;
+  end
 
 endmodule
 `undef CCV_CLK

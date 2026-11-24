@@ -42,6 +42,7 @@ namespace {
 
 constexpr unsigned kNS = 4, kNQ = 4, kN0 = 6, kVW = 50, kSW = 9, kFW = 4, kBW = 3;
 constexpr uint64_t kM50 = (uint64_t(1) << kVW) - 1u;
+constexpr uint64_t kLine = (uint64_t(1) << 41) - 1u;   // VA[47:7]
 
 int g_argc;
 char **g_argv;
@@ -62,13 +63,12 @@ template <typename S> void putS(S &w, unsigned o, unsigned n, uint64_t v) {
   w = S((uint64_t(w) & ~m) | ((v << o) & m));
 }
 
-bool can(unsigned k, unsigned a, unsigned q) {
-  return (a == 0 && q == k) || (a < k && q == 2) || (a == k && q == 0);
-}
-
 /// One cycle's A2 inputs.
 struct In {
-  unsigned rv = 0, la = 0, ge = 0;
+  unsigned rv = 0, la = 0;
+  std::array<unsigned, kNS> f{};              // address slot a's memop's F (0: none)
+  std::array<uint32_t, kNS> am{};             // its active_mask
+  std::array<std::array<uint64_t, 32>, kNS> lv{};   // its lanes' sums
   std::array<unsigned, kNS> lsi{}, fm{}, l6{}, a{}, q{};
   std::array<bool, kNS> lead{};               // lq has a bit
   std::array<uint32_t, kNS> r0{}, r1{};       // 26 bits each
@@ -96,6 +96,7 @@ struct Bench {
   Out held;                  // the payload flops' last write
   unsigned cov_hit = 0, cov_miss = 0, cov_fa = 0, cov_bank = 0, cov_c1 = 0, cov_ilv = 0,
            cov_loc = 0, cov_ord = 0, cov_nh = 0, cov_skip = 0, cov_ge = 0, cov_hold = 0;
+  std::array<unsigned, 3> cov_gok{}, cov_gdr{};   // the group check passed, failed: F 1, 2, 4
 
   Bench(const char *vcd_path, const std::string &c) : ctl(c) {
     ctx = std::make_unique<VerilatedContext>();
@@ -138,7 +139,6 @@ struct Bench {
   void drive(const In &x) {
     dut->rv_cm06h = x.rv;
     dut->la_cm06h = x.la;
-    dut->ge_cm06h = x.ge;
     dut->lsi_cm06h = 0;
     dut->lq_cm06h = 0;
     dut->fm_cm06h = 0;
@@ -153,6 +153,13 @@ struct Bench {
       putBits(dut->c_cm06h, k * kVW, kVW, x.c[k]);
     }
     for (unsigned i = 0; i < kNS * kNQ; ++i) putBits(dut->va_cm06h, i * kVW, kVW, x.va[i]);
+    for (unsigned a = 0; a < kNS; ++a) {
+      putBits(dut->am_cm06h, a * 32, 32, x.am[a]);
+      for (unsigned l = 0; l < 32; ++l) putBits(dut->lv_cm06h, (a * 32 + l) * kVW, kVW, x.lv[a][l]);
+      // miu_agu8's keep copies: lanes 0's and 16's lines.
+      putBits(dut->lc_cm06h, a * 82, 41, x.lv[a][0] >> 7);
+      putBits(dut->lc_cm06h, a * 82 + 41, 41, x.lv[a][16] >> 7);
+    }
     dut->l0v_cm11h = 0;
     dut->l0pm_cm11h = 0;
     for (unsigned i = 0; i < kNS * kN0; ++i) {
@@ -170,8 +177,37 @@ struct Bench {
     const bool hi = (x.l6[k] >> 6 & 1u) && !(use_ctl && ctl == "carry");
     return lc ? uint32_t(c >> 16) : il ? ((hi ? x.r1[k] : x.r0[k]) << 6 | (x.l6[k] & 63u)) : uint32_t(s >> 16);
   }
+  /// Address slot a's group and page check (MA rev 203, drop_line and
+  /// drop_split): F groups of 32/F lanes, each led by its first lane; an
+  /// active lane off its leader's line, or two active groups' leaders in
+  /// different pages, fails it. Controls: line (no line check), split (no
+  /// page check), fone (F taken as 1).
+  bool grpOk(const In &x, unsigned a) {
+    const unsigned f = ctl == "fone" ? 1u : x.f[a], gs = 32u / f;
+    bool ok = true;
+    uint64_t pg0 = 0;
+    bool any = false;
+    for (unsigned g = 0; g < f; ++g) {
+      const unsigned gl = g * gs;
+      bool act = false;
+      for (unsigned l = gl; l < gl + gs; ++l) {
+        if (!(x.am[a] >> l & 1u)) continue;
+        act = true;
+        if (ctl != "line" && (x.lv[a][l] >> 7 & kLine) != (x.lv[a][gl] >> 7 & kLine)) ok = false;
+      }
+      const uint64_t pg = x.lv[a][gl] >> 16 & 0xffffffffu;   // VA[47:16]
+      if (act && ctl != "split") {
+        if (any && pg != pg0) ok = false;
+        if (!any) pg0 = pg;
+        any = true;
+      }
+    }
+    return ok;
+  }
   Out model(const In &x) {
     Out o;
+    std::array<bool, kNS> gok{};
+    for (unsigned a = 0; a < kNS; ++a) gok[a] = x.f[a] != 0 && grpOk(x, a);
     for (unsigned k = 0; k < kNS; ++k) {
       const uint64_t s = x.lead[k] ? x.va[x.a[k] * kNQ + x.q[k]] : 0, c = x.lead[k] ? x.c[x.a[k]] : 0;
       const unsigned ln = x.lead[k] ? 8u * x.q[k] : 0u;
@@ -195,7 +231,7 @@ struct Bench {
       if (ctl != "bank")
         for (unsigned j = 0; j < k; ++j)
           bl = bl || ((x.rv >> j & 1u) && (x.lsi[j] & 7u) == (x.lsi[k] & 7u));
-      const bool la = x.la >> k & 1u, ge = x.ge >> k & 1u, rv = x.rv >> k & 1u;
+      const bool la = x.la >> k & 1u, ge = x.lead[k] && gok[x.a[k]], rv = x.rv >> k & 1u;
       const bool dr = !la || !hit || fa || bl || !ge;
       o.pa[k] = uint64_t(ppn) << 16 | off;
       o.pf[k] = fo;
@@ -215,6 +251,10 @@ struct Bench {
         cov_ord += !lc && !il;
         cov_skip += !la;
         cov_ge += !ge && la && hit;
+        if (x.lead[k] && la && hit) {
+          const unsigned f = x.f[x.a[k]];
+          (ge ? cov_gok : cov_gdr)[f == 4 ? 2 : f == 2 ? 1 : 0]++;
+        }
       }
     }
     cov_nh += o.nh != 0;
@@ -267,6 +307,59 @@ struct Gen {
   std::mt19937_64 r;
   explicit Gen(uint64_t seed) : r(seed) {}
   unsigned below(unsigned n) { return unsigned(r() % n); }
+  /// The memops' pipes, as miu_lead assigns them: slot 0's F = 4
+  /// owns every pipe, quarter k on pipe k; else each slot s may own pipe s
+  /// (quarter 0) and, at F = 2, a free pipe above it (quarter 2).
+  void leaders(In &x) {
+    if (below(6) == 0) {
+      x.f[0] = 4;
+      for (unsigned k = 0; k < kNS; ++k) x.lead[k] = true, x.a[k] = 0, x.q[k] = k;
+      return;
+    }
+    for (unsigned s = 0; s < kNS; ++s) {
+      if (x.lead[s] || below(8) == 0) continue;
+      x.lead[s] = true, x.a[s] = s, x.q[s] = 0, x.f[s] = 1;
+      unsigned up[kNS], n = 0;
+      for (unsigned k = s + 1; k < kNS; ++k)
+        if (!x.lead[k]) up[n++] = k;
+      if (n && below(2)) {
+        const unsigned k = up[below(n)];
+        x.lead[k] = true, x.a[k] = s, x.q[k] = 2, x.f[s] = 2;
+      }
+    }
+  }
+  /// Slot a's lanes: each on its group leader's line, low bits random, the
+  /// leaders (its octets' lane 0, va's) on one page; now and then a lane or
+  /// a leader off it, and sparse masks.
+  void lanes(In &x, unsigned a) {
+    const unsigned f = x.f[a], gs = 32u / f;
+    const uint64_t pm = ~uint64_t(0) << 16, lm = ~uint64_t(0) << 7;
+    const uint64_t pg0 = x.va[a * kNQ] & pm;
+    for (unsigned g = 1; g < f; ++g) {   // the other leaders, on lane 0's page mostly
+      uint64_t &v = x.va[a * kNQ + g * gs / 8];
+      if (below(6)) v = (v & ~(pm & ((uint64_t(1) << 48) - 1u))) | (pg0 & ((uint64_t(1) << 48) - 1u));
+    }
+    for (unsigned u = 0; u < kNQ; ++u) {   // the octets' lane 0 that lead nothing
+      const unsigned gl = (u * 8) & ~(gs - 1u);
+      if (gl != u * 8) {
+        uint64_t &v = x.va[a * kNQ + u];
+        v = (x.va[a * kNQ + gl / 8] & lm) | (v & ~lm);
+        if (below(64) == 0) v ^= uint64_t(1) << (7 + below(43));
+      }
+    }
+    for (unsigned l = 0; l < 32; ++l) {
+      if (l % 8 == 0) {
+        x.lv[a][l] = x.va[a * kNQ + l / 8];
+        continue;
+      }
+      const unsigned gl = l & ~(gs - 1u);
+      uint64_t v = (x.va[a * kNQ + gl / 8] & lm) | (r() & ~lm & kM50);
+      if (below(256) == 0) v ^= uint64_t(1) << (7 + below(43));
+      x.lv[a][l] = v & kM50;
+    }
+    const unsigned m = below(8);
+    x.am[a] = m == 0 ? uint32_t(r()) : m == 1 ? uint32_t(r()) & uint32_t(r()) & uint32_t(r()) : ~0u;
+  }
   /// A2's inputs; with live, rv only on slots with a leader.
   void fill(In &x, const Bench &b, bool live) {
     x = In{};
@@ -274,6 +367,9 @@ struct Gen {
       x.va[i] = r() & kM50;
       if (below(6)) x.va[i] &= (uint64_t(1) << 48) - 1u;   // F-ADDR now and then
     }
+    leaders(x);
+    for (unsigned a = 0; a < kNS; ++a)
+      if (x.f[a]) lanes(x, a);
     for (unsigned k = 0; k < kNS; ++k) {
       x.c[k] = r() & ((uint64_t(1) << 48) - 1u);
       x.lsi[k] = below(1u << kSW);
@@ -281,19 +377,12 @@ struct Gen {
       x.l6[k] = below(128);
       x.r0[k] = uint32_t(r()) & 0x3ffffffu;
       x.r1[k] = below(4) ? (x.r0[k] + 1u) & 0x3ffffffu : uint32_t(r()) & 0x3ffffffu;
-      x.lead[k] = below(8) != 0;
-      if (x.lead[k]) {
-        unsigned a, q;
-        do {
-          a = below(kNS);
-          q = below(kNQ);
-        } while (!can(k, a, q));
-        x.a[k] = a;
-        x.q[k] = q;
-      }
       if (live && x.lead[k] && below(8)) x.rv |= 1u << k;
       if (below(8)) x.la |= 1u << k;
-      if (below(10)) x.ge |= 1u << k;
+      if (x.lead[k]) {
+        const uint32_t b = 1u << (8 * x.q[k]);
+        x.am[x.a[k]] = (x.la >> k & 1u) ? x.am[x.a[k]] | b : x.am[x.a[k]] & ~b;
+      }
       for (unsigned e = 0; e < kN0; ++e) {
         const unsigned i = k * kN0 + e;
         x.l0v[i] = below(4) != 0;
@@ -334,12 +423,15 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
   if (rnd) {
     cov = b.cov_hit && b.cov_miss && b.cov_fa && b.cov_bank && b.cov_c1 && b.cov_ilv && b.cov_loc &&
           b.cov_ord && b.cov_nh && b.cov_skip && b.cov_ge && b.cov_hold;
+    for (unsigned i = 0; i < 3; ++i) cov = cov && b.cov_gok[i] && b.cov_gdr[i];
     if (!cov) {
       std::fprintf(stderr,
                    "a2: coverage: hit %u miss %u faddr %u bank %u carry %u ilv %u local %u ord %u "
                    "no-hit %u inactive %u ge %u hold %u\n",
                    b.cov_hit, b.cov_miss, b.cov_fa, b.cov_bank, b.cov_c1, b.cov_ilv, b.cov_loc, b.cov_ord,
                    b.cov_nh, b.cov_skip, b.cov_ge, b.cov_hold);
+      std::fprintf(stderr, "a2: coverage: group ok F1 %u F2 %u F4 %u, dropped %u %u %u\n", b.cov_gok[0],
+                   b.cov_gok[1], b.cov_gok[2], b.cov_gdr[0], b.cov_gdr[1], b.cov_gdr[2]);
       ++b.fails;
     }
   }
@@ -359,7 +451,8 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "carry" && ctl != "bank" && ctl != "addr") {
+      if (ctl != "carry" && ctl != "bank" && ctl != "addr" && ctl != "line" && ctl != "split" &&
+          ctl != "fone") {
         std::fprintf(stderr, "a2: unknown control %s\n", ctl.c_str());
         return 2;
       }

@@ -66,6 +66,24 @@
    }
   },
   {
+   "name": "miu_agu8_lc",
+   "module": "miu_agu8",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_agu8.sv"
+   ],
+   "params": {
+    "LC": 1
+   },
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_agu8_lc {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_agu8"
+   }
+  },
+  {
    "name": "miu_cred",
    "module": "miu_cred",
    "files": [
@@ -166,6 +184,7 @@
    "module": "miu_a2",
    "files": [
     "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_grp.sv",
     "rtl/miu/miu_a2.sv"
    ],
    "params": {},

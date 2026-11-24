@@ -11,7 +11,9 @@
 #   miu_agu8: test/miu/agu8_tb.cpp, one lane octet's A1 sums and F-ALIGN,
 #            O-83's decision (MI-25 (D)), controls xfer (O-80's size ignored),
 #            sext (disp unsigned), lane0 (lane d taken as 0) and noshift (b
-#            from the sum without rbase << 16)
+#            from the sum without rbase << 16); miu_agu8_lc the same at LC = 1,
+#            lane 0's line copied for miu_grp (MA rev 209), control lcl1 (lane
+#            1's line taken)
 #   miu_rcap: test/miu/rcap_tb.cpp, one ccv_dcu_miu_rsp slot's capture,
 #   miu_lead: test/miu/lead_tb.cpp, A1 leaders, set index and the every-bank
 #     gate (MI-27 (b)); controls used (a gate blind to last cycle's
@@ -71,6 +73,8 @@ control miu_agu8 xfer
 control miu_agu8 sext
 control miu_agu8 lane0
 control miu_agu8 noshift
+bench miu_agu8_lc test/miu/cg-build.sh miu_agu8_lc "$B/miu_agu8_lc" -- "$B/miu_agu8_lc/tb"
+control miu_agu8_lc lcl1
 bench miu_cred test/miu/cg-build.sh miu_cred "$B/miu_cred" -- "$B/miu_cred/tb"
 control miu_cred early
 control miu_cred norefund
@@ -100,4 +104,7 @@ bench miu_a2 test/miu/cg-build.sh miu_a2 "$B/miu_a2" -- "$B/miu_a2/tb"
 control miu_a2 carry
 control miu_a2 bank
 control miu_a2 addr
+control miu_a2 line
+control miu_a2 split
+control miu_a2 fone
 exit $fail
