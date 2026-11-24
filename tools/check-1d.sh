@@ -36,6 +36,10 @@ python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_naming.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_feedback.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_table.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_table2.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_table3.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn2.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -147,13 +151,16 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
          rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv \
          rtl/lint/reference_feedback.sv rtl/lint/reference_loop.sv \
-         rtl/lint/reference_table.sv; do
+         rtl/lint/reference_table.sv rtl/lint/reference_table2.sv \
+         rtl/lint/reference_table3.sv rtl/lint/reference_top.sv \
+         rtl/lint/reference_rd.sv rtl/lint/reference_wr.sv \
+         rtl/lint/reference_pp.sv rtl/lint/reference_pc.sv rtl/lint/reference_ph.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (9 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (17 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -221,6 +228,68 @@ no assertion|table apark_cy04h is refused: reference_tnoassert holds no assertio
 ...and each refused read's stage skip reported|ord_cy01h is at stage 01 but combinational logic over stage(s) 01,04 gives 04
 undeclared, the arithmetic refuses it|urd_cy01h is at stage 01 but combinational logic over stage(s) 01,04 gives 04
 WANT
+
+# Two writers (OA-479 (b); Daniel, 2026-11-24): reference_table2.sv,
+# dcu_bctl's fold-table shape (a lookup's read-modify-write loop and a fill
+# at stage 04 at one port), passes (above). bad_table2.sv's are refused: a
+# fill enable asserted against no read, a third writer not declared, and a
+# fill enable asserted against no loop enable (DI-42's write conflict); and
+# each refused port's stage skip stays reported. reference_table3.sv, the
+# fold table as DI wrote it (DI-51: row registers in a generate loop, each
+# written and read under a compare of a tagged index with its row number,
+# the lookup's enable a net through the generate block), passes;
+# bad_table3.sv's row compare a stage early, and a declaration leaving
+# out the rows' own read-modify-write (DI-53), are refused.
+while IFS='|' read -r what want; do
+  if grep -qF "$want" "$TMP/bad.log"; then
+    say "CCV-L23 two-writer table refused: $what" "PASS"
+  else
+    bad "CCV-L23 two-writer table refused: $what" "no finding: $want"
+  fi
+done <<'WANT'
+an unasserted second enable|table ntab_cy03h is refused: writer fill's enable (nfe_cy04h) is named in no assertion with the read
+an undeclared second writer|table utab_cy03h is refused: an undeclared writer reaches its write port: ugd_cy05h, uge_cy05h, ugi_cy05h, at stage 05
+no write-conflict assertion|table ctab_cy03h is refused: writer fill's enable (cfe_cy04h) is named in no assertion with the loop writer's (cle_cy02h)
+a row compare not at the reader's stage|table mtab_cy03h's read by mrd_cy02h is refused: its index 'mli_cy01h' is at stage 01, not the reader's own (02)
+a row's own read not listed|table otab_cy03h is refused: its loop writer lookup reads no listed reader
+...and the refused port's stage skip reported|upe_cy02h is at stage 02 but combinational logic over stage(s) 02,04,05 gives 05
+WANT
+
+# reference_pp.sv: a loop closed by two parent registers, declared hop by
+# hop (OI-207, OA-489), and a register-free helper in a same-stage self-loop,
+# exempt (OA-488 (1)); bad_conn2.sv's untraced hop and helper feeding a
+# second register are refused.
+# CCV-L23 across a connection (OA 481-483; TI-554..556): reference_top.sv,
+# the MIU L0 refill's shape, with its cross-module loop declared, passes
+# (above). bad_conn.sv's are refused: the loop undeclared, an untagged child
+# port, a wrong "ahead", a loop that does not close, and a declaration with
+# no assertion; and the ratchet excuses a listed back edge, refuses a stale
+# entry, and refuses one not in its baseline.
+while IFS='|' read -r what want; do
+  if grep -qF "$want" "$TMP/bad.log"; then
+    say "CCV-L23 connection refused: $what" "PASS"
+  else
+    bad "CCV-L23 connection refused: $what" "no finding: $want"
+  fi
+done <<'WANT'
+an undeclared back edge|reference_utop's u_rd (reference_urd): output ms_cy03h (its stage 03, the parent's 03) depends on input l0_cy02h (its stage 02, fed at 06), so the parent tags it 4 stage(s) earlier
+an untagged port on a connection|reference_ntop's u_rd.l0 is connected to nl0_cy06h, and the child's port carries no stage tag
+a wrong ahead|cross-module loop u_rd.l0_cy02h is refused: ahead is 3, but the net lies 4 stage(s) past the input's tag
+a loop that does not close|cross-module loop u_rd.l0_cy02h is refused: the loop does not close: no output of u_rd reaches an input of u_wr
+no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion 'conn_l0_fresh' in the parent or reference_ard
+a register loop's untraced hop|cross-module loop u_c.v_cy01h is refused: the loop's hop rm_cy03h -> rm_cy04h is not traced
+a helper whose output feeds another register|reference_hpp's u_h (reference_hph): output y (its stage none, the parent's 02) depends on input a (its stage none, fed at 03) combinationally
+a control no bench names|cross-module loop u_rd.l0_cy02h is refused: its control 'conn-l0-nosuch' is named nowhere
+WANT
+python3 tools/lint-rtl.py --conn-ratchet=rtl/lint/bad_conn_ratchet.json \
+  --conn-baseline=rtl/lint/bad_conn_baseline.json rtl/lint/bad_conn.sv >"$TMP/cratchet.log" 2>&1
+if ! grep -q "reference_utop's u_rd (reference_urd)" "$TMP/cratchet.log" &&
+   grep -q "reference_utop.u_wr ms_cy03h now meets the rule" "$TMP/cratchet.log" &&
+   grep -q "reference_utop.u_rd a_cy01h was not on the list" "$TMP/cratchet.log"; then
+  say "CCV-L23's connection ratchet excuses, and only shrinks" "PASS (listed excused; stale and unlisted refused)"
+else
+  bad "CCV-L23's connection ratchet" "$(grep 'CCV-L23' "$TMP/cratchet.log" | head -3)"
+fi
 
 # MA signs a declaration under rtl/miu/ or rtl/dcu/ only (MA-32): the
 # reference table, signed by MA, passes read as a DCU module and is refused

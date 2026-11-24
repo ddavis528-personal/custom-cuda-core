@@ -1,0 +1,44 @@
+{
+ "_comment": "check-1d's fixture ratchet for the connection check: excuses reference_utop's back edge, lists one that is not there (stale) and one not in the baseline.",
+ "entries": [
+  {
+   "parent": "reference_utop",
+   "instance": "u_rd",
+   "port": "l0_cy02h",
+   "net": null,
+   "net_stage": 6,
+   "port_stage": 2,
+   "deficit": 4,
+   "kind": "register",
+   "outputs": [
+    "ms_cy03h"
+   ]
+  },
+  {
+   "parent": "reference_utop",
+   "instance": "u_wr",
+   "port": "ms_cy03h",
+   "net": null,
+   "net_stage": 3,
+   "port_stage": 3,
+   "deficit": 1,
+   "kind": "register",
+   "outputs": [
+    "l0_cy06h"
+   ]
+  },
+  {
+   "parent": "reference_utop",
+   "instance": "u_rd",
+   "port": "a_cy01h",
+   "net": null,
+   "net_stage": 1,
+   "port_stage": 1,
+   "deficit": 2,
+   "kind": "register",
+   "outputs": [
+    "ms_cy03h"
+   ]
+  }
+ ]
+}

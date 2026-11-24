@@ -842,14 +842,15 @@ miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=62
 miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
-dcu=model vadd4-swap orphan=1
+dcu=model vadd4-swap orphan=2
 miu=model vadd4-swap-miu impl=stub
 dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=56
 dcu=model,miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=1
 dcu=model,miu=model no-resource-cap v60=16
 dcu=model lnorm1-straggler demote=371
 dcu=model,miu=model lnorm1-straggler demote=370
-dcu=model slotform dcu_evict=53
+dcu=model slotform dcu_evict=52
+dcu=model,miu=model slotform dcu_evict=57
 dcu=model waypred dcu_wp_wrong=2
 dcu=model,miu=model waypred dcu_wp_wrong=2 l1_hit=2 l1_late=2
 miu=model fet-reset-on-kill scen=rope:11
@@ -2594,8 +2595,9 @@ decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("p
 # leaves vadd4 two orphans at the shipped depth; the depth rule above was
 # measured at the old fixed 10 and is not re-derived here.
 v4orph=2
-# DI-3: the DCU model's timing leaves vadd4 one orphan at any depth, the
-# pair two (IMPL_PINS' vadd4-swap rows).
+# DI-3: the DCU model's timing left vadd4 one orphan at any depth; since
+# DI-48's fix (a bank loser's read miss goes to the MSHR at its D2) it leaves
+# two, as the pair does (IMPL_PINS' vadd4-swap row, DI-38).
 # MI-4 (A)(4), MI rev 33: the MIU model completes vadd4's one MLC miss
 # before RAU demotes the warp, so no drain happens under it; vadd4's half
 # runs on the stub MIU there (the vadd4-swap-miu row), stall's stays as run.
