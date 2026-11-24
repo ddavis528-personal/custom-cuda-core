@@ -252,7 +252,7 @@ module ooe_rename #(
   logic [NC*2*R-1:0] wb_cq02h;
   logic [2*R-1:0]    wt_cq02h;
   ooe_go #(.S(S), .R(R), .PA(PA), .LU(LU), .LB(LB), .LT(LT)) u_go (
-    .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h(px_cq04h), .pl_cq01h(pl_cq03h),
+    .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h(px_cq04h), .pl_cq02h(pl_cq03h),
     .unmet_g_cq01h(ug_go_cq05h), .unmet_p_cq01h(up_go_cq05h), .room_g_cq01h(room_g_cq04h),
     .room_p_cq01h(room_p_cq04h), .run_cq01h,
     .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h,
@@ -1023,21 +1023,37 @@ module ooe_rename #(
   assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_o_cq02h || ur_f_cq04h != '0;
 `ifdef CCV_CHECK_RENAME
   // Free names on time: the pool less every slot's held, on time.
-  function automatic logic [7:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);
-    logic [7:0] x;
-    x = 8'(n) - 8'(oh_val(tq));
-    for (int s = 0; s < S; s++) x = x - 8'(w) + 8'($signed(u[s * HW +: HW]));   // a remainder is signed
+  // Ten bits, signed: the 8-bit credit the bench compares, and a sign the
+  // over-grant check reads (a pool of 128 or more sets bit 7 unsigned).
+  function automatic logic [9:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);
+    logic [9:0] x;
+    x = 10'(n) - 10'(oh_val(tq));
+    for (int s = 0; s < S; s++) x = x - 10'(w) + 10'($signed(u[s * HW +: HW]));   // a remainder is signed
     names_on = x;
   endfunction
-  logic [7:0] chk_gn_cq04h, chk_pn_cq04h;
+  logic [9:0] chk_gn_cq04h, chk_pn_cq04h;
   assign chk_gn_cq04h = names_on(ufg_cq04h, tq_g_cq03h, NG, AG + FLG);
   assign chk_pn_cq04h = names_on(ufp_cq04h, tq_p_cq03h, NP, AP + FLP);
-  assign chk_cred_cq04h = {chk_pn_cq04h, chk_gn_cq04h, 8'(mcl_cq04h - CM'(oh_val(tq_m_cq03h))),
+  assign chk_cred_cq04h = {chk_pn_cq04h[7:0], chk_gn_cq04h[7:0], 8'(mcl_cq04h - CM'(oh_val(tq_m_cq03h))),
                            8'(rcl_cq04h - CR'(oh_val(tq_r_cq03h)))};
   assign chk_unmet_g_cq04h = unmet_g_cq04h;
   assign chk_unmet_p_cq04h = unmet_p_cq04h;
   assign chk_room_g_cq04h  = room_g_cq04h;
   assign chk_room_p_cq04h  = room_p_cq04h;
+  // No over-grant at the full deficit (OA-489, the u_go loop): the go
+  // decides on counters three cycles behind its takes, so each credit and
+  // each slot's room, on time (every take in flight subtracted), stays at
+  // or above zero. A dropped in-flight term (the controls no-take-q,
+  // no-take-q2, no-last-take) can break it.
+  logic [S-1:0] chk_rg_ok_cq04h, chk_rp_ok_cq04h;
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      chk_rg_ok_cq04h[s] = !(1'(HW'(ucg_cq04h[s * HW +: HW] - HW'(oh_val(tq_gs_cq03h[s * (R + 1) +: R + 1]))) >> (HW - 1)));
+      chk_rp_ok_cq04h[s] = !(1'(HW'(ucp_cq04h[s * HW +: HW] - HW'(oh_val(tq_ps_cq03h[s * (R + 1) +: R + 1]))) >> (HW - 1)));
+    end
+  `CCV_ASSERT(no_over_grant_names, !chk_gn_cq04h[9] && !chk_pn_cq04h[9])
+  `CCV_ASSERT(no_over_grant_rs, rcl_cq04h >= CR'(oh_val(tq_r_cq03h)) && mcl_cq04h >= CM'(oh_val(tq_m_cq03h)))
+  `CCV_ASSERT(no_over_grant_room, chk_rg_ok_cq04h == '1 && chk_rp_ok_cq04h == '1)
 `endif
 
   // -- Rename 2 ---------------------------------------------------------------
