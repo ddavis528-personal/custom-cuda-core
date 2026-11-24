@@ -1,5 +1,5 @@
 {
-  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-490). DRAFT: OA signed u_go.pl in substance (OA-494); \"by\" is set when TI's helper trace lands and lint accepts it.",
+  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-498): u_go.pl (OA-494), u_gfree's section allocations sa_v/sa_row/sa_sec (OA-498), each signed by OA in the register.",
   "reads": {
     "u_go.pl_cq02h": {
       "from": "pl_cq03h",
@@ -21,6 +21,60 @@
       "by": "OA",
       "date": "2026-11-24",
       "why": "the go's lagged take (OA-490, OI-207, OA-489, OA-494): u_go grants lanes at 02 (lane_v_cq02h, lane_c_cq02h); they cross u_ren1, a register-free helper, combinationally into l_v, whose per-class takes the parent counts into pl_cq03h; u_go's pool correction reads it a cycle later as its pl at 02. u_go.wt_cq02h is no register: ooe_go's always_comb sums wtq_cq02h, combinational on pl; it is listed as it reads pl, and it feeds the free lists' alloc_req, not the takes. A stale take over-grants names, RS rows or a slot's room."
+    },
+    "u_gfree.sa_v_cq01h": {
+      "from": "u_ren1n.n_sa_v",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "sec_alloc_free",
+        "sec_free_live"
+      ],
+      "control": [
+        "sa-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's section state (OI-81/82): Rename 2's section allocations leave u_ren1n at 03 and reach the free list's write at its 01 two cycles after the candidates they consumed left it at 02; the free list's candidates and avail are read ahead of them by design, its pend/wr masks covering the two in-flight cycles. A late allocation leaves a section free in its state that is not: sec_free_live and sec_alloc_free catch it (control sa-late)."
+    },
+    "u_gfree.sa_row_cq01h": {
+      "from": "u_ren1n.n_sa_row",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "sec_alloc_free",
+        "sec_free_live"
+      ],
+      "control": [
+        "sa-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's section state (OI-81/82): Rename 2's section allocations leave u_ren1n at 03 and reach the free list's write at its 01 two cycles after the candidates they consumed left it at 02; the free list's candidates and avail are read ahead of them by design, its pend/wr masks covering the two in-flight cycles. A late allocation leaves a section free in its state that is not: sec_free_live and sec_alloc_free catch it (control sa-late)."
+    },
+    "u_gfree.sa_sec_cq01h": {
+      "from": "u_ren1n.n_sa_sec",
+      "ahead": 2,
+      "loop": [
+        "u_gfree",
+        "u_ren1n"
+      ],
+      "assert": [
+        "sec_alloc_free",
+        "sec_free_live"
+      ],
+      "control": [
+        "sa-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "u_gfree's section state (OI-81/82): Rename 2's section allocations leave u_ren1n at 03 and reach the free list's write at its 01 two cycles after the candidates they consumed left it at 02; the free list's candidates and avail are read ahead of them by design, its pend/wr masks covering the two in-flight cycles. A late allocation leaves a section free in its state that is not: sec_free_live and sec_alloc_free catch it (control sa-late)."
     }
   }
 }
