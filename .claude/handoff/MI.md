@@ -99,6 +99,9 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    - Still owed to MA for MI-27: (i) A2's AND-OR pick of S on the one-hot + VPN add and (iii) TLB
      dual-compare, measured with miu_a2/miu_tlb (not built). MA's tab: form 6,900, ids 560.
    - Push: tools/gate-push.sh after pricing ends (the gate needs the memory).
+   - TI re:MI-29 (TI rev 546): cm128 watchdog at CCV_TB_LATENCY=1000 was under BOTH models; reproduce
+     after pricing (CCV_MIU_IMPL=model CCV_DCU_IMPL=model, then MIU model alone), find whose, row TI+DI.
+     DI-50 (DI rev 89): dcu-wb-refetch moved to DCU's unit-held list; nothing for MI.
 0b'''''. MI-28 (MI rev 53, MA rung): miu_ids built on local branch mi-ids-wip 89c24f05 (not on mi-dev):
    556 flops, CG clean; NGD 18.0 inside but qid 20.8 / rid 12.5 need arrival 0 (asked MA for miu_ids.ngd.json).
    tk = miu_lead's launch flop (sv_cm06h); drop dp_cm06h from miu_a2's flop a cycle on, id free 2 cycles later;
