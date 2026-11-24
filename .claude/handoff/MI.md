@@ -236,3 +236,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   branch was seeded with TI's gated 663bed37 so gate-push had a scoped base.
 - TI-561 (rev 563, FYI): ef260513 landed (row-register form, connection check, conn-ratchet); MI's assert/control
   list form for the feedback declaration follows TI's next push: then write rtl/miu/ccv_miu.feedback.json.
+- Gate f5be7a33+handoff (job-gate-push-20261124-060912-10645) FAILS s1d lint: miu_grp no Spec: line and `if` on fl
+  (CCV-L11, L08); miu_tlb CCV-L23 (dup_cm07h read iv_q_cm06h; l0late_cm08h read age_q_cm09h). Fixed in
+  scratchpad/lintfix (miu_grp ternary spl + Spec line; iv_cm06h/iv_q_cm07h; l0late_cm09h; tlb_tb iv_cm06h):
+  lint clean, benches+controls pass, a2 25.0, tlb 17.7/14.8. That gate also failed check-ngd: miu_grp had no timing unit (added test/miu/ngd-units.json). All committed; GATE-PUSH IN FLIGHT (newest job-gate-push log).
