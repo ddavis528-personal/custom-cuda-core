@@ -574,6 +574,36 @@ unless all seven hold:
    OI and module with no assertion are refused, and the shape undeclared is
    refused by the arithmetic.
 
+**A table with two writers** (OA-479 (b); approved by Daniel, DI-42, and
+to TI on 2026-11-24). A declared table may have one loop writer, whose back
+edge is the table's own read (a reader's read-modify-write), and later
+writers from other pipelines at the same port, as `dcu_bctl`'s fold table
+(`ft_q_cc03h`, written by the store fold at cc02h and the fill's cc04h grant
+flops). The declaration lists them: `"writers": [{"name", "stage", "loop":
+true, "enable": [...]}, {"name", "stage", "enable": [...], "from": [...]},
+...]`. The lint refuses it, the port's stage skips staying reported, unless,
+beyond the seven conditions:
+
+(i) Every writer is listed with its stage: exactly one loop writer, at the
+    table's stage less one, whose write reads a listed reader; every other
+    writer later than it. A tagged register past the loop writer's stage
+    that reaches the write port and is not a listed writer's is an
+    undeclared writer, refused.
+(ii) Condition 3 holds for each non-loop writer: its data, index and enable
+    (`enable` and `from`) are registers tagged at its stage, held to the
+    arithmetic up to the write port, and each reaches the port (a stale one
+    is refused). Only the port's own nets may read them at the loop
+    writer's stage; the table's tag is the loop writer's, one past it.
+(iii) Condition 5 names every non-loop writer's enable twice: in an
+    assertion with the read (the array or a reader's index), that no lookup
+    reads a word that writer wrote in that cycle or the next (a forward is a
+    bypass, declared as one), and in one with the loop writer's enable, that
+    the two never write the port in the same cycle.
+(iv) `tools/check-1d.sh` holds it: `rtl/lint/reference_table2.sv`, the fold
+    table's shape, passes; `bad_table2.sv`'s unasserted second enable,
+    undeclared third writer and missing write-conflict assertion are refused.
+    Timing stays check-ngd's (condition 6).
+
 ### CCV-L22 — a block runs on its own gated clock
 
 No `always_ff @(posedge core_clk)` inside a block, except the wake detector.

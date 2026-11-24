@@ -299,6 +299,49 @@ def feedback_decls(dirpath, module):
 # demotion parks a word, a restore reads it). The read counts at the reader's
 # stage, as a bypass read does. Declared in <module>.feedback.json:
 # {"table": {"<array>": {"readers": ["<reader>", ...], "by", "date", "why"}}}.
+def two_writers(d, sa, arr):
+    """(writers, their signals, why) for a declared table's "writers" (OA-479
+    (b)): None, set(), None when it has none (one writer, the plain form).
+    Each is {"name", "stage", "loop": true} for the one loop writer, at the
+    table's stage less one, or {"name", "stage", "enable": [...], "from":
+    [...]} for a later writer from another pipeline; every writer names its
+    enable, and a non-loop writer's registers reaching the port are its
+    enable and "from"."""
+    ws = d.get("writers")
+    if ws is None:
+        return None, set(), None
+    if not isinstance(ws, list) or len(ws) < 2:
+        return None, set(), ("\"writers\" lists every writer, one loop writer and at "
+                             "least one other: a single writer is the plain form")
+    out, sig = [], set()
+    for i, w in enumerate(ws):
+        if not isinstance(w, dict) or not isinstance(w.get("stage"), int):
+            return None, set(), "writer %d gives no stage" % i
+        en = w.get("enable") or []
+        en = [en] if isinstance(en, str) else list(en)
+        fr = list(w.get("from") or [])
+        if not en:
+            return None, set(), "writer %s names no enable" % w.get("name", i)
+        out.append(dict(w, name=w.get("name", str(i)), enable=en,
+                        sigs=sorted(set(en) | set(fr))))
+    loops = [w for w in out if w.get("loop")]
+    if len(loops) != 1:
+        return None, set(), ("%d loop writers: a table has exactly one (its back edge "
+                             "the table's own read)" % len(loops))
+    if loops[0]["stage"] != sa[2] - 1:
+        return None, set(), ("its loop writer %s is at stage %02d, not %02d, one before "
+                             "the table's tag" % (loops[0]["name"], loops[0]["stage"],
+                                                  sa[2] - 1))
+    for w in out:
+        if not w.get("loop"):
+            if w["stage"] <= sa[2] - 1:
+                return None, set(), ("writer %s is at stage %02d, not past the loop "
+                                     "writer's %02d: an earlier writer is the plain "
+                                     "arithmetic's" % (w["name"], w["stage"], sa[2] - 1))
+            sig |= set(w["sigs"])
+    return out, sig, None
+
+
 ASSERT_RE = re.compile(r"(?:`CCV_ASSERT(?:_AT)?|\bassert\s+property|\bassert)\s*\(")
 
 
@@ -1460,7 +1503,52 @@ def check_file(path, rel):
                     for _, lhs, _, _ in assignments(m.group(0)[len("assign"):]):
                         if lhs == arr:
                             wr.append(("assign", "", "", []))
-                if not wr:
+                # OA-479 (b) (Daniel, 2026-11-24): one loop writer and later
+                # writers from other pipelines, every one listed with its
+                # stage; each non-loop writer's own registers (its data, index
+                # and enable) are held to the arithmetic up to the write port,
+                # where the port's nets may read them.
+                wl, wsig, why = two_writers(d, sa, arr)
+                cnets, leaves = set(), set()
+                if not why and wl is not None:
+                    roots = set(w for k, rhs, li, c in wr
+                                for w in IDENT_RE.findall(" ".join([rhs, li] + c))) - {arr}
+                    cnets, cregs = cone(graph[0], graph[1], roots)
+                    leaves = cregs | set(x for x in cnets if x not in graph[0])
+                    cnets -= leaves
+                    loopw = [w for w in wl if w.get("loop")][0]
+                    for w in wl:
+                        for x in w["sigs"]:
+                            sx = stage_of(x)
+                            if sx is None or sx[2] != w["stage"]:
+                                why = ("writer %s's %s is not tagged at its stage %02d: a "
+                                       "writer's data, index and enable are its own, held to "
+                                       "the arithmetic up to the write port"
+                                       % (w["name"], x, w["stage"]))
+                            elif x not in leaves:
+                                why = ("writer %s's %s does not reach the write port of %s "
+                                       "(a stale writer is refused)" % (w["name"], x, arr))
+                            if why:
+                                break
+                        if why:
+                            break
+                    if not why:
+                        und = sorted(x for x in leaves
+                                     if x not in wsig and x != arr
+                                     and stage_of(x) and stage_of(x)[1] != "r"
+                                     and stage_of(x)[2] > sa[2] - 1)
+                        if und:
+                            why = ("an undeclared writer reaches its write port: %s, at stage "
+                                   "%s, past the loop writer's %02d; list every writer with "
+                                   "its stage" % (", ".join(und), ",".join(
+                                       sorted(set("%02d" % stage_of(x)[2] for x in und))),
+                                       sa[2] - 1))
+                    if not why and not (set(readers) & cnets or set(readers) & leaves):
+                        why = ("its loop writer %s reads no listed reader: a loop writer "
+                               "writes back what the table's own read gave" % loopw["name"])
+                if why:
+                    pass
+                elif not wr:
                     why = "%s is never written" % arr
                 elif any(k != "ff" for k, _, _, _ in wr):
                     why = "%s is written outside an always_ff" % arr
@@ -1469,7 +1557,8 @@ def check_file(path, rel):
                 else:
                     ins = [stage_of(w)[2] for k, rhs, li, c in wr
                            for w in re.findall(r"[a-z]\w*", " ".join([rhs, li] + c))
-                           if stage_of(w) and stage_of(w)[1] != "r" and w != arr]
+                           if stage_of(w) and stage_of(w)[1] != "r" and w != arr
+                           and w not in wsig]
                     if not ins:
                         why = "%s's writes read no tagged signal, so its tag is no writer's" % arr
                     elif sa[2] != max(ins) + 1:
@@ -1527,6 +1616,39 @@ def check_file(path, rel):
                             % (fp, arr, reader, bad_ix))
                         continue
                     okr.append(reader)
+                # (5), two writers (OA-479 (iii)): every non-loop writer's
+                # enable is asserted against the read (no read of a word in
+                # the cycle it writes it, nor the next) and against the loop
+                # writer's enable (no write conflict at the port).
+                if wl is not None:
+                    asserts = [set(IDENT_RE.findall(balanced(body, m.end() - 1)[0]))
+                               for m in ASSERT_RE.finditer(body)]
+                    le = set(loopw["enable"])
+                    for w in wl:
+                        if w.get("loop"):
+                            continue
+                        we = set(w["enable"])
+                        if not any(ids & we and (arr in ids or ids & ridx) for ids in asserts):
+                            why = ("writer %s's enable (%s) is named in no assertion with "
+                                   "the read: no lookup reads a word it wrote in that cycle "
+                                   "or the next (a forward is a bypass, declared as one)"
+                                   % (w["name"], ", ".join(sorted(we))))
+                        elif not any(ids & we and ids & le for ids in asserts):
+                            why = ("writer %s's enable (%s) is named in no assertion with "
+                                   "the loop writer's (%s): no write conflict at the port"
+                                   % (w["name"], ", ".join(sorted(we)), ", ".join(sorted(le))))
+                        if why:
+                            break
+                    if why:
+                        add("CCV-L23", ln0, "%s: table %s is refused: %s" % (fp, arr, why))
+                        continue
+                    for x in cnets:
+                        hit = graph[0].get(x, set()) & wsig
+                        if hit:
+                            fb_ok.setdefault(x, set()).update(hit)
+                    for reader in okr:
+                        fb_ok.setdefault(reader, set()).add(arr)
+                    continue
                 # (5) an assertion naming the write enable and the read.
                 named = False
                 for m in ASSERT_RE.finditer(body):

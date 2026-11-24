@@ -36,6 +36,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_naming.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_feedback.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_table.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_table2.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -147,13 +148,13 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
          rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv \
          rtl/lint/reference_feedback.sv rtl/lint/reference_loop.sv \
-         rtl/lint/reference_table.sv; do
+         rtl/lint/reference_table.sv rtl/lint/reference_table2.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (9 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (10 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -220,6 +221,25 @@ not an architect's|table opark_cy04h is refused: not an architect's (by 'OI'
 no assertion|table apark_cy04h is refused: reference_tnoassert holds no assertion naming its write enable
 ...and each refused read's stage skip reported|ord_cy01h is at stage 01 but combinational logic over stage(s) 01,04 gives 04
 undeclared, the arithmetic refuses it|urd_cy01h is at stage 01 but combinational logic over stage(s) 01,04 gives 04
+WANT
+
+# Two writers (OA-479 (b); Daniel, 2026-11-24): reference_table2.sv,
+# dcu_bctl's fold-table shape (a lookup's read-modify-write loop and a fill
+# at stage 04 at one port), passes (above). bad_table2.sv's are refused: a
+# fill enable asserted against no read, a third writer not declared, and a
+# fill enable asserted against no loop enable (DI-42's write conflict); and
+# each refused port's stage skip stays reported.
+while IFS='|' read -r what want; do
+  if grep -qF "$want" "$TMP/bad.log"; then
+    say "CCV-L23 two-writer table refused: $what" "PASS"
+  else
+    bad "CCV-L23 two-writer table refused: $what" "no finding: $want"
+  fi
+done <<'WANT'
+an unasserted second enable|table ntab_cy03h is refused: writer fill's enable (nfe_cy04h) is named in no assertion with the read
+an undeclared second writer|table utab_cy03h is refused: an undeclared writer reaches its write port: ugd_cy05h, uge_cy05h, ugi_cy05h, at stage 05
+no write-conflict assertion|table ctab_cy03h is refused: writer fill's enable (cfe_cy04h) is named in no assertion with the loop writer's (cle_cy02h)
+...and the refused port's stage skip reported|upe_cy02h is at stage 02 but combinational logic over stage(s) 02,04,05 gives 05
 WANT
 
 # MA signs a declaration under rtl/miu/ or rtl/dcu/ only (MA-32): the
