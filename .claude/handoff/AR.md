@@ -77,8 +77,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 417 .684284 (tab rev 421).
-  - **The next AR row inserts after .684284**, labelled AR 418.
+  - Latest row: AR 418 .685318 (tab rev 422).
+  - **The next AR row inserts after .685318**, labelled AR 419.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -100,7 +100,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 421, OA 501, TI 584, MA 211, DI 93,
+- **Bookmarks** (revs read through): AR 422, OA 501, TI 584, MA 211, DI 93,
   MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 134, Conventions 20 (full
   sweep read 11-24; TI 584 read only for TI-582).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
@@ -245,27 +245,14 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
-000i1. **RE-BASELINE NOW DUE (TI-553, 11-24).** b780f324 (on doowtf and
-   claude/custom-cuda-core-infra-6msg93; RESUMED SCOPED PASS) landed AR 410
-   (kSlowEnd 1 MiB, CCV_TB_LATENCY, MEMOP timeout 40960), AR 412 (1)(2)
-   (20+-5 seeded, tb_overtaken, vadd6 swap class), HIT_MAX 28. TI's default
-   gate-kernel table, 4e3dda64 -> b780f324: median +14.6%; short kernels
-   +14..40 cycles; localsp 2175->233, privwin 1161->203, slotform 4348->486,
-   waypred 1211->255; full 66 rows in TI's scratch (cyc/run-summary.txt).
-   TI gives no S1 or coremark -priv numbers. So AR re-runs perf-register's
-   baselines itself once the sweep has merged b780f324: S1 (sweep.sh's ten),
-   coremark32priv, coremark128priv in perf-register's standard config
-   (base 1, perfect fetch, warm MLC), with run-tabulate, never beside a gate.
-   Then edit perf-register: a re-baseline note (11-13 slow region and 10 ->
-   20+-5 default), mark each affected entry, a PF row for the read target
-   (AR 412 (3)), and PF-39's HIT_MAX wording (AR 413). check-docs, push.
-   Read class and AR 417's control are still TI's.
-   DANIEL (11-24): "If you have perf runs to complete, please leverage RH".
-   RH is running the re-baseline (NEW 77f7849e on doowtf vs OLD 4e3dda64;
-   recipe as on a5481843: -priv, base 1, CCV_FET_PERFECT=1 CCV_MLC_WARM=1
-   CCV_DCU_SETS=128 CCV_DCU_WAYS=8; S1 = vadd sel srd pguard merge mload
-   unal gather loop brs; OLD S1/cm32priv/cm128priv; NEW seeds 1-3; NEW
-   cm128priv CCV_TB_JITTER=0); about 17:45Z; reply by message to AR.
+000i1. **Re-baseline DONE (eb1c3851, AR 418 .685318, 11-24; MA rung).**
+   RH's runs (warm-MLC recipe, 4e3dda64 vs 77f7849e, 49 exact): S1 1,640
+   and cm32priv 1,177,935 unchanged at every seed; cm128priv 1,977,489 ->
+   1,978,481 (+0.050% seed 1; +0.061% jitter 0; seed spread 0.091%).
+   Warm-MLC figures never paid the slow region, so the L1 capacity and
+   hit-latency tables stand; AR 411 (2) corrected. MA re-runs only its
+   cold (non-CCV_MLC_WARM) runs. perf-register: re-baseline section, PF-39
+   HIT_MAX 28, PF-54 read-path depth target. RH's worktrees released.
 000l. **Common credit RTL modules (TI-537/539/540, Daniel to TI: "a common
    RTL module ... for the block interfaces"). AR 415 (.679095): at a flopped
    end (BOUNDARY 1, the RTL default) cr_src is the counter and go only, and
