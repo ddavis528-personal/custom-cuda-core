@@ -1,0 +1,59 @@
+{
+  "module": "miu_agu8",
+  "ports": {
+    "am_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "base_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "idx_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "disp_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "shared_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "sh1_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "sh2_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "b4_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "b2_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    }
+  }
+}
