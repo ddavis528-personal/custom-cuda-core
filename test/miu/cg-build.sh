@@ -33,7 +33,7 @@ case "$unit" in
   miu_lead)
     vl miu_lead "" "" "$PWD/rtl/miu/miu_lead.sv" "$PWD/test/miu/lead_tb.cpp" ;;
   miu_tlb)
-    vl miu_tlb "" "" "$PWD/rtl/miu/miu_tlb.sv" "$PWD/test/miu/tlb_tb.cpp" ;;
+    vl miu_tlb "-DCCV_CHECK" "" "$PWD/rtl/miu/miu_tlb.sv" "$PWD/test/miu/tlb_tb.cpp" ;;
   miu_a2)
     vl miu_a2 "" "" "$PWD/rtl/miu/miu_a2.sv" "$PWD/test/miu/a2_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;

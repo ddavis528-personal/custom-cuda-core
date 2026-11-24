@@ -3,7 +3,7 @@
 // Spec: CCV per-block architecture specs, MIU tab (MA's Phase 2, slice 1:
 //       the stage table's H+1 row, the module partition's miu_a2 row, "The
 //       drop", "Translation"), MA rev 199 (re:MI-31): the fixed leader and
-//       an L0 of 4 entries per lookup slot at A2.
+//       an L0 of 6 entries per lookup slot at A2 (MA rev 206).
 //
 // A2 (H+1, tag 06) for each lookup slot k whose req valid launched (miu_lead's
 // rv): the leader's VPN, its L0 lookup, the PA and pa_fold for the req
@@ -20,7 +20,7 @@
 // {S[10:2], lane, S[1:0]} (O-83); else S[15:0]. The lane is the quarter's
 // lane 0, 8q.
 //
-// The L0 (miu_tlb's flops, 4 entries per lookup slot): hit = any valid
+// The L0 (miu_tlb's flops, 6 entries per lookup slot): hit = any valid
 // entry whose VPN matches; the PPN, the PFN's fold (pa_fold, MA-30) and the
 // perms by an AND-OR on the match. A miss flops ms and the VPN for
 // miu_tlb's refill from the 32-entry TLB in A3 (MA rev 199): the L0's
@@ -51,7 +51,7 @@
 `define CCV_RST rst_r01h
 module miu_a2 #(
   parameter  int NS = ccv_params_pkg::CCV_MIU_PIPES,          // address and lookup slots, 4
-  parameter  int N0 = 4,                                      // L0 entries a slot (MA rev 199)
+  parameter  int N0 = 6,                                      // L0 entries a slot (MA rev 206)
   parameter  int FW = ccv_prov_pkg::CCV_W_PA_FOLD,            // pa_fold, 4
   parameter  int PM = 1,                                      // perms (slice 2's PTE)
   localparam int NQ = 4,                                      // lane quarters (octets)
@@ -100,13 +100,15 @@ module miu_a2 #(
   wire rst_r01h = !rst_cr01h_n;
 
   // ---- The valids, two cycles on: a memop in A2 (CG-5) -------------------
-  logic [NS-1:0] v_q_cm05h, v_q_cm06h;
+  // Only any slot's valid is read, so one flop a stage: these and the
+  // reset's are this module's only flops under no enable (CG-1's allowance).
+  logic v_q_cm05h, v_q_cm06h;
   always_ff @(posedge miu_core_clk) begin
     if (rst_r01h) begin
-      v_q_cm05h <= '0;
-      v_q_cm06h <= '0;
+      v_q_cm05h <= 1'b0;
+      v_q_cm06h <= 1'b0;
     end else begin
-      v_q_cm05h <= v_cm04h;
+      v_q_cm05h <= |v_cm04h;
       v_q_cm06h <= v_q_cm05h;
     end
   end
@@ -185,7 +187,7 @@ module miu_a2 #(
   logic [NS*PM-1:0] pm_q_cm07h;
   logic [NS-1:0]    dr_q_cm07h, ms_q_cm07h, nh_q_cm07h;
   logic [NS*32-1:0] vpn_q_cm07h;
-  wire pay_en_cm06h = |v_q_cm06h;
+  wire pay_en_cm06h = v_q_cm06h;
   wire ms_en_cm06h  = pay_en_cm06h || (|ms_q_cm07h) || (|nh_q_cm07h) || rst_r01h;
   always_ff @(posedge miu_core_clk) begin
     if (pay_en_cm06h) begin
