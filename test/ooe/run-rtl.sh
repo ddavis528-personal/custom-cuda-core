@@ -163,7 +163,7 @@ for cfg in "gpr 0 $phys 0" "gsec 0 $phys $ns" "pred 1 $preds 0"; do
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
   ctl="drop-free extra-alloc no-lead wrong-owner one-step"
-  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early sa-late no-lead one-step"
+  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early sa-late rt-late no-lead one-step"
   for c in $ctl; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
