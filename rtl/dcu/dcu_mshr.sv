@@ -143,6 +143,14 @@ module dcu_mshr #(
   output logic [WC-1:0]          fcoh_cc05h,
   output logic [WLC-1:0]         fcnt_cc05h,
   output logic [LD*WLE-1:0]      flist_cc05h,
+  // The fill's bank write request (DI-39, MA rev 177): its lead at F+1 from
+  // the F read (the valid and the bank, one hot; the bank holds its value
+  // only under the valid), its line and fold at F+2 (dcu_fill's buffer and
+  // ownership beside them).
+  output logic                   flv_cc05h,
+  output logic [NBK-1:0]         fbk_cc05h,
+  output logic [WL-1:0]          fwpa_cc06h,
+  output logic [WF-1:0]          fwfold_cc06h,
   // dcu_fill: an entry's line is written and its answers have left.
   input  logic                   xv_cc04h,
   input  logic [WE-1:0]          xid_cc04h
@@ -898,6 +906,31 @@ module dcu_mshr #(
             ? mitx_cc05h[frid_cc04h] : elist_q_cc05h[frid_cc04h][k];
     end
   end
+  // The write request: the lead from the same read, the payload a cycle on.
+  logic              flv_q_cc05h;
+  logic [NBK-1:0]    fbk_q_cc05h;
+  logic [WL-1:0]     fwpa_q_cc06h;
+  logic [WF-1:0]     fwfold_q_cc06h;
+  logic [WB-1:0]     fbn_cc04h;
+  assign fbn_cc04h = epa_q_cc05h[frid_cc04h][WB-1:0];
+  always_ff @(posedge dcu_core_clk) begin
+    flv_q_cc05h <= !rst_r01h && fv_q_cc04h;
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    if (fr_en_cc04h) fbk_q_cc05h <= NBK'(1) << fbn_cc04h;
+  end
+  logic fw_en_cc05h;
+  assign fw_en_cc05h = flv_q_cc05h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (fw_en_cc05h) begin
+      fwpa_q_cc06h   <= fpa_q_cc05h;
+      fwfold_q_cc06h <= ffold_q_cc05h;
+    end
+  end
+  assign flv_cc05h    = flv_q_cc05h;
+  assign fbk_cc05h    = fbk_q_cc05h;
+  assign fwpa_cc06h   = fwpa_q_cc06h;
+  assign fwfold_cc06h = fwfold_q_cc06h;
   assign fpa_cc05h   = fpa_q_cc05h;
   assign ffold_cc05h = ffold_q_cc05h;
   assign fcoh_cc05h  = fcoh_q_cc05h;

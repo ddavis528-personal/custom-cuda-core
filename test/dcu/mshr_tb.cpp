@@ -362,6 +362,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   std::array<Req, kBanks> pendReq{};
   std::optional<Out> lastOut;
   std::optional<unsigned> sendPrev, fillLead, freeLead;
+  std::optional<Entry> snapPrev;   // last cycle's fill read (its write payload now)
   bool creditPrev = false;
   std::vector<unsigned> credBack;                            // the cycles credits come back
   std::array<bool, kNe> fillPend{}, freePend{};
@@ -520,6 +521,15 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       b.expect(d.mcoh_cc06h == x.coh, "request coh_op");
       b.expect(d.mcid_cc06h == 0, "request core_id");
     }
+    // The fill's bank write request (DI-39): the lead at F+1, its line and
+    // fold a cycle on.
+    b.expect(bool(d.flv_cc05h) == o.snap.has_value(), "fill write lead");
+    if (o.snap) b.expect(d.fbk_cc05h == (1u << (o.snap->pa & (kBanks - 1))), "fill write bank");
+    if (snapPrev) {
+      b.expect(d.fwpa_cc06h == snapPrev->pa, "fill write: line");
+      b.expect(d.fwfold_cc06h == snapPrev->fold, "fill write: fold");
+    }
+    snapPrev = o.snap;
     if (o.snap) {
       const Entry &x = *o.snap;
       b.expect(d.fpa_cc05h == x.pa, "fill read: line");

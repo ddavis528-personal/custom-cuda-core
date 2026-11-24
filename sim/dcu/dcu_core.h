@@ -130,6 +130,11 @@ struct Config {
   /// effect this many cycles after it lands, so its line stays in the
   /// writeback buffer longer and a refetch meets it (CCV_DCU_WB_ACK_DELAY).
   unsigned wb_ack_delay = 0;
+  /// A fill's victim pick, cycles after F (DI-39, MA rev 177): 1 is the
+  /// model's form; 2 is the RTL's (a lead at F+1 from dcu_mshr's F read,
+  /// the payload at F+2), its write waiter a cycle later too
+  /// (CCV_DCU_VICTIM_AT; priced once TI's tblat lands).
+  unsigned victim_at = 1;
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)

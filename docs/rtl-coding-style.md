@@ -635,6 +635,21 @@ modules); a register-free one there is a helper like any other (OA 485).
 And the generated design (`rtl/top`, `rtl/generated`), whose
 channels cross repeaters by `params/links.json` and are held there.
 
+Through a register-free helper, a deficit of 1 is exempt only when the
+helper's input reads one parent register and its output feeds, through
+the parent's combinational nets, that register's next value or enable and
+nothing else (OA-488 (1)).
+
+A loop closed by the parent's own registers (OI-207, OA-489) is declared
+with `"from"` naming the parent register the child input reads, and
+`"loop"` listing the reader's output(s), then the parent registers in
+order, the last being `"from"`; each hop is traced (the first register's
+next value or enable reads a listed output's net, each later one the
+register before it, through combinational nets only), and `ahead` is
+`"from"`'s stage less the input's tag. `reference_pp.sv` holds both;
+`bad_conn2.sv`'s untraced hop and helper feeding a second register are
+refused.
+
 A back edge across the boundary, a loop through two children, is declared
 in the parent's `<parent>.feedback.json`: `{"reads": {"<inst>.<input>":
 {"from": "<inst>.<output>", "ahead": N, "loop": ["<inst>", ...],
@@ -645,13 +660,15 @@ own tag; `loop` lists the instances from the reader to the writer and each
 feeds the next through the parent; and the parent or the reader holds
 `CCV_ASSERT(<label>, ...)` for the hazard the stale read opens, run on the
 block's bench, with `control` the bench control that breaks it (OA 481
-(3)). A declaration the connections no longer show is refused. The back
+(3)); either may be a list (MI-40 (4)), and each control must be named
+somewhere under `test/<block>/` or `sim/<block>/`, as the bench registers
+it. A declaration the connections no longer show is refused. The back
 edges that stood when the check was made are on `rtl/conn-ratchet.json`,
 one per (parent, instance, input) with its tags, deficit and kind; it only
 shrinks. `tools/check-1d.sh` holds it: `reference_top.sv` (with
 `reference_rd.sv` and `reference_wr.sv`, the MIU L0 refill's shape) passes;
 `bad_conn.sv`'s undeclared back edge, untagged port, wrong `ahead`, loop
-that does not close and missing assertion are refused, and the ratchet
+that does not close, missing assertion and unnamed control are refused, and the ratchet
 excuses, and refuses a stale or an unlisted entry.
 
 ### CCV-L22 — a block runs on its own gated clock

@@ -8,7 +8,8 @@
 // the miss and writes the entry 3 stages on, at 06, and the parent feeds
 // that back to the reader's stage-02 input: 4 stages ahead, a back edge
 // across the boundary, declared in reference_top.feedback.json with its
-// stale-read assertion. Every other connection keeps the child's latency.
+// stale-read assertion, conn_l0_fresh, and the bench control that breaks it,
+// conn-l0-dup. Every other connection keeps the child's latency.
 // tools/check-1d.sh fails if ANY finding is reported here.
 //===----------------------------------------------------------------------===//
 
