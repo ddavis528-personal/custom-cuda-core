@@ -1,0 +1,32 @@
+{
+  "_comment": "OA-501: a cone from a sibling's verified output through a named helper crossing, for reference_lkp.sv.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "from": {
+        "cone": [
+          "m_cy04h",
+          "u_x.y_cy02h",
+          "u_h.a>z"
+        ],
+        "ahead": {
+          "m_cy04h": 3,
+          "u_x.y_cy02h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "m_cy03h",
+        "m_cy04h"
+      ],
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "the leads' shape: a sibling's verified output as the source, through a register-free helper's named crossing (OA-501)"
+    }
+  }
+}

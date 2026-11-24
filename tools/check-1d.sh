@@ -46,6 +46,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_conn4.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_tport2.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn5.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn6.sv >>"$TMP/bad.log" 2>&1
+CCV_LINT_FIXTURE_UNITS=reference_xc python3 tools/lint-rtl.py rtl/lint/bad_conn7.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -173,7 +174,15 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (33 fixtures)" "PASS"
+# reference_lkp.sv's sibling has no timing unit: name it a verified unit for
+# this fixture alone (OA-501; the env honours reference_* modules only).
+for g in rtl/lint/reference_lkp.sv rtl/lint/reference_lh.sv; do
+  if ! CCV_LINT_FIXTURE_UNITS=reference_xc python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
+    bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
+    gfail=1
+  fi
+done
+[ "$gfail" = "0" ] && say "compliant code is silent (38 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -279,7 +288,10 @@ WANT
 # and passes; bad_conn3.sv's named crossing of a registered path is refused.
 # reference_kp.sv: a cone naming a crossing of a sibling whose input traces
 # back to a listed register (OA-498) passes; bad_conn6.sv's crossing tracing
-# to an unlisted register is refused. reference_ttp's writer also has an
+# to an unlisted register is refused. reference_lkp.sv: a cone from a
+# verified sibling's output through a register-free helper's named crossing
+# (OA-501), passes; bad_conn7.sv's cone omitting that output is refused.
+# reference_ttp's writer also has an
 # output the parent leaves unconnected, which reaches nothing (OI-219).
 # bad_conn5.sv's reference_vttp: a writer whose table does not verify (no
 # assertion) keeps its back edges (OA-497).
@@ -323,6 +335,7 @@ a port table's wrong ahead|table rd_cy04h (an input port) is refused: ahead is 2
 a port table fed through logic|table rd_cy04h (an input port) is refused: in reference_gtpp, rd_cy04h is not fed directly by u_w's register rd_cy04h
 a table writer whose table does not verify|reference_vttp's u_w (reference_vttw): output rd_cy02h (its stage 02, the parent's 02) depends on input en_cy01h
 a cone naming an unverified sibling's output|cross-module loop u_c.v_cy01h is refused: cone output u_x.y_cy02h: reference_xc's tags are not verified
+a helper crossing whose sibling source is unlisted|cross-module loop u_c.v_cy01h is refused: u_x.y_cy02h reaches u_c.v_cy01h through the cone but no listed crossing names it
 a cone crossing traced to an unlisted register|cross-module loop u_c.v_cy01h is refused: cone crossing u_x.a_cy02h>y_cy02h: its input a_cy02h traces to oq_cy04h, not only to listed registers
 a write-pipeline register with one more fanout|reference_xttp's u_w (reference_xttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy00h (its stage 00, fed at 04)
 a table writer's input around its register|reference_lttp's u_w (reference_lttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy01h (its stage 01, fed at 04) combinationally

@@ -2046,6 +2046,12 @@ def unit_modules():
                     for e in (u.values() if isinstance(u, dict) else u):
                         if isinstance(e, dict) and e.get("module"):
                             mods.add(e["module"])
+        # check-1d's fixtures have no timing unit; CCV_LINT_FIXTURE_UNITS
+        # names those it treats as verified, and only reference_* fixture
+        # modules (rtl/lint/), never the design's.
+        for m in os.environ.get("CCV_LINT_FIXTURE_UNITS", "").split(","):
+            if m.strip().startswith("reference_"):
+                mods.add(m.strip())
         _units["mods"] = mods
     return _units["mods"]
 
@@ -2669,19 +2675,27 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
             if o not in xsrc:
                 return ("%s reaches %s.%s through the cone but no listed crossing names "
                         "it: a cone lists every source it reads" % (o, ri, rp))
-        for o, g in sorted(xsrc.items()):
-            if o not in reached_out:
-                return "cone crossing %s does not reach %s.%s" % (g, ri, rp)
+        def xsources(g):
+            # What a crossing's input traces back to: parent registers, and
+            # verified sibling outputs (OA-501: the leads' u_go.lane_v,
+            # crossed through the register-free u_ren1).
             ci, rest = g.split(".", 1)
-            cin = rest.split(">", 1)[0]
-            _, xr = cone(deps, flops, conn_ids(insts[ci][3].get(cin, "")))
-            if not xr or not xr <= set(cone_regs):
+            xn, xr = cone(deps, flops, conn_ids(insts[ci][3].get(rest.split(">", 1)[0], "")))
+            return set(xr) | set(outnet[nn] for nn in xn if nn in outnet)
+        for o, g in sorted(xsrc.items()):
+            ci, rest = g.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            # A register-free child's crossing is the parent's logic: its
+            # output's net is reached when the cone's nets hold it.
+            if o not in reached_out and not set(conn_ids(insts[ci][3].get(cout, ""))) & set(nets):
+                return "cone crossing %s does not reach %s.%s" % (g, ri, rp)
+            xs = xsources(g)
+            if not xs or not xs <= set(cone_regs):
                 return ("cone crossing %s: its input %s traces to %s, not only to listed "
-                        "registers" % (g, cin, ", ".join(sorted(xr)) or "none"))
+                        "registers" % (g, cin, ", ".join(sorted(xs)) or "none"))
         missing = sorted(set(rr) - set(cone_regs))
-        extra = sorted(set(cone_regs) - set(rr) - set().union(*[
-            cone(deps, flops, conn_ids(insts[g.split(".", 1)[0]][3].get(
-                g.split(".", 1)[1].split(">", 1)[0], "")))[1] for g in xsrc.values()] or [set()]))
+        extra = sorted(set(cone_regs) - set(rr) - set().union(
+            *[xsources(g) for g in xsrc.values()] or [set()]))
         if missing:
             return ("register(s) %s reach %s.%s through the cone but are not listed: a "
                     "cone lists every register it reads" % (", ".join(missing), ri, rp))
