@@ -27,22 +27,25 @@
 // refill loop, read here at A2 from flops miu_tlb writes later.
 //
 // The drop (MA-27), one OR, flopped: the leader lane inactive (the fixed
-// leader, MA rev 199); an L0 miss; F-ADDR on an ordinary leader (S[49:48]
-// not 0, O-75); a bank's loser (dedupe and bank conflict, from A1's flopped
+// leader, MA rev 199); an L0 miss; a faulting lane of the memop (F-ALIGN,
+// and F-ADDR: S[49:48] not 0, O-75, or the run's windows, O-83; below); a
+// bank's loser (dedupe and bank conflict, from A1's flopped
 // lead_set_index: a lower lookup slot launching to the same bank; a
 // duplicate line is such a bank's loser too); and the group check, ge:
 // miu_grp, an inner helper here (MA rev 209), per address slot, each active
 // lane on its group leader's line and the active groups' leaders on one
 // page, routed to the lookup slots it leads by lq, meeting the rest only at
 // this OR. F is read from lq: a leader at quarter 1 only for 4 pipes, at
-// quarter 2 for 2 or 4 (miu_lead). F-ALIGN and the interleaved and window
-// F-ADDR join ge with the rest of miu_grp's scope. A dropped
+// quarter 2 for 2 or 4 (miu_lead). The faults route the same way and meet
+// ge only at this OR. A dropped
 // lookup frees its id and refunds its credit (miu_ids, miu_cred) from this
 // flop. The no-hit (MA-4, OA-408): per address slot, any of its memop's
 // launched lookups dropped, flopped for ccv_miu_ooe_cmpl_hint at H+2.
 //
 // Not yet here: the MQ entry's lines and lane map, and drop_held (an older
-// store's overlap found at A2): they come with the MQ's A2 write.
+// store's overlap found at A2): they come with the MQ's A2 write. Nor a
+// predicate transfer's faults (ld.pred, st.pred: lane d's b alone, l = 0),
+// which come with its single address from miu_lead.
 //
 // Flops (tag 07): per lookup slot the PA (48), pa_fold, perms, drop, the
 // L0 miss and its VPN; per address slot the no-hit. Clocked by this
@@ -82,6 +85,11 @@ module miu_a2 #(
   input  logic [NS*32*VW-1:0] lv_cm06h,      // every lane's sum (miu_agu8's flops)
   input  logic [NS*32-1:0]    am_cm06h,      // every lane's active bit
   input  logic [NS*2*41-1:0]  lc_cm06h,      // lanes 0's and 16's lines again (miu_agu8's keep copies)
+  // ---- miu_agu8's flops: per address slot, the lanes' faults -------------
+  input  logic [NS*32-1:0]    fal_cm06h,     // F-ALIGN, active lanes only
+  input  logic [NS*NQ-1:0]    ilv_cm06h,     // interleaved (O-83), each octet's copy
+  input  logic [NS*NQ-1:0]    ow_cm06h,      // an ordinary .global access, each octet's copy
+  input  logic [NS*32-1:0]    we_cm06h,      // each lane's S[47:16+k] == W >> k
   // ---- miu_tlb's L0 flops: slot k's entry e at [k*N0 + e] -----------------
   input  logic [NS*N0-1:0]    l0v_cm11h,
   input  logic [NS*N0*32-1:0] l0vpn_cm11h,
@@ -119,6 +127,31 @@ module miu_a2 #(
     end
   end
 
+  // ---- The lanes' faults, per address slot (MA rev 206's drop list) -----
+  // F-ALIGN (miu_agu8's, active lanes only); F-ADDR: an ordinary .global
+  // lane's S[49:48] not 0 (O-75), or its S in the run's own windows, S >> (16
+  // + k) == W >> k (O-83, IS's rev 171); an interleaved lane's b outside
+  // [0, L), which is S >> (16 + k) != W >> k, W a multiple of 2^k. The
+  // compare is miu_agu8's, beside its adders (we), each lane reading its own
+  // octet's ilv and ow. A faulting memop drops every lookup it leads
+  // (drop_fault), its completion the fault's (the MQ's; MIU tab, "The drop").
+  logic [NS-1:0] ft_cm06h;
+  always_comb
+    for (int a = 0; a < NS; a++) begin
+      ft_cm06h[a] = 1'b0;
+      for (int l = 0; l < 32; l++) begin
+        logic [VW-1:0] v;
+        logic          hi, eq, iv, ov;
+        v  = lv_cm06h[(a*32 + l)*VW +: VW];
+        iv = ilv_cm06h[a*NQ + l/8];
+        ov = ow_cm06h[a*NQ + l/8];
+        hi = v[VW-1:48] != '0;
+        eq = we_cm06h[a*32 + l];
+        ft_cm06h[a] = ft_cm06h[a] | fal_cm06h[a*32 + l] |
+                      (am_cm06h[a*32 + l] && (iv ? (hi || !eq) : (ov && (hi || eq))));
+      end
+    end
+
   // ---- The group and page check, one miu_grp per address slot -----------
   // Address slot a's footprint from the leaders' quarters: a leader at
   // quarter 1 only for 4 pipes, at quarter 2 for 2 or 4.
@@ -138,11 +171,15 @@ module miu_a2 #(
       .am(am_cm06h[a*32 +: 32]), .va(lv_cm06h[a*32*VW +: 32*VW]),
       .lc(lc_cm06h[a*2*41 +: 2*41]), .fl(fl_cm06h[a*2 +: 2]), .ok(ok_cm06h[a]));
   end
+  logic [NS-1:0] fd_cm06h;   // the lookup's memop has a faulting lane
   always_comb
     for (int k = 0; k < NS; k++) begin
       ge_cm06h[k] = 1'b0;
-      for (int a = 0; a < NS; a++)
+      fd_cm06h[k] = 1'b0;
+      for (int a = 0; a < NS; a++) begin
         ge_cm06h[k] = ge_cm06h[k] | (|lq_cm06h[(k*NS + a)*NQ +: NQ] && ok_cm06h[a]);
+        fd_cm06h[k] = fd_cm06h[k] | (|lq_cm06h[(k*NS + a)*NQ +: NQ] && ft_cm06h[a]);
+      end
     end
 
   // Lookup slot k's possible leaders: (0, k), (s < k, 2), (k, 0).
@@ -163,7 +200,7 @@ module miu_a2 #(
       logic [VW-1:0] c;
       logic [4:0]    ln;
       logic [NS-1:0] so;
-      logic          il, lc, hit, fa, bl;
+      logic          il, lc, hit, bl;
       logic [31:0]   vpn, ppn;
       logic [15:0]   off;
       logic [FW-1:0] fo;
@@ -196,8 +233,7 @@ module miu_a2 #(
         fo  = fo | ({FW{m}} & l0fold_cm11h[(k*N0 + e)*FW +: FW]);
         pg  = pg | ({PM{m}} & l0pm_cm11h[(k*N0 + e)*PM +: PM]);
       end
-      // F-ADDR on an ordinary leader; a lower slot launching to the bank.
-      fa = !lc && !il && (s[VW-1:48] != '0);
+      // A lower slot launching to the bank.
       bl = 1'b0;
       for (int j = 0; j < k; j++)
         bl = bl | (rv_cm06h[j] && lsi_cm06h[j*SW +: BW] == lsi_cm06h[k*SW +: BW]);
@@ -206,7 +242,7 @@ module miu_a2 #(
       pm_d_cm06h[k*PM +: PM]  = pg;
       ms_d_cm06h[k]           = rv_cm06h[k] && la_cm06h[k] && !hit;
       vpn_d_cm06h[k*32 +: 32] = vpn;
-      dr_d_cm06h[k]           = !la_cm06h[k] || !hit || fa || bl || !ge_cm06h[k];
+      dr_d_cm06h[k]           = !la_cm06h[k] || !hit || fd_cm06h[k] || bl || !ge_cm06h[k];
       nh_d_cm06h              = nh_d_cm06h | ({NS{rv_cm06h[k] && dr_d_cm06h[k]}} & so);
     end
   end
