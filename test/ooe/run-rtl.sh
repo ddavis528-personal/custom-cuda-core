@@ -350,7 +350,7 @@ done
 dir=build/ooe-rtl/go
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace -GS="$slots" -GR="$width" --top-module ooe_go \
+      --trace -DCCV_CHECK_GO -GS="$slots" -GR="$width" --top-module ooe_go \
       --Mdir "$dir" -o go_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DGO_S=$slots -DGO_R=$width -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_go.sv" "$PWD/test/ooe/go_tb.cpp" \
@@ -765,7 +765,7 @@ done
 # the first build's).
 for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec,no-prv" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
-           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take" \
+           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take,no-room-take,pool-en-short" \
            "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write,pend-follows"; do
   set -- $cfg
   name=$1 env=$2 nseeds=$3 ctls=$4

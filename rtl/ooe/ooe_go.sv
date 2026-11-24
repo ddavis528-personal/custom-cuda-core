@@ -966,6 +966,26 @@ module ooe_go #(
   logic [S-1:0] tk_any_cq02h;
   always_comb for (int s = 0; s < S; s++) tk_any_cq02h[s] = take_cq02h[s * R];
   `CCV_ASSERT(sel_covers, (tk_any_cq02h & ~sel_cq02h) == '0)
+`ifdef CCV_CHECK_GO
+  // Fresh fits (check-only, so synthesis sees no register): a slot with a
+  // head holds the fits its inputs give, as though clocked every cycle; a
+  // change its lead misses (rename's pool_en, the CCV-L23 loop through
+  // u_go.pool_en; go_tb's no-pool-en) leaves them stale.
+  logic [S*(R+1)*R-1:0] chk_fits_cq03h;
+  logic [S-1:0]         chk_hv_cq02h;
+  logic                 chk_v_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    chk_fits_cq03h <= fits_nx_cq02h;
+    chk_v_cq02h    <= !rst_r01h;
+    for (int s = 0; s < S; s++) chk_hv_cq02h[s] <= hv_cq01h[s * H];
+  end
+  logic [S-1:0] chk_fresh_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++)
+      chk_fresh_cq02h[s] = !chk_v_cq02h || !chk_hv_cq02h[s] ||
+                           fits_cq02h[s * (R + 1) * R +: (R + 1) * R] == chk_fits_cq03h[s * (R + 1) * R +: (R + 1) * R];
+  `CCV_ASSERT(fits_fresh, chk_fresh_cq02h == '1)
+`endif
 endmodule
 `undef CCV_CLK
 `undef CCV_RST

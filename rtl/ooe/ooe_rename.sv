@@ -233,6 +233,8 @@ module ooe_rename #(
   input  logic              ctl_notq2,
   input  logic              ctl_unow,
   input  logic              ctl_nolt,
+  input  logic              ctl_norq,       // the go's room read with no lagged take subtracted (u_go.room)
+  input  logic              ctl_pels,       // the go's pool change lead its sel term alone (u_go.pool_en)
   input  logic              ctl_noprv       // ooe_rendep's G-1 hits dropped from prv_dep (OA-496)
 `endif
 );
@@ -933,6 +935,15 @@ module ooe_rename #(
       if (pxn_en_cq03h) pxn_cq04h <= bx_nx_cq03h[2 * LX +: 2 * LX];
     end
   end
+  // The rooms' lagged takes, as a control leaves them (no-room-take: none).
+  logic [S*(R+1)-1:0] tqr_gs_cq03h, tqr_ps_cq03h;
+`ifdef CCV_CHECK_RENAME
+  assign tqr_gs_cq03h = ctl_norq ? {S{(R + 1)'(1)}} : tq_gs_cq03h;
+  assign tqr_ps_cq03h = ctl_norq ? {S{(R + 1)'(1)}} : tq_ps_cq03h;
+`else
+  assign tqr_gs_cq03h = tq_gs_cq03h;
+  assign tqr_ps_cq03h = tq_ps_cq03h;
+`endif
   // The readers: the corrections, each class's lagged take; a slot's floor
   // unmet (an occupied slot's) and its room to its ceiling, each its
   // remainder less its lagged take.
@@ -940,8 +951,8 @@ module ooe_rename #(
     for (int s = 0; s < S; s++) begin
       unmet_g_cq04h[s * LU +: LU] = occ_cq01h[s] ? rem_of(ufg_cq04h[s * HW +: HW], tq_gs_cq03h[s * (R + 1) +: R + 1]) : '0;
       unmet_p_cq04h[s * LU +: LU] = occ_cq01h[s] ? rem_of(ufp_cq04h[s * HW +: HW], tq_ps_cq03h[s * (R + 1) +: R + 1]) : '0;
-      room_g_cq04h[s * LU +: LU]  = rem_of(ucg_cq04h[s * HW +: HW], tq_gs_cq03h[s * (R + 1) +: R + 1]);
-      room_p_cq04h[s * LU +: LU]  = rem_of(ucp_cq04h[s * HW +: HW], tq_ps_cq03h[s * (R + 1) +: R + 1]);
+      room_g_cq04h[s * LU +: LU]  = rem_of(ucg_cq04h[s * HW +: HW], tqr_gs_cq03h[s * (R + 1) +: R + 1]);
+      room_p_cq04h[s * LU +: LU]  = rem_of(ucp_cq04h[s * HW +: HW], tqr_ps_cq03h[s * (R + 1) +: R + 1]);
     end
   // OI-134 (OI-114's registered form, OA's rev 358): the go reads each
   // slot's unmet a cycle late, from a register, less the names its last
@@ -1029,7 +1040,13 @@ module ooe_rename #(
   // registered sel (a take may come), a registered take, the counters'
   // or pool registers' enable, a slot's occupancy changing, the unmet's
   // register taking (OI-134; its take terms are within cnt_en).
+`ifdef CCV_CHECK_RENAME
+  // pool-en-off: no lead, so a take, a free or the unmet's register moves
+  // the go's inputs unled.
+  assign pool_en_cq04h = !ctl_pels && (sel_cq02h != '0 || (cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_o_cq02h || ur_f_cq04h != '0));
+`else
   assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_o_cq02h || ur_f_cq04h != '0;
+`endif
 `ifdef CCV_CHECK_RENAME
   // Free names on time: the pool less every slot's held, on time.
   // Ten bits, signed: the 8-bit credit the bench compares, and a sign the
