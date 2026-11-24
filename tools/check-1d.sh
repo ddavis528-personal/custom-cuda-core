@@ -383,6 +383,46 @@ else
   bad "CCV-L23: MA signs only for MIU and DCU" "dcu exit $ma_dcu: $(grep -m1 'CCV-L' "$TMP/ma-dcu.log"); ooe: $(grep -m1 'CCV-L23' "$TMP/ma-ooe.log")"
 fi
 
+# The block's architect signs, and no one else (DA-135): an AR-signed table
+# passes read as an AR block's module (rtl/common) and is refused read as an
+# OOE one; an RA-signed one passes read as RCU. A loop across two blocks needs
+# both: reference_kp's loop, with its sibling reference_xc placed in the MIU
+# (CCV_LINT_FIXTURE_BLOCKS), is refused signed by OA alone and by OA, MA and
+# AR, and passes signed by OA and MA.
+sed 's/"by": "OA"/"by": "AR"/' rtl/lint/reference_table.feedback.json >"$TMP/ma/reference_table.feedback.json"
+python3 tools/lint-rtl.py --signer-path=rtl/common "$TMP/ma/reference_table.sv" >"$TMP/ar-common.log" 2>&1; ar_common=$?
+python3 tools/lint-rtl.py --signer-path=rtl/ooe "$TMP/ma/reference_table.sv" >"$TMP/ar-ooe.log" 2>&1
+sed 's/"by": "OA"/"by": "RA"/' rtl/lint/reference_table.feedback.json >"$TMP/ma/reference_table.feedback.json"
+python3 tools/lint-rtl.py --signer-path=rtl/rcu "$TMP/ma/reference_table.sv" >"$TMP/ra-rcu.log" 2>&1; ra_rcu=$?
+if [ "$ar_common" = 0 ] && [ "$ra_rcu" = 0 ] &&
+   grep -q "table park_cy04h is refused: not an architect's (by 'AR'; it needs OA)" "$TMP/ar-ooe.log"; then
+  say "CCV-L23: only the block's architect signs" "PASS (AR in its block, RA in RCU; AR in OOE refused)"
+else
+  bad "CCV-L23: only the block's architect signs" "ar/common exit $ar_common, ra/rcu exit $ra_rcu: $(grep -m1 'CCV-L23' "$TMP/ar-ooe.log")"
+fi
+for v in one both extra; do
+  mkdir -p "$TMP/xb-$v"
+  cp rtl/lint/reference_kp.sv rtl/lint/reference_pc.sv rtl/lint/reference_xc.sv "$TMP/xb-$v/"
+  case $v in
+    one) by='"OA"' ;; both) by='["OA", "MA"]' ;; extra) by='["OA", "MA", "AR"]' ;;
+  esac
+  python3 - "$TMP/xb-$v/reference_kp.feedback.json" "$by" <<'PY'
+import json, sys
+d = json.load(open("rtl/lint/reference_kp.feedback.json"))
+d["reads"]["u_c.v_cy01h"]["by"] = json.loads(sys.argv[2])
+json.dump(d, open(sys.argv[1], "w"), indent=2)
+PY
+  CCV_LINT_FIXTURE_BLOCKS=reference_xc=rtl/miu python3 tools/lint-rtl.py --signer-path=rtl/ooe \
+    "$TMP/xb-$v/reference_kp.sv" >"$TMP/xb-$v.log" 2>&1
+done
+if ! grep -q "CCV-L23" "$TMP/xb-both.log" &&
+   grep -q "is refused: not its block architect's (by 'OA'; it needs MA and OA)" "$TMP/xb-one.log" &&
+   grep -q "is refused: not its block architect's (by \['OA', 'MA', 'AR'\]; it needs MA and OA)" "$TMP/xb-extra.log"; then
+  say "CCV-L23: a loop across blocks needs both architects" "PASS (OA+MA passes; OA alone and OA+MA+AR refused)"
+else
+  bad "CCV-L23: a loop across blocks needs both architects" "both: $(grep -m1 'CCV-L23' "$TMP/xb-both.log"); one: $(grep -m1 'CCV-L23' "$TMP/xb-one.log"); extra: $(grep -m1 'CCV-L23' "$TMP/xb-extra.log")"
+fi
+
 # CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a
 # generate block are refused, and ccv_reference.sv's struct field, function
 # local and procedural local, which are not nets, pass (above). Its ratchet
