@@ -474,7 +474,31 @@ module ooe_rename #(
   (* keep *) logic [R-1:0]    n_gwe_cq03h;
   (* keep *) logic [R*8-1:0]  wo_cq03h;          // the first 8 bits of each lane's, out
   (* keep *) logic [R*2-1:0] o_c_cq03h;
+  logic [2*R*LP-1:0] d_pp_cq03h;                // each lane's ports, ooe_rendep's (its port select)
   (* keep *) logic [R-1:0]   o_lv_cq03h;
+  // Each lane's ports, packed per class in lane order: a main on its
+  // class's next port, a copy on the RCU port after its main.
+  function automatic logic [2*R*LP-1:0] ports_of(input logic [R-1:0] v, input logic [R-1:0] mem,
+                                                  input logic [R-1:0] cp);
+    logic [LP-1:0] ri, mi;
+    logic [2*R*LP-1:0] pp;
+    ri = '0;
+    mi = '0;
+    pp = '0;
+    for (int l = 0; l < R; l++) begin
+      pp[l * LP +: LP]       = mem[l] ? LP'(R) + mi : ri;
+      pp[(R + l) * LP +: LP] = ri;
+      if (v[l] && mem[l]) mi = mi + 1'b1;
+      if (v[l] && (!mem[l] || cp[l])) ri = ri + 1'b1;
+    end
+    ports_of = pp;
+  endfunction
+  function automatic logic [R-1:0] x_bit_of(input logic [R*XL-1:0] x, input int b);
+    for (int l = 0; l < R; l++) x_bit_of[l] = x[l * XL + b];
+  endfunction
+  function automatic logic [R-1:0] x_v_of(input logic [R*XL-1:0] x);
+    x_v_of = x_bit_of(x, 0);
+  endfunction
   logic              r1_en_cq02h;
   assign r1_en_cq02h = sel_cq02h != '0;
   always_ff @(posedge ooe_core_clk) begin
@@ -525,6 +549,7 @@ module ooe_rename #(
       for (int l = 0; l < R; l++) wo_cq03h[l * 8 +: 8] <= l_w_cq02h[l * 10 +: 8];
       for (int l = 0; l < R; l++)
         no_na_cq03h[l * 5 +: 5] <= {l_x_cq02h[l * XL + 3 + 7], l_x_cq02h[l * XL + 3 + 4 +: 3], l_x_cq02h[l * XL + 3]};
+      d_pp_cq03h     <= ports_of(l_v_cq02h & x_v_of(l_x_cq02h), x_bit_of(l_x_cq02h, 1), x_bit_of(l_x_cq02h, 2));
       for (int l = 0; l < R; l++)
         o_c_cq03h[l * 2 +: 2] <= {l_x_cq02h[l * XL] && l_x_cq02h[l * XL + 1],
                                   l_x_cq02h[l * XL] && (!l_x_cq02h[l * XL + 1] || l_x_cq02h[l * XL + 2])};
@@ -908,7 +933,7 @@ module ooe_rename #(
   // head (the go's registered sel, a superset of a take).
   ooe_rendep #(.N(N), .A(R), .NG(NN), .NP(NP), .NU(NU), .G(G), .CT(CT)) u_dep (
     .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(|sel_cq02h), .v_cq01h(d_v_cq03h), .mem_cq01h(d_mem_cq03h),
-    .cp_cq01h(d_cp_cq03h), .atom_cq01h(d_atom_cq03h), .gwe_cq01h(p_gwe_cq03h), .gname_cq01h(r_gname_cq03h),
+    .cp_cq01h(d_cp_cq03h), .pp_cq01h(d_pp_cq03h), .atom_cq01h(d_atom_cq03h), .gwe_cq01h(p_gwe_cq03h), .gname_cq01h(r_gname_cq03h),
     .pwe_cq01h(p_pwe_cq03h), .pname_cq01h(r_pname_cq03h), .gsv_cq01h(d_gsv_cq03h), .gsn_cq01h(r_g_cq03h),
     .psv_cq01h(d_psv_cq03h), .psn_cq01h(d_psn_cq03h), .cguard_cq01h(d_cguard_cq03h), .cg_cq01h(d_cg_cq03h),
     .cnone_cq01h(d_cnone_cq03h), .unit_cq01h(d_unit_cq03h), .pg_cq01h(d_pg_cq03h), .nob_cq01h(d_nob_cq03h),
@@ -919,23 +944,6 @@ module ooe_rename #(
     .grp_dep_cq02h(grp_dep_cq04h), .grp_code_cq02h(grp_code_cq04h), .prv_dep_cq02h(prv_dep_cq04h),
     .prv_code_cq02h(prv_code_cq04h), .akind_cq02h(akind_cq04h), .acls_cq02h(acls_cq04h));
 
-  // Each lane's ports, packed per class in lane order: a main on its
-  // class's next port, a copy on the RCU port after its main.
-  function automatic logic [2*R*LP-1:0] ports_of(input logic [R-1:0] v, input logic [R-1:0] mem,
-                                                  input logic [R-1:0] cp);
-    logic [LP-1:0] ri, mi;
-    logic [2*R*LP-1:0] pp;
-    ri = '0;
-    mi = '0;
-    pp = '0;
-    for (int l = 0; l < R; l++) begin
-      pp[l * LP +: LP]       = mem[l] ? LP'(R) + mi : ri;
-      pp[(R + l) * LP +: LP] = ri;
-      if (v[l] && mem[l]) mi = mi + 1'b1;
-      if (v[l] && (!mem[l] || cp[l])) ri = ri + 1'b1;
-    end
-    ports_of = pp;
-  endfunction
   // The ports a group requests: the RCU ports its mains and copies take,
   // then the MIU ports, each class's from its first.
   function automatic logic [P-1:0] req_of(input logic [R-1:0] v, input logic [R-1:0] mem, input logic [R-1:0] cp);
