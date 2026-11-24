@@ -79,6 +79,7 @@ module ooe_slot #(
   input  logic [S-1:0]     lnd_cq01h,      // slot s's epoch notice and beats have landed (ooe_redir)
   input  logic [S-1:0]     ath_cq01h,      // an atomic in progress at slot s's head (ooe_rob_w)
   input  logic [S-1:0]     xr_cq01h,       // slot s's exit has retired (ooe_rob_w)
+  input  logic [S-1:0]     ret_cq01h,      // slot s retired an instruction (ooe_rob_w)
   output logic [S*3-1:0]   st_cq02h,
   output logic [S*LW-1:0]  warp_cq02h,
   output logic [S*WC-1:0]  ctaid_cq02h,
@@ -90,6 +91,7 @@ module ooe_slot #(
   output logic [S-1:0]     rel_cq02h,      // released
   output logic [S-1:0]     drn_cq02h,      // ccv_ooe_rau_drained for slot s's warp
   output logic [S-1:0]     drn_ref_cq02h,  // ... refused
+  output logic [S-1:0]     drn_kept_cq02h, // ... pc_kept: nothing retired since the allocation (AR 408)
   output logic             kack_cq02h,     // kill_ack (the level)
   output logic [KE-1:0]    kack_ep_cq02h   // kill_ack_epoch
 );
@@ -243,6 +245,19 @@ module ooe_slot #(
                                  ({WT{!ld_cq01h[s]}} & cta_cq02h[s * WT +: WT]);
     end
 
+  // pc_kept (AR 406/408, OA 470): one flop a slot, rsa, set by a
+  // retirement and cleared by the slot's launch or restore-allocate (its
+  // own load, ld); pc_kept = !rsa at the drain. A retirement and a load
+  // never meet in a cycle (the slot is empty), so the set wins. Four flops,
+  // ungated: ret is an input, so no enable of the slot's own flops covers it
+  // (CG-5); they sit within the module's allowance of fewer than 8.
+  logic [S-1:0] rsa_cq02h, kept_nx_cq01h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) rsa_cq02h <= '0;
+    else          rsa_cq02h <= (rsa_cq02h & ~ld_cq01h) | ret_cq01h;
+  end
+  assign kept_nx_cq01h = ~(rsa_cq02h | ret_cq01h);
+
   // The kill's ack: at once for a kill naming nothing, else when the last
   // slot it holds killing releases. The level falls at the next kill.
   logic ack_cq01h, kack_nx_cq01h;
@@ -283,6 +298,7 @@ module ooe_slot #(
       barc_cq02h <= b_nx_cq01h;
       cta_cq02h <= t_nx_cq01h;
       drn_ref_cq02h <= ref_nx_cq01h;
+      drn_kept_cq02h <= kept_nx_cq01h;
       kack_ep_cq02h <= kep_nx_cq01h;
     end
 
