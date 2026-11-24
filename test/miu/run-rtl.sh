@@ -15,7 +15,8 @@
 #   miu_rcap: test/miu/rcap_tb.cpp, one ccv_dcu_miu_rsp slot's capture,
 #   miu_lead: test/miu/lead_tb.cpp, A1 leaders, set index and the every-bank
 #     gate (MI-27 (b)); controls used (a gate blind to last cycle's
-#     launches), scale (no index scale) and last (a group's highest lane),
+#     launches), scale (no index scale) and lowest (the lowest active lane,
+#     not the fixed leader),
 #   miu_tlb: test/miu/tlb_tb.cpp, each slot's L0 and the 32-entry TLB's
 #     refill (MA rev 199), controls early (the L0 written a cycle early)
 #     and norr (the grant to the lowest pending slot),
@@ -84,7 +85,7 @@ control miu_rcap early
 bench miu_lead test/miu/cg-build.sh miu_lead "$B/miu_lead" -- "$B/miu_lead/tb"
 control miu_lead used
 control miu_lead scale
-control miu_lead last
+control miu_lead lowest
 bench miu_tlb test/miu/cg-build.sh miu_tlb "$B/miu_tlb" -- "$B/miu_tlb/tb"
 control miu_tlb early
 control miu_tlb norr

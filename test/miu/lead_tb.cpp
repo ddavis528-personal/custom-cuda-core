@@ -10,21 +10,23 @@
 // The value model is the MIU model's leadersOf and A1 gate
 // (sim/miu/miu_block.cpp): lookup slot k's group is the memop owning pipe k,
 // its lanes [g*32/F, (g+1)*32/F) for g the memop's pipes below k, the
-// leader its lowest active lane. The set index is S[15:7] of the leader's
+// leader its first lane by position (MA rev 199, CCV_MIU_LEAD_POS), the
+// lookup launching if the group has an active lane. The set index is S[15:7] of the leader's
 // sum's low 16 bits, (index << scale) + disp; S[10:2] for an interleaved
 // form (the eligible bit and lane d's base equal to W); disp[10:2] for the
 // local form. The gate: every bank's used[b] ? ge2[b] : ge1[b], used the
 // banks of last cycle's launches. Checks, a cycle on: every valid, and for
-// each slot with a leader the set index and the leader's lane and slot
-// one-hots.
+// each slot with a leader the set index, the (slot, quarter) one-hot, the
+// leader lane's activity, the form, the interleaved VPN's l6 = {0, S[15:11]}
+// + bl and R(ctx)'s VPN[31:6] for carry 0 and 1.
 //
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py): idle is reset and no memop, the wires still; medium
 // a memop on about a third of the cycles; high nearly every cycle; the
 // fields change only with a memop. Controls, each must fail: used (the
 // model's gate reads ge1 alone, never last cycle's launches), scale (the
-// model ignores the index's scale), last (the model's leader is a group's
-// highest active lane).
+// model ignores the index's scale), lowest (the model's leader is a group's
+// lowest active lane, the pick the fixed leader replaced).
 //===----------------------------------------------------------------------===//
 #include "Vmiu_lead.h"
 #include "verilated.h"
@@ -63,6 +65,7 @@ struct Slot {
   unsigned pipes = 0, fs = 0, dlane = 0;   // fs: {ilv-eligible, local, slot}
   unsigned sh1 = 0, sh2 = 0, disp = 0;      // disp: its low 16 bits
   uint32_t am = 0, wh = 0;
+  uint64_t rk = 0;                          // {ctx 7, hi + 1 20, hi 20, lo8 8, bl 6}
   std::array<uint32_t, kNL> base{}, idx{};
 };
 
@@ -76,7 +79,7 @@ struct Bench {
   unsigned vq = 0, used = 0;   // the valids a cycle ago; last cycle's launch banks
   // Coverage.
   unsigned cov_f[5] = {}, cov_hold = 0, cov_used = 0, cov_ilv = 0, cov_loc = 0, cov_ord = 0,
-           cov_sc[3] = {}, cov_skip = 0;
+           cov_sc[3] = {}, cov_skip = 0, cov_c1 = 0;
 
   Bench(const char *vcd_path, const std::string &c) : ctl(c) {
     ctx = std::make_unique<VerilatedContext>();
@@ -128,6 +131,7 @@ struct Bench {
       putBits(dut->am_cm05h, s * kNL, kNL, x.am);
       putBits(dut->wh_cm05h, s * 32, 32, x.wh);
       putBits(dut->dh_cm05h, s * kNL, kNL, uint64_t(1) << x.dlane);
+      putBits(dut->rk_cm05h, s * 61, 61, x.rk);
       for (unsigned l = 0; l < kNL; ++l) {
         putBits(dut->base_cm05h, (s * kNL + l) * 32, 32, x.base[l]);
         putBits(dut->idx_cm05h, (s * kNL + l) * 16, 16, x.idx[l] & 0xffffu);
@@ -148,7 +152,8 @@ struct Bench {
       gate = gate && ((u ? ge2 : ge1) >> b & 1u);
     }
     bool any[kNS] = {};
-    unsigned lsi[kNS] = {}, lane[kNS] = {}, slot[kNS] = {};
+    unsigned lsi[kNS] = {}, lane[kNS] = {}, slot[kNS] = {}, la[kNS] = {}, fm[kNS] = {}, l6[kNS] = {};
+    uint64_t rh[kNS] = {};
     for (unsigned k = 0; k < kNS; ++k)
       for (unsigned s = 0; s < kNS; ++s) {
         const Slot &x = a[s];
@@ -157,7 +162,7 @@ struct Bench {
         const unsigned g = unsigned(__builtin_popcount(x.pipes & ((1u << k) - 1u)));
         const uint32_t grp = uint32_t(((uint64_t(1) << per) - 1u) << (g * per)) & x.am;
         if (!grp) continue;
-        const unsigned l = ctl == "last" ? 31u - unsigned(__builtin_clz(grp)) : unsigned(__builtin_ctz(grp));
+        const unsigned l = ctl == "lowest" ? unsigned(__builtin_ctz(grp)) : g * per;
         const unsigned sc = ctl == "scale" ? 0u : x.sh2 ? 2u : x.sh1 ? 1u : 0u;
         const unsigned sum = ((x.idx[l] << sc) + x.disp) & 0xffffu;
         const bool loc = x.fs >> 1 & 1u, ilv = (x.fs >> 2 & 1u) && x.base[x.dlane] == x.wh;
@@ -165,9 +170,17 @@ struct Bench {
         lsi[k] = loc ? (x.disp >> 2) & 0x1ffu : ilv ? (sum >> 2) & 0x1ffu : (sum >> 7) & 0x1ffu;
         lane[k] = l;
         slot[k] = s;
+        la[k] = x.am >> l & 1u;
+        fm[k] = (!loc && ilv) << 1 | loc;
+        l6[k] = ((sum >> 11) & 31u) + unsigned(x.rk & 63u);
+        const unsigned cx = unsigned(x.rk >> 54) & 0x7fu, l8 = unsigned(x.rk >> 6) & 0xffu;
+        const uint64_t h0 = (x.rk >> 14) & 0xfffffu, h1 = (x.rk >> 34) & 0xfffffu;
+        auto rr = [&](unsigned t) { return ((t >> 8 ? h1 : h0) & 0x3ffffu) << 8 | (t & 0xffu); };
+        rh[k] = rr(l8 + cx + 1) << 26 | rr(l8 + cx);
+        cov_c1 += l6[k] >> 6;
         ++cov_f[f];
         cov_sc[sc] += 1;
-        cov_skip += l / 8 != g * per / 8;   // the group's first quarter empty
+        cov_skip += !la[k];   // the leader lane inactive, the group not
         if (loc) ++cov_loc;
         else if (ilv) ++cov_ilv;
         else ++cov_ord;
@@ -193,11 +206,14 @@ struct Bench {
       if (!any[k]) continue;
       ++checked;
       const unsigned gl = unsigned(uint64_t(dut->lsi_cm06h) >> (k * kSW)) & 0x1ffu;
-      const uint64_t lo = getBits(dut->lo_cm06h, k * kNL, kNL);
-      const unsigned so = unsigned(dut->so_cm06h >> (k * kNS)) & 0xfu;
-      if ((gl != lsi[k] || lo != (uint64_t(1) << lane[k]) || so != (1u << slot[k])) && ++fails <= 20)
-        std::fprintf(stderr, "lead: cycle %llu: slot %u: set %03x lane %llx slot %x, want %03x %u %u\n",
-                     (unsigned long long)cyc, k, gl, (unsigned long long)lo, so, lsi[k], lane[k], slot[k]);
+      const unsigned lq = unsigned(uint64_t(dut->lq_cm06h) >> (k * kNS * kNQ)) & 0xffffu;
+      const unsigned gla = dut->la_cm06h >> k & 1u, gfm = dut->fm_cm06h >> (2 * k) & 3u;
+      const unsigned gl6 = unsigned(dut->l6_cm06h >> (7 * k)) & 0x7fu;
+      const uint64_t grh = getBits(dut->rh_cm06h, k * 52, 52);
+      if ((gl != lsi[k] || lq != (1u << (slot[k] * kNQ + lane[k] / 8)) || gla != la[k] ||
+           gfm != fm[k] || (fm[k] == 2 && gl6 != l6[k]) || (fm[k] == 2 && grh != rh[k])) && ++fails <= 20)
+        std::fprintf(stderr, "lead: cycle %llu: slot %u: set %03x lq %04x la %u fm %u l6 %02x, want %03x %u/%u %u %u %02x\n",
+                     (unsigned long long)cyc, k, gl, lq, gla, gfm, gl6, lsi[k], slot[k], lane[k], la[k], fm[k], l6[k]);
     }
     vq = v;
     used = nused;
@@ -233,6 +249,7 @@ struct Gen {
       x.idx[l] = below(0x10000);
     }
     x.wh = below(2) ? x.base[x.dlane] : uint32_t(r());
+    x.rk = r() & ((uint64_t(1) << 61) - 1u);
     return x;
   }
   /// Valid slots for the next A1 and their footprints: disjoint, each a
@@ -288,13 +305,13 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
   bool cov = true;
   if (rnd) {
     cov = b.cov_f[1] && b.cov_f[2] && b.cov_f[4] && b.cov_hold && b.cov_used && b.cov_ilv &&
-          b.cov_loc && b.cov_ord && b.cov_sc[0] && b.cov_sc[1] && b.cov_sc[2] && b.cov_skip;
+          b.cov_loc && b.cov_ord && b.cov_sc[0] && b.cov_sc[1] && b.cov_sc[2] && b.cov_skip && b.cov_c1;
     if (!cov) {
       std::fprintf(stderr,
                    "lead: coverage: F1 %u F2 %u F4 %u, holds %u, used %u, ilv %u local %u ord %u, "
-                   "scales %u %u %u, skipped quarters %u\n",
+                   "scales %u %u %u, leader inactive %u, l6 carry %u\n",
                    b.cov_f[1], b.cov_f[2], b.cov_f[4], b.cov_hold, b.cov_used, b.cov_ilv, b.cov_loc,
-                   b.cov_ord, b.cov_sc[0], b.cov_sc[1], b.cov_sc[2], b.cov_skip);
+                   b.cov_ord, b.cov_sc[0], b.cov_sc[1], b.cov_sc[2], b.cov_skip, b.cov_c1);
       ++b.fails;
     }
   }
@@ -314,7 +331,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "used" && ctl != "scale" && ctl != "last") {
+      if (ctl != "used" && ctl != "scale" && ctl != "lowest") {
         std::fprintf(stderr, "lead: unknown control %s\n", ctl.c_str());
         return 2;
       }
