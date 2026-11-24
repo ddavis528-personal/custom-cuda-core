@@ -52,6 +52,10 @@ Conventions 20; specs MIU 226, Common 9, DCU 126. Next pings: Friday (section 6)
   charged to MIU's 2%. DA 134: non-OOE NGD caps stay 25.
 
 ## Open work, most urgent first
+0. UNGATED on mi-dev, sent to gate-scratch/MI (unverified, nothing merges it): b50828a9 (A2 faults,
+   held for MA's MI-46 budgets) and e8df1179 (miu_mq lane map: bench PASS, controls ilv/local FAIL as
+   they must, CG passes; NGD of miu_mq not yet run: tools/bg-run.sh mq-ngd python3 tools/check-ngd.py
+   --unit miu_mq). If mi-wt is lost: git fetch origin gate-scratch/MI and branch from it.
 1. A2 fault slice, mi-dev b50828a9 (LOCAL, held): F-ALIGN, S[49:48] F-ADDR on every lane, window
    F-ADDR (ordinary lane in the windows; interleaved off W's block) in A2's drop; agu8 computes per lane
    we (S[47:16+k] == W>>k, carry-save, no carry chain) and ow; .shared no longer drops on a negative sum.
