@@ -1,0 +1,23 @@
+{
+  "_comment": "bad_conn2.sv's reference_rpp.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "from": "rm_cy04h",
+      "ahead": 3,
+      "loop": [
+        "u_c.e_cy02h",
+        "rm_cy03h",
+        "rm_cy04h"
+      ],
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "a loop closed by two parent registers, as ooe_rename's counters (OI-207, OA-489)"
+    }
+  }
+}

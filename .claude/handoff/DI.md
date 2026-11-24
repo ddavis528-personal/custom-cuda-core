@@ -29,16 +29,73 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
--5. GATE f05aca24 FAILED on CG only: dcu_mshr soh/sport group (21 flops,
-   CG-2 enable 9.1 NGD, CG-3 50%) is NOT auto-waived (42 others already use
-   the 57 allowance). v18 in m0w (backup wip-mshr-v3/v18pre.sv = before):
-   soh_q gets its own enable crok && (|(ev&unsent) || rqa || |pq) (read
-   only behind mvi_q), sport_q keeps pres||une (5 flops, small group).
-   Also in m0w, not yet in main: assert mshr_credit_floor (cr_q >= mvi_q),
-   bench reference credits>=0 check, credit-stall coverage, --control
-   credit (run-rtl.sh). When check-cg/ngd pass: copy dcu_mshr.sv,
-   mshr_tb.cpp, run-rtl.sh to main, commit, gate-push (the 7 local commits
-   still unpushed).
+-8. DI-43 + fold-table port (DI-44..47) BUILT in scratch worktree m0w
+   (scratchpad/m0w; notes scratchpad/handoff-pending.md), NOT on main. Port:
+   4 credits, 2 entries, yield-once; controls port_nowait, always_yield,
+   credit_plus, rel_at_grant; bench, NGD, CG pass. Blocked on: TI's
+   two-writer CCV-L23 form (OA 479 -> DA) for 5 lines, MA-32 (16943021, only on
+   gate-scratch/TI-ma32). MA CONFIRMED 4 credits / 2 entries (MA rev 194,
+   DCU tab rev 126; overflow control 5 credits = ours); MA signs the port-level
+   L23 entry when TI's form lands: send MA its text then. When they
+   land: merge, copy bctl.sv, test/dcu/{bctl_tb.cpp,cg-build.sh,run-rtl.sh},
+   sim/dcu/{dcu_core.h,.cpp,dcu_test.cpp} from m0w (NOT its *.ngd.json), add
+   the port-level feedback entry (MA signs), gate-push.
+-7. PUSHED d400b928 (SCOPED PASS 28/28): sweep merge, UE first answer
+   (3f8e66c3), dcu_mshr CG-3 (c4061f75), host CCV_DCU_WB_ACK_DELAY=8.
+   Register rev 73: DI-38 tip posted, DI-33 (d) done, DI-34 closed; notices
+   to TI, MI, MA. When TI moves dcu-wb-refetch under the knob (TI-530 (2)):
+   set dcu_block.cpp's default back to 0. When TI's tblat fix (8daf7a2c,
+   TI-532/AR-410) lands: re-measure DI-23's localsp numbers
+   (CCV_MIU_IMPL=model CCV_MLC_WARM=1, TI-522).
+-6. IN FLIGHT: gate-push of a2b4d5c4 (dcu_mshr send record CG fix, credit
+   floor; job log /root/ccv-logs/job-gate-push-20261123-055701-29983.log;
+   wait with tools/gate-wait.sh <log>). When it passes: cherry-pick m0w's
+   aa588624 (dcu_mshr retry port per DI-35: rov/rstp offers, rgv/rgb grant
+   from flops, payload captured at R+2 = D2; head stamps; depth 23.7, CG
+   ~53/58; model stamps; --control retry) and this handoff into main, then
+   gate-push again. m0w = detached worktree at aa588624 (stash holds old
+   leftovers, drop it).
+-5. NEXT: dcu_bctl slice 2. PLAN (posted as DI-36, tab rev 64, notice sent): every
+   lookup the bank takes writes a queue entry at D0 from the channel wires
+   (its credit guarantees one; QDEPTH = entries = MIU credits, an entry
+   leaves when answered or gone to MLC, per params) holding the full
+   payload (PA[47:7] 41, req_id 6, slot 2, op 2, excl 1, fold 4, std 4,
+   tag result, miss-wait, cause, stale). The slice 1 queue held only
+   losers. A miss-wait marks its entry at D3 from dcu_mshr's outcome;
+   one 10-bit head stamp per bank; the offer (rov/rstp) and the head's
+   payload from flops; grant rgv/rgb in; outcome (ov/owait/owhy) at D3.
+   A bank with a waiter or a retry in flight keeps its new misses itself.
+   Then dcu_fill, btag/rarb/rslot growth, parts 2-4.
+-5a. INCREMENT A DONE in m0w (commit after aa588624/7d7d0943): dcu_bctl
+   slice 2 entries (alloc at D1 from dcu_cap's D1 flops, NOT D0: the pick
+   is stage-04 state and D0 cannot read it, CCV-L23), miss-wait FIFO with
+   a delayed change-only index write (CG-3), head offer rov/rstp/payload
+   (ports tagged _cc04h in bctl's frame; dcu_mshr's names differ), outcome
+   in (ov/owait/owhy_cc04h), credits at waiter access / granted D2 hit /
+   placement; bank order: no dv while the bank holds a waiter (dcu_mshr's
+   owi covers the cycle after a wait). dcu_mshr: mv = dv & !hit (dv from
+   bctl flops, hit from btag flops: the D2=H+4 hand-off). Benches: bctl
+   (--control order new), mshr; depth bctl 24.3, CG 68/94 loose.
+   TELL MA (DI-36 update): D1 not D0; the dv/hit hand-off; ports.
+   MODEL FOLLOW-UPS: (1) done a03d2345 (credits at D2 hit / D3
+   placement; relook and re-read no second credit); (2) retry lag 5
+   (kRetryLag) done, uncommitted until check-kernel reruns; (3) a cause-2
+   (filled) waiter must look up again after its fill's write, never
+   allocate anew (increment B: btag re-read; tag-stale).
+-4b. a2b4d5c4 pushed (SCOPED PASS). ba085cda (TI-529) merged as b11e15bb;
+   m0w's commits cherry-picked on it (tip 109f34e0); gate-push running.
+   On push: post the tip in DI-38 for TI (TI-530 re-pins with it).
+-4c. DI-37 DONE in model (dcbdd930): held fill K=4, CHECK K+gap+1 (MA rev
+   115 amended), bins dcu_fill_wait_{victim,store,late}_max, control
+   dcu-fill-unheld (needs TI whitelist; proved locally: 11 CHECKs). RTL:
+   build the same rule into dcu_bctl's fill arbitration with dcu_fill.
+   check-kernel does NOT rebuild skel: run tools/check-skel.sh first.
+   Real base worktree scratchpad/m0base (d2d298a2); kern-B.log vs kern-N.log.
+-4d. DI-38 (tab rev 68) to TI: whitelist + line for dcu-fill-unheld;
+   dcu-wb-refetch kernel control unreachable under RTL credit timing (unit
+   test covers); deny-ownership predswap req_id pin; IMPL_PINS transp4 33,
+   slotform 49; knob CCV_DCU_WB_ACK_DELAY=32 (fbec626b). TI-531: cm128 memop
+   hold is TI's testbench memory map, line kept until AR rules. Tell TI which commit carries the model.
 -4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
    lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
    (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,
@@ -161,8 +218,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 54, MI 35, MA 163, AR 409, OA 468, TI 519, OI 401, DA 131
-(sweep of 2026-11-22; RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
+Conventions 20, DI 69, MI 39, MA 173, AR 414, OA 474, TI 529, OI 405, DA 131
+(sweep of 2026-11-23; RA 158, RI 91, IS 201, CP 160). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
 MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;

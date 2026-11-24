@@ -269,10 +269,17 @@ struct Kernel {
       // Lookups the MIU model launched and then dropped (drop on
       // ccv_miu_dcu_req; MA-27, AR 400; MI-19), all and by cause.
       "dcu_drops", "drop_tlb", "drop_fault", "drop_split", "drop_line", "drop_bank", "drop_dup", "drop_held",
+      // A testbench response that passed one asked for before it (DA rev
+      // 132, AR 412 (1)): the latency draw's reorder; CCV_TB_JITTER=0 is its
+      // control on a kernel clear of the slow regions.
+      "tb_overtaken",
       // The DCU model's way mispredicts (MA-26, AR 390; MI-9 (3)).
       "dcu_wp_wrong",
       // A uop DEC held past a demotion's walk (AR 395).
       "dec_hold",
+      // A demoted warp's tier-1 slot refilled by a parked warp's restore (the
+      // swap class, AR 412 (2)).
+      "slot_refill_parked",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote", "pc_kept_launch", "pc_kept_restore",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",
