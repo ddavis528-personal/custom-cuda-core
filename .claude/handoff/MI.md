@@ -73,20 +73,44 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Bookmarks since: OA 455, MI 12.
 
 ## Open work, most urgent first
-00. MA rev 199 RULED (fixed leader, L0 x4 at A2, 32-entry TLB at A3; cm128priv > 0.5% reopens).
-   ANSWERED in MI-32 (MI rev 57, MA rung). Asks open to MA: (1) ngd budgets (architect's): miu_a2.ngd.json
-   arrival 0 on all ins but ge (12); rk_cm05h arrival 0 in miu_lead.ngd.json -> UNTIL THEN check-ngd FAILS
-   (miu_lead 34.9, miu_a2 37.6) and blocks gate-push. (2) L0 refill loop feedback declaration (OA/AR/DA).
-   (3) LRU vs round robin (RTL+model are RR). (4) miu_pair disp copies 576 -> one per quarter.
-   MI-33 answered by TI rev 550: TI re-pins held-wait itself after its landing (875/876), merges 29603c02 after.
-   MI-34 (rev 59): told TI it isn't pushed yet; RING TI WITH THE TIP once gate-push lands.
-   mi-dev unpushed: 29603c02 model fix, e1e3d708 miu_tlb, cf78f366 BCAST knob, 58b001a8 miu_lead (332 flops,
-   23.0), 9b9dd004 miu_a2 (361 flops, CG clean, 24.6 in at arrival 0, a2_tb + controls carry/bank/addr).
-   Pricing IN FLIGHT: scratchpad/price32.sh then price32b.sh (ruledbc), coremark32priv rest then cm128 one at a
-   time. Table: cd scratchpad; python3 tab32.py price32 base,gate,lead,l0x4,l0x8,ruled,ruled8,ruledp1,ruledbc,
-   borrow,dropfree. When in: edit MI-32's cell with cm32 rest + cm128 (the 0.5% test) and ring MA.
-   Optional: edit MI-30/31 cells "stale, see MI-32". Next RTL: miu_grp (group check ge, page split,
-   drop_line, F-ALIGN, MQ write/lane map, drop_held).
+00. MA rev 203 (re:MI-32) ruled: budgets approved (LANDED 469769e0); disp copies one per quarter (DONE 5b6c7418,
+   miu_pair 754 flops, miu_lead 23.5); faults split adopted; 1 TLB port; RR stands; price LRU (rope, provswap,
+   vadd, cm32: taken if >0.1% saving and <100 flops) and BCAST on ALL kernels with RR and LRU (adopted if no worse
+   anywhere; rope >1% with both -> MA looks at L0 of 6). Knob CCV_MIU_L0_LRU=1 (1195958e).
+   Rows: MI-35 (rev 60, TI+MA rung): L0 loop declaration text; lint has no cross-module form -> TI to answer.
+   MI-36 (rev 61, MA rung): budgets/copies done, first LRU/BCAST reads (rope RR 677 LRU 677 bcRR 666 bcLRU 677;
+   provswap 2249/2241/2249/2241; vadd 134 all). EDIT MI-36 WITH THE FULL TABLE when pricing ends, ring MA.
+   PRICING (detached, serial): price32b (ruledbc all + cm128) -> price32c (ruledlru, ruledbclru all + bclru cm128)
+   -> price32d (cm128 base, ruledp1). price32 itself was KILLED (launched without bg-run): cm32 borrow/dropfree and
+   its cm128 runs lost. Table: cd scratchpad; python3 tab32.py price32 base,gate,lead,l0x4,l0x8,ruled,ruled8,
+   ruledp1,ruledbc,ruledlru,ruledbclru. Jobs: ~/ccv-logs/price32{b,c,d}.log.
+   Gate 0208d2ad FAILED cg only (miu_a2 9 ungated flops > 7; fixed: one valid flop a stage). Then committed
+   06fc2171 (L0 filter + fix), 604e3906 (miu_grp), merged TI's claude/custom-cuda-core-infra-6msg93 (ef260513,
+   has b780f324) at f5be7a33. GATE-PUSH IN FLIGHT on that (scoped, CCV_JOBS=3; see newest job-gate-push log). When pushed: RING TI WITH THE TIP (MI-34 promise).
+   MA rev 204: MI-35 signed in substance; wants assertion+control for the 8-cycle bound -> DONE in scratch
+   worktree scratchpad/wt-tr (test/miu/tlb_tb.cpp bound check + control tight; run-rtl.sh line): COPY BOTH INTO
+   mi-wt AFTER THE PUSH and commit. MI-37 (rev 62, MA rung): BC+LRU explained (rope 6-page set), L0 of 6 measured
+   (miu_a2 24.7, miu_tlb 18.2, +552 flops) and priced small kernels; proposal L0 6 RR no bcast. price32e queued
+   (ruled6/ruled6lru all + ruled6 cm128). TI-552: b780f324 MERGED (f5be7a33).
+   MI-38 (rev 63, TI rung): ccv_miu instantiates miu_a2+miu_tlb. MI-39 (rev 63, MA+OA rung): L0 no-dup filter
+   (wt-tr miu_tlb.sv: pm/sa/ra match + wl/wv last-write copy; l0_nodup assertion; tlb_tb controls tight, l0dup).
+   MA revs 206-208 + OA-484 + TI-558 answered in MI-40 (rev 64; MA, TI, OA rung). READY IN wt-tr, COMMIT AFTER THE PUSH:
+   rtl/miu/miu_tlb.sv (N0 6, filter, iv_cm05h invalidate, l0_nodrop, l0_bound SVA under CCV_CHECK), miu_tlb.ngd.json,
+   miu_a2.sv (N0 6), miu_a2.ngd.json (vpn/ms required 0, MA rev 207), test/miu/tlb_tb.cpp (wvkeep, ivkeep), a2_tb.cpp (kN0 6),
+   cg-build.sh (-DCCV_CHECK for miu_tlb), run-rtl.sh (tight, l0dup, wvkeep, ivkeep). NOT wt-tr's sim/miu/miu_block.cpp (L0T trace).
+   ccv_miu.feedback.json: 5 keyed entries (u_a2 reads l0*_cm11h from u_tlb, ahead 5) after TI-560 lands (lists for
+   assert/control; each control named under test/miu or sim/miu): asserts l0_nodup,l0_nodrop,l0_bound; controls miu-l0-dup,wvkeep,tight,ivkeep (MI-41, OA-486).
+   miu_grp per MA rev 209 fix (i): trial set saved in scratchpad/grp/v5 (miu_grp, miu_a2 + ngd.json, miu_agu8 LC
+   param + lc_cm06h keep copy, agu8_tb lc check + control lcl1, cg-build/run-rtl/cg-units unit miu_agu8_lc).
+   miu_a2 in-flop 25.0 (zero margin), agu8 LC=1 453 flops 24.6. MI-42 (rev 66) to MA: asks lc_cm06h budget and
+   who signs miu_grp's inner decl. a2_tb now models it (leaders per F as miu_lead, lanes, lc; controls line,
+   split, fone FAIL; PASS), cg-build a2 adds miu_grp + --trace-max-width 8192; re-measured at N0=6: a2 in-flop
+   25.0, CG unchanged. budgets final (MA rev 211 accepted MI-42): a2 lc arrival 0, agu8 lc required 0, miu_grp inner decl by MA revs 209+211; third copy pre-approved if a2 grows. v5 READY to commit after the slice-1 commit (grp/v5 has all files). MA rev 210 (OA-486): with the MQ's A2 write, add an assertion (an outstanding MQ line completes or re-misses within pass + refill bound) and a control (mutation marks the lost line done). wt-tr holds v5
+   now; the slice-1 commit set is in grp/commit (restore before copying to mi-wt). Next row MI-44.
+   Next MI row MI-42.
+   PRICING DONE: MI-43 (rev 67) to MA, cm128 at 6 +0.471%. (old: price32f relaunched as price32g (bg-run, ~/ccv-logs/price32g.log; skips kept runs): reruns lost runs from scratchpad/orc on skel-lru, then cm128
+   base/ruledp1/ruled6 one at a time. Table: cd scratchpad; python3 tab32.py price32 <cfgs>.
+   Next RTL: miu_grp (group check ge, page split, drop_line, F-ALIGN, MQ write/lane map, drop_held).
 0. MI-19 done: 2d2259bf + a0afe9fc + miu_pair pushed at 073943f3 over DI's 818285df (MI rev 35,
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
@@ -210,3 +234,5 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - ccr-58815650-0ch1hh at 53b98a2f (steps 1-4, cold controls e62b76e2): SCOPED PASS. Earlier
   21274699 (076d0b75 model, 7cfc15ec walker). The remote
   branch was seeded with TI's gated 663bed37 so gate-push had a scoped base.
+- TI-561 (rev 563, FYI): ef260513 landed (row-register form, connection check, conn-ratchet); MI's assert/control
+  list form for the feedback declaration follows TI's next push: then write rtl/miu/ccv_miu.feedback.json.
