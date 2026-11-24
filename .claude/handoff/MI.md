@@ -96,8 +96,10 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
      python3 scratchpad/tab28.py scratchpad/price28. So far (vadd, divtail, ropediv, colwalk-p1k, cm32priv):
      no credit or id holds anywhere; GATE_ALL, BORROW, DROPFREE cost 0 cycles; LEAD_POS +2.1% ropediv, 0
      elsewhere. When cm128 is in: MI-30 row to MA with the table, miu_lead's numbers, copy flops 576.
-   - Still owed to MA for MI-27: (i) A2's AND-OR pick of S on the one-hot + VPN add and (iii) TLB
-     dual-compare, measured with miu_a2/miu_tlb (not built). MA's tab: form 6,900, ids 560.
+   - MI-30 (MI rev 55, MA rung): A2 measured with scratch prototype scratchpad/a2p/{a2p,a2q,a2m,tlb}.sv
+     (meas.py): bare TLB 16.5 (vs 12); (i) 33.2, third option 33.0, (ii) 26.5; split at match vector:
+     (i) 26.5 (lo fanout), (ii) 21.7. Proposed (i) + split + lo copies. miu_tlb/miu_a2 wait on MA's ruling.
+     TODO: add cm128 base/gate/borrow/dropfree to MI-30 (edit the row, no new notice) when price28b ends.
    - Push: tools/gate-push.sh after pricing ends (the gate needs the memory).
    - TI re:MI-29 (TI rev 546): cm128 watchdog at CCV_TB_LATENCY=1000 was under BOTH models; reproduce
      after pricing (CCV_MIU_IMPL=model CCV_DCU_IMPL=model, then MIU model alone), find whose, row TI+DI.
