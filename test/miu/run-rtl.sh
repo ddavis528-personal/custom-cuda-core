@@ -13,6 +13,9 @@
 #            sext (disp unsigned), lane0 (lane d taken as 0) and noshift (b
 #            from the sum without rbase << 16)
 #   miu_rcap: test/miu/rcap_tb.cpp, one ccv_dcu_miu_rsp slot's capture,
+#   miu_lead: test/miu/lead_tb.cpp, A1 leaders, set index and the every-bank
+#     gate (MI-27 (b)); controls used (a gate blind to last cycle's
+#     launches), scale (no index scale) and last (a group's highest lane),
 #   miu_ids: test/miu/ids_tb.cpp, the DCU req_ids: quarter picks, releases
 #     and the id-to-entry table,
 #   miu_cred: test/miu/cred_tb.cpp, DCU bank credits and the A1 gate,
@@ -75,4 +78,8 @@ control miu_ids relnow
 control miu_ids nodrop
 bench miu_rcap test/miu/cg-build.sh miu_rcap "$B/miu_rcap" -- "$B/miu_rcap/tb"
 control miu_rcap early
+bench miu_lead test/miu/cg-build.sh miu_lead "$B/miu_lead" -- "$B/miu_lead/tb"
+control miu_lead used
+control miu_lead scale
+control miu_lead last
 exit $fail
