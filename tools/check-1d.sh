@@ -166,13 +166,13 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_cnp.sv rtl/lint/reference_rhp.sv rtl/lint/reference_dc.sv \
          rtl/lint/reference_mtpp.sv rtl/lint/reference_mtpr.sv rtl/lint/reference_mtpw.sv \
          rtl/lint/reference_ttp.sv rtl/lint/reference_ttr.sv rtl/lint/reference_ttw.sv \
-         rtl/lint/reference_kp.sv rtl/lint/reference_kc.sv; do
+         rtl/lint/reference_kp.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (34 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (33 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -276,8 +276,10 @@ WANT
 # traced as the parent's logic (OI-213), passes; reference_xp.sv names a
 # crossing of a child's combinational path, "u_x.a_cy02h>y_cy02h" (OA-494),
 # and passes; bad_conn3.sv's named crossing of a registered path is refused.
-# reference_kp.sv: a cone listing a sibling's output beside a parent
-# register (OI-218) passes; bad_conn6.sv's cone leaving it out is refused.
+# reference_kp.sv: a cone naming a crossing of a sibling whose input traces
+# back to a listed register (OA-498) passes; bad_conn6.sv's crossing tracing
+# to an unlisted register is refused. reference_ttp's writer also has an
+# output the parent leaves unconnected, which reaches nothing (OI-219).
 # bad_conn5.sv's reference_vttp: a writer whose table does not verify (no
 # assertion) keeps its back edges (OA-497).
 # reference_ttp/ttr/ttw: a sibling table's writer fed from later registers,
@@ -315,7 +317,7 @@ no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion
 a port table's wrong ahead|table rd_cy04h (an input port) is refused: ahead is 2, but rd_cy04h lies 1 stage(s) past its reader's (03)
 a port table fed through logic|table rd_cy04h (an input port) is refused: in reference_gtpp, rd_cy04h is not fed directly by u_w's register rd_cy04h
 a table writer whose table does not verify|reference_vttp's u_w (reference_vttw): output rd_cy02h (its stage 02, the parent's 02) depends on input en_cy01h
-a cone missing a sibling output|cross-module loop u_c.v_cy01h is refused: register(s) u_k.y_cy04h reach u_c.v_cy01h through the cone but are not listed
+a cone crossing traced to an unlisted register|cross-module loop u_c.v_cy01h is refused: cone crossing u_x.a_cy02h>y_cy02h: its input a_cy02h traces to oq_cy04h, not only to listed registers
 a table writer's input around its register|reference_lttp's u_w (reference_lttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy01h (its stage 01, fed at 04) combinationally
 a sibling table through a second register|table rd_cy04h (an input port) is refused: u_w.tab_cy03h is not a register reaching an output of reference_qtpw through combinational logic only
 a port table with no assertion|table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_stpr

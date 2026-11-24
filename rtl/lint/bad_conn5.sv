@@ -21,6 +21,7 @@ module reference_lttw (
   input  logic       en_cy01h,
   output logic [3:0] rd_cy02h
 );
+
   logic [3:0] tab_cy02h;
   always_ff @(posedge reference_core_clk) begin
     if (en_cy01h) tab_cy02h <= d_cy01h;
@@ -71,6 +72,7 @@ module reference_vttw (
   input  logic       en_cy01h,
   output logic [3:0] rd_cy02h
 );
+
   logic [3:0] tab_cy02h;
   always_ff @(posedge reference_core_clk) begin
     if (en_cy01h) tab_cy02h <= d_cy01h;
