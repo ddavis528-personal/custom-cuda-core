@@ -616,6 +616,21 @@ the table's own stage, needs no listing.
 `reference_table3.sv` (passes) and `bad_table3.sv` (a row compare a stage
 early, refused) hold it.
 
+**A table read through an input port** (OA-492 (3)). A sibling's hold
+register, written at its stage and read here a stage early, never in a
+cycle it is written, is declared in the reader's `<module>.feedback.json`:
+`{"tables": {"<input port>": {"reader", "ahead", "writer":
+"<instance>.<register>", "assert", "control", "by", "date", "why"}}}`
+(`"table"` takes the same entry). The lint refuses it unless `by` is an
+architect; the reader reads the port; `ahead` is the port's stage less the
+reader's own; in every parent instantiating the module, the port is fed
+directly by that instance's output driven by that register; the module
+holds the named assertion that the read never meets a write; and the
+bench names its control. Then the read counts at the reader's stage.
+`reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
+`bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
+assertion are refused.
+
 **Across a connection** (OA 481-483; TI-554..556; MI-35). A child's port
 tags are its own numbering, not its parent's: a parent may feed a child's
 `cq01h` input from a `cq04h` net. So a connection is held to the
@@ -635,6 +650,21 @@ modules); a register-free one there is a helper like any other (OA 485).
 And the generated design (`rtl/top`, `rtl/generated`), whose
 channels cross repeaters by `params/links.json` and are held there.
 
+Through a register-free helper, a deficit of 1 is exempt only when the
+helper's input reads one parent register and its output feeds, through
+the parent's combinational nets, that register's next value or enable and
+nothing else (OA-488 (1)).
+
+A loop closed by the parent's own registers (OI-207, OA-489) is declared
+with `"from"` naming the parent register the child input reads, and
+`"loop"` listing the reader's output(s), then the parent registers in
+order, the last being `"from"`; each hop is traced (the first register's
+next value or enable reads a listed output's net, each later one the
+register before it, through combinational nets only), and `ahead` is
+`"from"`'s stage less the input's tag. `reference_pp.sv` holds both;
+`bad_conn2.sv`'s untraced hop and helper feeding a second register are
+refused.
+
 A back edge across the boundary, a loop through two children, is declared
 in the parent's `<parent>.feedback.json`: `{"reads": {"<inst>.<input>":
 {"from": "<inst>.<output>", "ahead": N, "loop": ["<inst>", ...],
@@ -645,13 +675,15 @@ own tag; `loop` lists the instances from the reader to the writer and each
 feeds the next through the parent; and the parent or the reader holds
 `CCV_ASSERT(<label>, ...)` for the hazard the stale read opens, run on the
 block's bench, with `control` the bench control that breaks it (OA 481
-(3)). A declaration the connections no longer show is refused. The back
+(3)); either may be a list (MI-40 (4)), and each control must be named
+somewhere under `test/<block>/` or `sim/<block>/`, as the bench registers
+it. A declaration the connections no longer show is refused. The back
 edges that stood when the check was made are on `rtl/conn-ratchet.json`,
 one per (parent, instance, input) with its tags, deficit and kind; it only
 shrinks. `tools/check-1d.sh` holds it: `reference_top.sv` (with
 `reference_rd.sv` and `reference_wr.sv`, the MIU L0 refill's shape) passes;
 `bad_conn.sv`'s undeclared back edge, untagged port, wrong `ahead`, loop
-that does not close and missing assertion are refused, and the ratchet
+that does not close, missing assertion and unnamed control are refused, and the ratchet
 excuses, and refuses a stale or an unlisted entry.
 
 ### CCV-L22 — a block runs on its own gated clock
@@ -1092,7 +1124,11 @@ depth NGD-1 to NGD-6 and a block's own checks count it, and the 25 includes
 the tree. The paths it put over the stage then sit, each capped at its
 depth, in `rtl/ngd-fanout-baseline.json`; `rtl/ngd-ratchet.json`'s
 `fanout` holds the caps, which only fall, and an entry leaves once its path
-meets the stage. NGD-7, and a block's outputs straight from a flop, are
+meets the stage. One exception, until block-level assembly gives bottom-up
+budgets (Daniel, 2026-11-24, DA tab rev 134): an OOE path already on the
+ratchet may rise up to 30 NGD where needed to move forward, its cap raised
+above its baseline but never past 30. New paths and non-OOE paths keep 25,
+and the caps fall again once assembly rebalances the budgets. NGD-7, and a block's outputs straight from a flop, are
 measured without it. The
 static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
 XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over

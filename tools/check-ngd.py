@@ -1725,8 +1725,20 @@ def load(path, key, default):
     return json.load(open(path)).get(key, default) if os.path.exists(path) else default
 
 
+# Daniel, 2026-11-24 (DA tab rev 134): until block-level assembly gives
+# bottom-up budgets, an OOE path already on the ratchet may rise up to 30
+# NGD where needed to move forward; new paths and non-OOE paths keep 25, and
+# every cap falls again once assembly rebalances them. So an OOE module's
+# fanout cap may sit above its baseline, up to OOE_RISE_CAP, never past it.
+OOE_RISE_CAP = 30.0
+
+
+def ooe_module(mod):
+    return mod.startswith("ooe_") or mod == "ccv_ooe"
+
+
 def policy(units, budgets, ratchet, modules, baseline=RATCHET_BASELINE, fan=None,
-           fan_base=None):
+           fan_base=None, may_rise=ooe_module):
     """Findings excused by the ratchet; a ratchet entry that is no longer a
     finding, or was never in the baseline, refused; a design module no unit
     measures, refused. `fan` ({module: {key: cap}}, the ratchet's "fanout")
@@ -1755,9 +1767,12 @@ def policy(units, budgets, ratchet, modules, baseline=RATCHET_BASELINE, fan=None
                 fails.append("fanout ratchet: %s %s was not over the stage when the fanout term "
                              "was enforced (%s); the list only shrinks"
                              % (mod, k, os.path.relpath(FANOUT_BASELINE, ROOT)))
-            elif cap > b + EPS:
+            elif cap > b + EPS and not (may_rise(mod) and cap <= OOE_RISE_CAP + EPS):
                 fails.append("fanout ratchet: %s %s capped at %g, above its baseline %g; a cap "
-                             "only falls" % (mod, k, cap, b))
+                             "only falls%s" % (mod, k, cap, b,
+                                               " (an OOE path may rise to %g until block "
+                                               "assembly, DA rev 134)" % OOE_RISE_CAP
+                                               if may_rise(mod) else ""))
             elif k not in found.get(mod, set()) and any(u.module == mod for u in units):
                 fails.append("fanout ratchet: %s %s now meets the rule: remove it from %s"
                              % (mod, k, os.path.relpath(RATCHET, ROOT)))
@@ -2824,6 +2839,16 @@ def selftest():
            "a finding over its fanout cap was excused")
     fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y + 2}}, fb)
     expect(any("above its baseline" in x for x in fails), "a fanout cap rose past its baseline")
+    #     DA rev 134: an OOE path's cap may rise past its baseline up to 30
+    #     NGD, never past it; any other module's cap still only falls.
+    ooe = lambda m: True
+    fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y + 2}}, fb, ooe)
+    expect(not fails, "an OOE cap risen within 30 was refused: %s" % fails)
+    fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": OOE_RISE_CAP + 0.5}},
+                   fb, ooe)
+    expect(any("above its baseline" in x for x in fails), "an OOE cap rose past 30")
+    expect(ooe_module("ooe_go") and ooe_module("ccv_ooe") and not ooe_module("miu_a2"),
+           "ooe_module names the wrong modules")
     fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y}}, {})
     expect(any("the list only shrinks" in x for x in fails), "the fanout ratchet grew")
     fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y},
