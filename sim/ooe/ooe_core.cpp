@@ -451,6 +451,8 @@ void Core::cycle(uint64_t now) {
   wlog_.sel_res.assign(n_, 0);
   wlog_.sel_cidx.assign(n_, 0);
   wlog_.sel_busy = wlog_.sel_block = 0;
+  wlog_.sel_cok = 0xF;
+  wlog_.sel_cret = 0;
   wlog_.sel_live = false;
   wlog_.sel_mig = false;
   wlog_.ralloc.clear();
@@ -479,6 +481,7 @@ void Core::cycle(uint64_t now) {
   control();           // RAU's alloc and demote, kill, barrier release
   retire();
   select();
+  memopCreditsNext();  // MA-5: ooe_sched's credit flag for the next cycle
   // Payload read (OA-1): what select granted leaves on the channels a cycle
   // later, so this cycle's grants wait and last cycle's go out.
   if (cfg_.payload_stages) {
@@ -2997,24 +3000,40 @@ bool Core::migInFlight() const {
 /// carry this cycle. With the payload stage, last cycle's grants leave now
 /// and spend their credits first.
 void Core::memopCreditsLeft() {
-  for (unsigned p = 0; p != 4; ++p) mleft_[p] = mcred_set_ ? mcred_[p] : ~0u;
-  if (mcred_set_ && cfg_.payload_stages)
+  if (!mcred_set_) return;
+  static_assert(sizeof(mleft_) == sizeof(mcred_), "four slots");
+  const bool first = mprev_[0] == ~0u;
+  for (unsigned p = 0; p != 4; ++p) {
+    mleft_[p] = mcred_[p];
+    // What came back since last cycle: the credits now less last cycle's
+    // A (its departures already out of it).
+    if (!first && mcred_[p] > mprev_[p]) wlog_.sel_cret |= 1u << p;
+  }
+  if (cfg_.payload_stages)
     for (const Memop &m : held_memops_)
       if (m.port < 4 && mleft_[m.port]) --mleft_[m.port];
+  wlog_.sel_cok = mcok_;
 }
 
-/// The pipes of a footprint (bit p for P<p>) whose slots hold a credit;
-/// inject_no_memop_credit (the control) takes every pipe as credited.
+/// The flag for the next cycle, as ooe_sched registers it (see
+/// memopCredits()); A is mleft_, before this cycle's grants.
+void Core::memopCreditsNext() {
+  if (!mcred_set_) return;
+  unsigned nx = 0;
+  for (unsigned p = 0; p != 4; ++p) {
+    const unsigned a = mleft_[p];
+    nx |= unsigned(a >= 2 || (a == 1 && !((mcok_ >> p) & 1u))) << p;
+    mprev_[p] = a;
+  }
+  mcok_ = nx;
+}
+
+/// The pipes of a footprint (bit p for P<p>) whose slots may take a memop
+/// this cycle; inject_no_memop_credit (the control) takes every pipe.
 unsigned Core::memopCredited(unsigned pipes) const {
   pipes &= 0xFu;
-  if (cfg_.inject_no_memop_credit) return pipes;
-  unsigned m = 0;
-  for (unsigned p = 0; p != 4; ++p) m |= unsigned(mleft_[p] != 0) << p;
-  return pipes & m;
-}
-
-void Core::takeMemopCredit(unsigned port) {
-  if (port < 4 && mleft_[port] && mleft_[port] != ~0u) --mleft_[port];
+  if (cfg_.inject_no_memop_credit || !mcred_set_) return pipes;
+  return pipes & mcok_;
 }
 
 void Core::selectSectioned() {
@@ -3050,7 +3069,6 @@ void Core::selectSectioned() {
     Memop d = discards_.front();
     discards_.pop_front();
     d.port = 0;
-    takeMemopCredit(0);
     busy |= 1u << kP0;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3305,7 +3323,6 @@ void Core::select() {
   while (!discards_.empty() && mports != cfg_.memop_width && memopCredited(1u << mports)) {
     Memop d = discards_.front();
     discards_.pop_front();
-    takeMemopCredit(mports);
     d.port = mports++;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3641,7 +3658,6 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     // Sectioned: the pipe, P0-P3, the lowest credited one of its footprint
     // (MA-5).
     m.port = !cfg_.sectioned ? port : memop_pick_ != ~0u ? memop_pick_ : port - 5;
-    takeMemopCredit(m.port);
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
     m.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;

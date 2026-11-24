@@ -67,6 +67,7 @@ module ooe_select #(
   input  logic [NM*NM-1:0]   older_m_cq03h, // the MIU class's
   input  logic [RM-1:0]      busy_cq03h,    // MIU pipes a bulk discard took (only P0, V-23)
   input  logic [S-1:0]       block_cq03h,   // slots with a bulk discard
+  input  logic [RM-1:0]      cok_cq03h,     // memop channel slots (P0-P3) with an MIU credit (MA-5)
   output logic [N-1:0]       cand_cq03h,    // requests this cycle
   output logic [N-1:0]       grant_cq03h,   // issues this cycle
   output logic [N-1:0]       lost_cq03h     // won a resource, lost another
@@ -92,7 +93,7 @@ module ooe_select #(
       if (e < NR) req[e] = req[e] && !(rhold_cq03h[e] && res_cq03h[e * 9 + 4]);
       if (e >= NR)
         req[e] = req[e] && (res_cq03h[e * 9 + RR +: RM] & busy_cq03h) == '0 && conf[e] && !block_cq03h[sl] &&
-                 copy_ok[e] && order_ok[e];
+                 (res_cq03h[e * 9 + RR +: RM] & cok_cq03h) != '0 && copy_ok[e] && order_ok[e];
     end
     for (int e = 0; e < NR; e++) req_r[e * RR +: RR] = req[e] ? res_cq03h[e * 9 +: RR] : '0;
     for (int e = 0; e < NM; e++) req_m[e * RM +: RM] = req[NR + e] ? res_cq03h[(NR + e) * 9 + RR +: RM] : '0;

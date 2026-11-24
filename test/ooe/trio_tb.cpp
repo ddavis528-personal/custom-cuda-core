@@ -467,6 +467,7 @@ void hook(const Core &c) {
   for (unsigned e = 0; e != NM; ++e)
     for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, t.age[NR + j] < t.age[NR + e]);
   dut->busy_cq03h = sw.sel_busy >> 5;
+  dut->cret_cq02h = tp1.w.sel_cret;  // MA-5's credit returns, a cycle ahead (a lead)
   dut->mig_cq02h = tp1.w.sel_mig;   // RA-17's migration, a cycle ahead (a lead)
   migs += sw.sel_mig;
   forced += sw.sel_mig && ((sw.sel_busy >> 4) & 1u);

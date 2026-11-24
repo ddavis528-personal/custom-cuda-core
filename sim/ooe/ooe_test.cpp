@@ -37,6 +37,7 @@ namespace {
 
 int g_fail = 0;
 bool g_quiet = false;     ///< a negative control's expected failures
+int g_mcred_depth = int(ccv::prov::kMemopCredits);   ///< MA-5: every Env's MIU credits a slot (-1 none)
 bool g_row_no_hold = false;   ///< testRowHold: select issues past 3 dones in flight
 unsigned g_row_over = 0;      ///< testRowHold: OI-90's check fired
 /// Called after every core cycle of every Env: an RTL testbench compiled
@@ -307,10 +308,11 @@ struct Env {
   /// Load data past L1 becomes readable this many cycles after the
   /// completion lands (a longer ccv_miu_rcu_data link, in issue-time terms).
   unsigned data_after_cmpl = 0;
-  /// MA-5: MIU's credits per memop slot, each back mcred_ret cycles after
-  /// its memop leaves (-1: the core is told none, as before MA-5).
-  int mcred_depth = -1;
-  unsigned mcred_ret = 40;
+  /// MA-5: MIU's credits per memop slot (CCV_MEMOP_CREDITS), each back
+  /// mcred_ret cycles after its memop leaves, about when an L1 hit's entry
+  /// frees (-1: the core is told none, as before MA-5).
+  int mcred_depth = g_mcred_depth;
+  unsigned mcred_ret = ccv::prov::kLatL1Cmpl + 2;
   std::array<unsigned, 4> mcred{};
   std::multimap<uint64_t, unsigned> mcred_back;
   bool mcred_init = false;

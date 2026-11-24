@@ -1348,9 +1348,12 @@ public:
   void migrationReads(unsigned n) { mig_reads_ = n; }
   /// MA-5 (AR 345/347, OA-412): the credits each ccv_ooe_miu_memop slot,
   /// P0-P3, holds as the cycle starts, set before cycle(). Select grants a
-  /// memop only where a pipe of its footprint has one left after what
-  /// leaves this cycle, and sends it on the lowest such pipe. Never set,
-  /// every pipe has one (the unit tests that model no MIU).
+  /// memop only on a pipe of its footprint whose credit flag is set, and
+  /// sends it on the lowest such pipe. The flag is ooe_sched's register:
+  /// set for the next cycle when what is left after this cycle's departures
+  /// (A) covers a grant made now, A >= 2, or A == 1 with no grant possible
+  /// now (flag clear). Never set, every pipe has one (the unit tests that
+  /// model no MIU).
   void memopCredits(const std::array<unsigned, 4> &c) { mcred_ = c; mcred_set_ = true; }
   void barRelease(uint32_t warp_mask);
   void kill(uint32_t warp_mask, unsigned epoch);
@@ -1747,6 +1750,9 @@ public:
     std::vector<uint8_t> sel_ret, sel_brk, sel_hold;
     std::vector<unsigned> sel_res, sel_cidx;
     unsigned sel_busy = 0, sel_block = 0;
+    /// MA-5: the memop slots select found credited, and the credits that
+    /// came back this cycle (ooe_sched's return input, a cycle ahead).
+    unsigned sel_cok = 0xF, sel_cret = 0;
     bool sel_live = false;
     /// RA-17's: a migration is in flight this cycle (under idle_r_k).
     bool sel_mig = false;
@@ -2391,11 +2397,13 @@ private:
   std::vector<Memop> held_memops_;
   std::array<unsigned, 4> mcred_{};    ///< MA-5: MIU's credits per memop slot, as set
   bool mcred_set_ = false;
-  std::array<unsigned, 4> mleft_{};    ///< MA-5: what this cycle's select may still send per slot
+  std::array<unsigned, 4> mleft_{};    ///< MA-5: A, the credits left after this cycle's departures
+  std::array<unsigned, 4> mprev_{~0u, ~0u, ~0u, ~0u};  ///< MA-5: last cycle's A (~0u: none yet)
+  unsigned mcok_ = 0xF;                ///< MA-5: the slots select may grant on (ooe_sched's cok)
   unsigned memop_pick_ = ~0u;          ///< MA-5: the slot doIssue sends the granted memop on
   void memopCreditsLeft();
+  void memopCreditsNext();
   unsigned memopCredited(unsigned pipes) const;
-  void takeMemopCredit(unsigned port);
 };
 
 } // namespace ooe
