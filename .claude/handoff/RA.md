@@ -361,7 +361,11 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 468, RA 157, RI 91, TI 516, AR 409, DA 131, OI 401, Conventions 20, CP 160, IS 201, MA 157, MI 35, DI 41.
+Bookmarks: OA 474, RA 158, RI 91, TI 529, AR 414, DA 131, OI 405, Conventions 20, CP 160, IS 201, MA 173, MI 38, DI 69.
+RA 158 (11-23): OA 469 / AR 406 (3) misrouted RAU's pc_kept to RA; RAU is TI's stub. OA 472, AR 407-408, TI-526 agree;
+closed. Sweep 11-23: nothing for RA. Watch AR 410 / TI-531: CCV_P_TIMEOUT_MEMOP derived, slow memory regions end at
+1 MiB, perf-register cycles move above 0xC0000 (AR re-baselines). Merged 183cc441 (173, carried OI's 57eff422),
+80102643 (6), 9eb50716 (3), miu-dcu-spec (3), 58815650 (18, resolve), 5e4d6c70 (8, resolve): all branches merged.
 Sweep 11-22: nothing for RA. DA 129-131 (OOE: mempl waiver, redirect lag D, L23 table form). AR 403-405: CE corrected
 by MIU as a later ccv_miu_rcu_data write then completion; way mispredict = AR 368 miss then late completion at due+2,
 same req_id; L1_HIT 8 and L1_ECC 1 unchanged. Merged 183cc441 (126), 5e4d6c70 (10), 9eb50716 (5), c22116ce (2),
