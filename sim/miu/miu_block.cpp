@@ -380,13 +380,20 @@ private:
       at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
     }
-    // MA-25: DCU's per-bank credit returns, taken the cycle they land
-    // (ccv_dcu_miu_cred is fixed latency). Every set bit returns a credit
-    // MIU spent; one that would take a counter past its reset value is
-    // refused by name.
+    // MA-25: DCU's per-bank credit returns (ccv_dcu_miu_cred is fixed
+    // latency). MIU's end is no-flop: the payload is captured the cycle it
+    // lands and counted the cycle after, as miu_cred counts it (V+2), so a
+    // return taken now is counted next cycle (cred_pend_). Every set bit
+    // returns a credit MIU spent; one that would take a counter past its
+    // reset value is refused by name.
+    const uint64_t ent = cred_pend_ent_, std = cred_pend_std_;
+    cred_pend_ent_ = cred_pend_std_ = 0;
     while (has(c.dcu_cred, 0)) {
       const Bits m = take(c.dcu_cred, 0).payload;
-      const uint64_t ent = get(m, c.dcu_cred, "ent_ret"), std = get(m, c.dcu_cred, "std_ret");
+      cred_pend_ent_ |= get(m, c.dcu_cred, "ent_ret");
+      cred_pend_std_ |= get(m, c.dcu_cred, "std_ret");
+    }
+    {
       for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
         if (ent >> b & 1u) {
           if (bent_[b] >= int(bqdepth_))
@@ -2343,6 +2350,7 @@ private:
   static unsigned bankOf(uint64_t line) { return unsigned((line / kLine) % ccv::kDcuBanks); }
   const unsigned bqdepth_ = bankEnv("CCV_DCU_BANK_QDEPTH", ccv::prov::kDcuBankQdepth),
                  bstdata_ = bankEnv("CCV_DCU_BANK_STDATA", ccv::prov::kDcuBankStdata);
+  uint64_t cred_pend_ent_ = 0, cred_pend_std_ = 0;   // returns captured, counted next cycle
   std::vector<int> bent_ = std::vector<int>(ccv::kDcuBanks, int(bqdepth_)),
                    bstd_ = std::vector<int>(ccv::kDcuBanks, int(bstdata_));
   /// Requests held for a credit, by (job serial, line index); a window fill
@@ -2405,7 +2413,7 @@ private:
     a1_used_now_ = 0;
   }
   bool busy() const override {
-    return !jobs_.empty() || !drops_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return cred_pend_ent_ || cred_pend_std_ || !jobs_.empty() || !drops_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() || !ue_first_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||

@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
-  MA 173, MI 39, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MA 173, MI 43, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
   MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
   deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
@@ -77,17 +77,35 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
-0a. UE two answers: model pushed at df60fee4 (SCOPED PASS). TI-529 (ba085cda, MI-20 + DI-33 (a)(b),
-   pc_kept on rau_drained) merged into mi-dev 059cb0b5 + regen; not pushed (next sweep's full gate).
-   Checked: neither DCU sends a UE first answer yet (DI-33 (d)), so ue_second_answer = 0 and
-   ue-close-first is vacuous on vadd/ldpar UE_INJECT=1. Close MI-20 once DI's first answer lands
-   and ue-close-first fails.
+0a. MI-20 CLOSED (MI rev 40, TI rung): DI's d400b928 sends the UE first answer; with DCU model, vadd/ldpar/hit
+   hit ue_second_answer and ue-close-first is caught (1/3/7 CHECKs). TI adds the kernel lines.
+0c. TI-537 (DA via TI): one common RTL credit implementation (rtl/common, TI's); miu_cred keeps its counters
+   until it lands, then swaps. MI rev 42 told TI miu_cred's needs; TI-538/539 full form, ccv_common_cr_cnt (DEPTH, SPEND_W, REFUND_W,
+   THRESH list); TI-541 (DA, AR 415 (5)): link credits keep the cr_go exception at a flopped sender, depths 4+2N (FYI).
+   MI rev 43: no same-cycle return, capture stays in miu_cred. TI posts the port list after AR/OA/RA/MA.
+0b'. MI-21 DECIDED (MA rev 176, MIU tab rev 165; bookmarks MA 178, MIU 165): miu_form at H-1 beside miu_pair owns
+   window table, local_base, W, R(ctx), written from ccv_rau_miu_cta (own enables); flops at H per slot: window word,
+   local scalar into disp, R(ctx) bits, W high bits, form selects; one-hot of lane d flopped at H-1. Forms land in
+   slice 1 before M0. O-83 (a): per lane a 2nd narrow 22-bit adder (log2(32L)) after one 3:2 over rindex rewired
+   {rindex[31:2],11111,rindex[1:0]}, disp {disp[31:2],00000,disp[1:0]}, rbase low k bits at [20+k:21]; bits [6:2]
+   replaced by l; R(ctx) is wiring above. Decision per lane parallel (~5) + one-hot pick (~3) = ~8, select after the
+   adders (1 NGD); [0,L) check beside -> F-ADDR. miu_lead's leaders same. Report extra gates/lane; raise if > 25.
+   AR 412 (4) FYI: future 160-entry miss park table, req_id 8 bits; keep MQ at 40.
+0b. MI-21 (MI rev 41, MA rung): no module owns slot/local/priv form state (window table, local_base/W,
+   local scalar, R(ctx)); O-83 decision ahead of the CSA puts A1 at ~32 NGD. Options (a) two sums late
+   mux, proposal miu_form at H-1. miu_agu8 e0a29c01 (ordinary + sized forms) has ~1.7 NGD left for the
+   window carry-save level (deepest 23.3: shared 23.3, sh 22.8; sum 18.5 with explicit CSA + Kogge-Stone,
+   ABC's own adder gave 24). miu_pair now decodes the transfer a stage early (a1x {b2,b4,sh2,sh1}).
+   Gate on e0a29c01 merge: job-gate-push-20261123-160322-2277.log.
 1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq pushed at 512d2315 (SCOPED PASS).
    check-cg --unit exit 0 does not apply the module budget: read the ungated count vs 2%. miu_mq: 40 entries by arrival
    slot, psel one-hot + pre keep copy (me), rel decoded before its flop, dis (mem_op 0xF) muxes
    last; cg 5136/5205 gated, ngd 23.6/11.2. miu_pair reads mqa_cm02h (A1 view, FW 63) at H-1;
    miu_pkg dropped (Yosys refuses pkg->pkg refs; mq_tb static_asserts the layout). Lines, lane map,
-   lost flag in miu_mq come with miu_a2. Next: miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
+   lost flag in miu_mq come with miu_a2. miu_cred 33146fbc (mi-dev, not pushed): credit state one stage 07
+   (dcu_bctl's way), ports ge1/ge2_cm07h, return capture ports cv_cm04h/er,dr_cm05h. Model returns
+   now counted a cycle after landing (cred_pend_, as RTL V+2): uncommitted until kernels pass both DCUs.
+   Next: miu_lead (ge1/ge2/used),
    miu_tlb (ccv_common_wayfold, pa_fold), miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp,
    miu_rcap, miu_ext, miu_ecc (K=128, syndrome R2, budget 17), miu_out, ccv_miu top. Then model
    checks: UE on a clean line keeps req_id live (AR 403; MIU tab rev 163 via MA notice re DI-30:
