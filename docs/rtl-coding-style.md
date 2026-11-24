@@ -486,7 +486,8 @@ A declaration lives beside the module's RTL, in `<module>.feedback.json`:
 per reading net. The lint refuses it, and the stage skip stays reported,
 unless:
 
-- `by` is an architect (OA, AR or DA): a declaration is reviewed before it
+- `by` is an architect (OA, AR or DA; MA for a module under `rtl/miu/` or
+  `rtl/dcu/` only, MA-32): a declaration is reviewed before it
   is listed, and the list shrinks only by review;
 - the reader reads it: a stale declaration is refused;
 - the reader and the read both carry stage tags, and the read's tag lies
@@ -572,6 +573,103 @@ unless all seven hold:
    array tagged past its writer, reader that does not read, declaration by
    OI and module with no assertion are refused, and the shape undeclared is
    refused by the arithmetic.
+
+**A table with two writers** (OA-479 (b); approved by Daniel, DI-42, and
+to TI on 2026-11-24). A declared table may have one loop writer, whose back
+edge is the table's own read (a reader's read-modify-write), and later
+writers from other pipelines at the same port, as `dcu_bctl`'s fold table
+(`ft_q_cc03h`, written by the store fold at cc02h and the fill's cc04h grant
+flops). The declaration lists them: `"writers": [{"name", "stage", "loop":
+true, "enable": [...]}, {"name", "stage", "enable": [...], "from": [...]},
+...]`. The lint refuses it, the port's stage skips staying reported, unless,
+beyond the seven conditions:
+
+(i) Every writer is listed with its stage: exactly one loop writer, at the
+    table's stage less one, whose write reads a listed reader; every other
+    writer later than it. A tagged register past the loop writer's stage
+    that reaches the write port and is not a listed writer's is an
+    undeclared writer, refused.
+(ii) Condition 3 holds for each non-loop writer: its data, index and enable
+    (`enable` and `from`) are registers tagged at its stage, held to the
+    arithmetic up to the write port, and each reaches the port (a stale one
+    is refused). Only the port's own nets may read them at the loop
+    writer's stage; the table's tag is the loop writer's, one past it.
+(iii) Condition 5 names every non-loop writer's enable twice: in an
+    assertion with the read (the array or a reader's index), that no lookup
+    reads a word that writer wrote in that cycle or the next (a forward is a
+    bypass, declared as one), and in one with the loop writer's enable, that
+    the two never write the port in the same cycle.
+(iv) `tools/check-1d.sh` holds it: `rtl/lint/reference_table2.sv`, the fold
+    table's shape, passes; `bad_table2.sv`'s unasserted second enable,
+    undeclared third writer and missing write-conflict assertion are refused.
+    Timing stays check-ngd's (condition 6).
+
+A table may be row registers (DI-51): a generate loop of rows, each written
+under an enable comparing a tagged index with the row's number, and read by
+a loop selecting a row by the same compare. The compare's tagged side is
+then the read's index, held to condition 4 (at the reader's stage), and a
+writer's enable may be a net reaching the rows through the generate block.
+A row's own read-modify-write (its next value reading the row through the
+loop variable, written back to that row) takes its compare from the write's
+enable (DI-53). A read the plain arithmetic already passes, such as one at
+the table's own stage, needs no listing.
+`reference_table3.sv` (passes) and `bad_table3.sv` (a row compare a stage
+early, refused) hold it.
+
+**Across a connection** (OA 481-483; TI-554..556; MI-35). A child's port
+tags are its own numbering, not its parent's: a parent may feed a child's
+`cq01h` input from a `cq04h` net. So a connection is held to the
+arithmetic relatively. For each instance and each child output O that
+depends, through the child's own nets and registers, on a child input I,
+the parent's nets must give P(O) - P(I) >= S(O) - S(I): no output is
+tagged earlier than the child's own latency from that input allows. The
+deficit, (S(O) - S(I)) - (P(O) - P(I)), of exactly 1 through a register
+is OI-65's same-stage feedback, exempt as it is inside a module; any
+other deficit is fixed or declared. A child with no register of its own
+(an inner helper) is its parent's logic: its ports carry no stage and a
+path through it counts zero. A connection whose port or net carries no
+tag is a finding, except a block top's own boundary ports, which carry the
+schema's channel names. Out of scope, by name: children with a register
+under `rtl/common`, `rtl/ctech`, `rtl/macro` and `rtl/clk` (library
+modules); a register-free one there is a helper like any other (OA 485).
+And the generated design (`rtl/top`, `rtl/generated`), whose
+channels cross repeaters by `params/links.json` and are held there.
+
+Through a register-free helper, a deficit of 1 is exempt only when the
+helper's input reads one parent register and its output feeds, through
+the parent's combinational nets, that register's next value or enable and
+nothing else (OA-488 (1)).
+
+A loop closed by the parent's own registers (OI-207, OA-489) is declared
+with `"from"` naming the parent register the child input reads, and
+`"loop"` listing the reader's output(s), then the parent registers in
+order, the last being `"from"`; each hop is traced (the first register's
+next value or enable reads a listed output's net, each later one the
+register before it, through combinational nets only), and `ahead` is
+`"from"`'s stage less the input's tag. `reference_pp.sv` holds both;
+`bad_conn2.sv`'s untraced hop and helper feeding a second register are
+refused.
+
+A back edge across the boundary, a loop through two children, is declared
+in the parent's `<parent>.feedback.json`: `{"reads": {"<inst>.<input>":
+{"from": "<inst>.<output>", "ahead": N, "loop": ["<inst>", ...],
+"assert": "<label>", "control": "<name>", "by", "date", "why"}}}`. The
+lint refuses it unless `by` is the block's architect; the input is fed by
+that output's net; `ahead` is the stages that net lies past the input's
+own tag; `loop` lists the instances from the reader to the writer and each
+feeds the next through the parent; and the parent or the reader holds
+`CCV_ASSERT(<label>, ...)` for the hazard the stale read opens, run on the
+block's bench, with `control` the bench control that breaks it (OA 481
+(3)); either may be a list (MI-40 (4)), and each control must be named
+somewhere under `test/<block>/` or `sim/<block>/`, as the bench registers
+it. A declaration the connections no longer show is refused. The back
+edges that stood when the check was made are on `rtl/conn-ratchet.json`,
+one per (parent, instance, input) with its tags, deficit and kind; it only
+shrinks. `tools/check-1d.sh` holds it: `reference_top.sv` (with
+`reference_rd.sv` and `reference_wr.sv`, the MIU L0 refill's shape) passes;
+`bad_conn.sv`'s undeclared back edge, untagged port, wrong `ahead`, loop
+that does not close, missing assertion and unnamed control are refused, and the ratchet
+excuses, and refuses a stale or an unlisted entry.
 
 ### CCV-L22 — a block runs on its own gated clock
 
