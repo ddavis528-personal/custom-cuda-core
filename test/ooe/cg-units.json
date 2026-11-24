@@ -322,6 +322,157 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "g_w[0].u_w"
       }
+    },
+    {
+      "name": "rlead_probe",
+      "module": "rlead_probe",
+      "files": [
+        "rtl/ooe/ooe_ready.sv",
+        "rtl/ooe/ooe_pick.sv",
+        "test/ooe/probes/ooe_select_rp.sv",
+        "test/ooe/probes/rlead_probe.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1,
+        "IRK": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
+    },
+    {
+      "name": "rlead_only",
+      "module": "rlead_only",
+      "files": [
+        "rtl/ooe/ooe_pick.sv",
+        "test/ooe/probes/ooe_select_rp.sv",
+        "test/ooe/probes/rlead_only.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
+    },
+    {
+      "name": "lslot_l1",
+      "module": "lslot_only",
+      "files": [
+        "test/ooe/probes/ooe_pick_fp.sv",
+        "test/ooe/probes/ooe_select_lp.sv",
+        "test/ooe/probes/lslot_only.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1,
+        "LATE": 1
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
+    },
+    {
+      "name": "lslot_l0",
+      "module": "lslot_only",
+      "files": [
+        "test/ooe/probes/ooe_pick_fp.sv",
+        "test/ooe/probes/ooe_select_lp.sv",
+        "test/ooe/probes/lslot_only.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1,
+        "LATE": 0
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
+    },
+    {
+      "name": "lslot_probe",
+      "module": "lslot_probe",
+      "files": [
+        "rtl/ooe/ooe_ready.sv",
+        "test/ooe/probes/ooe_pick_fp.sv",
+        "test/ooe/probes/ooe_select_lp.sv",
+        "test/ooe/probes/lslot_probe.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1,
+        "IRK": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
+    },
+    {
+      "name": "lslot_probe_l2",
+      "module": "lslot_probe",
+      "files": [
+        "rtl/ooe/ooe_ready.sv",
+        "test/ooe/probes/ooe_pick_fp.sv",
+        "test/ooe/probes/ooe_select_lp.sv",
+        "test/ooe/probes/lslot_probe.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1,
+        "IRK": 4,
+        "LATE": 2
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
+    },
+    {
+      "name": "lslot_probe_l3",
+      "module": "lslot_probe",
+      "files": [
+        "rtl/ooe/ooe_ready.sv",
+        "test/ooe/probes/ooe_pick_fp.sv",
+        "test/ooe/probes/ooe_select_lp.sv",
+        "test/ooe/probes/lslot_probe.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1,
+        "IRK": 4,
+        "LATE": 3
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
+    },
+    {
+      "name": "lslot_probe_l4",
+      "module": "lslot_probe",
+      "files": [
+        "rtl/ooe/ooe_ready.sv",
+        "test/ooe/probes/ooe_pick_fp.sv",
+        "test/ooe/probes/ooe_select_lp.sv",
+        "test/ooe/probes/lslot_probe.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1,
+        "IRK": 4,
+        "LATE": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h"
     }
   ]
 }
