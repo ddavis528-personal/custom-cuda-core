@@ -39,7 +39,9 @@
 // first), with the bits they were found on (Core::candidate,
 // candSections). Its controls: drop-sec-free (no section
 // free reaches the RTL) and sa-early (Rename 2's allocations driven at
-// their grants' step, a cycle early).
+// their grants' step, a cycle early) and sa-late (a cycle late: the
+// free list's state misses an allocation u_ren1n has made, which
+// sec_free_live and sec_alloc_free catch; ooe_rename's CCV-L23 loop control).
 //
 // FL_POOL selects the pool: 0 the GPR rows (CCV_P_PHYS_REGS), 1 the
 // predicates (CCV_P_PRED_REGS). Each new core resets the RTL. Every
@@ -106,7 +108,7 @@ constexpr unsigned NK = FL_NS ? 2 : 1;   // each slot's home candidates (cand_ho
 constexpr unsigned homeKind(unsigned s, unsigned k) { return k == 0 ? s % 4 : 4 + s % 2; }
 // FL_NS: the section events, as recorded at each hook, and the model's
 // candidates and their section bits, one hook back.
-std::vector<Core::SecEvent> prev_sa, prev2_sa, prev_sfr;
+std::vector<Core::SecEvent> prev_sa, prev2_sa, prev3_sa, prev_sfr;
 std::vector<unsigned> prev_rt;
 std::vector<std::array<unsigned, 6>> prev_cand, prev2_cand;
 std::vector<uint8_t> prev_csec, prev2_csec;
@@ -158,6 +160,7 @@ void record(const Core &c, const FreeVec &fv) {
   prev_sf.assign(FL_S, 0);
   for (unsigned s = 0; s != FL_S && s != c.slots(); ++s) prev_sf[s] = c.slotFrees(s, FL_POOL);
   if (FL_NS) {
+    prev3_sa = prev2_sa;
     prev2_sa = prev_sa;
     prev_sa = c.cycleSecAllocs();
     prev_sfr = c.cycleSecFrees();
@@ -201,6 +204,7 @@ void hook(const Core &c) {
       dut->rt_v_cq01h = 0;
       prev_sa.clear();
       prev2_sa.clear();
+      prev3_sa.clear();
       prev_sfr.clear();
       prev_rt.clear();
       prev_cand.clear();
@@ -314,7 +318,7 @@ void hook(const Core &c) {
       for (const auto &f : prev_sfr)
         for (unsigned j = 0; j != FL_NS; ++j)
           if ((f.sec >> j) & 1u) setBit(dut->free_sec_cq01h, (f.row % FL_FS) * FL_N * FL_NS + f.row * FL_NS + j, true);
-    const auto &sa = control == "sa-early" ? prev_sa : prev2_sa;
+    const auto &sa = control == "sa-early" ? prev_sa : control == "sa-late" ? prev3_sa : prev2_sa;
     if (sa.size() > FL_A || prev_rt.size() > FL_A) {
       fail("more section allocations or returns than lanes", unsigned(prev2_sa.size()), FL_A);
       desync = true;
@@ -333,7 +337,7 @@ void hook(const Core &c) {
     }
     // The lead: the next step's allocations (this hook's prev_sa) or returns.
     // Each lane's lead: the next step's allocation or return on it.
-    const auto &nsa = control == "sa-early" ? c.cycleSecAllocs() : prev_sa;
+    const auto &nsa = control == "sa-early" ? c.cycleSecAllocs() : control == "sa-late" ? prev2_sa : prev_sa;
     auto lanes = [](size_t n) { return n ? (1u << std::min<size_t>(n, FL_A)) - 1u : 0u; };
     dut->sa_l_cq00h = lanes(nsa.size());
     dut->rt_l_cq00h = lanes(c.cycleReturns().size());
