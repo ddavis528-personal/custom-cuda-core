@@ -221,7 +221,7 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
+KERNEL name=vadd finished=1 cycles=197 from_fetch=152 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
 XFER events=668 launched=668 match=yes channels_seen=34
 ```
 
@@ -244,44 +244,44 @@ instruction can be followed across every block it touches. Seq 12,
 ```
   cycle  event / channel                src  -> dst    msgs
   ------------------------------------------------------------
-     41  ccv_fet_dec_instr              fet  -> dec       
-     43  ccv_dec_ooe_uop                dec  -> ooe       
-     47  EV_DISPATCH                    ooe          
-     64  EV_WAKEUP                      ooe          
-     91  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
-     91  EV_ISSUE                       ooe          
-     92  ccv_ooe_miu_memop              ooe  -> miu       
-     92  ccv_ooe_rcu_issue              ooe  -> rcu     x4
-     94  ccv_rcu_miu_addr               rcu  -> miu       
-     96  ccv_miu_dcu_req                miu  -> dcu       
-     98  ccv_dcu_mlc_req                dcu  -> mlc       
-    100  ccv_mlc_exb_req                mlc  -> exb       
-    102  ccv_exb_ext_out                exb  -> ext       
-    114  ccv_ext_exb_in                 ext  -> exb       
-    115  ccv_ext_exb_in                 ext  -> exb       
-    117  ccv_exb_mlc_rsp                exb  -> mlc       
-    119  ccv_mlc_dcu_rsp                mlc  -> dcu       
-    121  ccv_dcu_miu_fill_ntc           dcu  -> miu       
-    125  ccv_miu_ooe_cmpl_hint          miu  -> ooe       
-    126  ccv_dcu_miu_rsp                dcu  -> miu       
-    128  ccv_miu_ooe_cmpl               miu  -> ooe       
-    128  ccv_miu_rcu_data               miu  -> rcu       
-    131  EV_RETIRE                      ooe          
+     55  ccv_fet_dec_instr              fet  -> dec       
+     57  ccv_dec_ooe_uop                dec  -> ooe       
+     61  EV_DISPATCH                    ooe          
+     78  EV_WAKEUP                      ooe          
+    116  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
+    116  EV_ISSUE                       ooe          
+    117  ccv_ooe_miu_memop              ooe  -> miu       
+    117  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    119  ccv_rcu_miu_addr               rcu  -> miu       
+    121  ccv_miu_dcu_req                miu  -> dcu       
+    123  ccv_dcu_mlc_req                dcu  -> mlc       
+    125  ccv_mlc_exb_req                mlc  -> exb       
+    127  ccv_exb_ext_out                exb  -> ext       
+    148  ccv_ext_exb_in                 ext  -> exb       
+    149  ccv_ext_exb_in                 ext  -> exb       
+    151  ccv_exb_mlc_rsp                exb  -> mlc       
+    153  ccv_mlc_dcu_rsp                mlc  -> dcu       
+    155  ccv_dcu_miu_fill_ntc           dcu  -> miu       
+    159  ccv_miu_ooe_cmpl_hint          miu  -> ooe       
+    160  ccv_dcu_miu_rsp                dcu  -> miu       
+    162  ccv_miu_ooe_cmpl               miu  -> ooe       
+    162  ccv_miu_rcu_data               miu  -> rcu       
+    165  EV_RETIRE                      ooe          
 ```
 
 - **Fetch to dispatch in 6 cycles:** FET to DEC to OOE, one
   channel hop each.
-- **Dispatched at 47, issued at 91.** The S1 OOE issues in order
+- **Dispatched at 61, issued at 116.** The S1 OOE issues in order
   and lets one memory operation be in flight at a time. The loads ahead of
   this one (seq 4, 6, 9, 10, 11) each make the whole
   trip first.
 - **Issue:** OOE sends the operation to RCU, which reads the index register,
   and to MIU, which gets the address from RCU.
 - **Memory:** MIU to DCU to MLC to EXB, and out to the testbench's memory at
-  102. The data comes back at 114, in 2 beats, and returns the
+  127. The data comes back at 148, in 2 beats, and returns the
   same way.
 - **Completion:** MIU delivers the data to RCU and completion to OOE, and
-  the instruction retires at 131, 90 cycles after fetch.
+  the instruction retires at 165, 110 cycles after fetch.
 
 Seq 14, `C_ADD`, the add, is the other shape of
 traffic: the lanes. RCU sends 32 lane operations, one per lane instance,
@@ -290,23 +290,23 @@ in the same cycle, and gets 32 results back 4 cycles later:
 ```
   cycle  event / channel                src  -> dst    msgs
   ------------------------------------------------------------
-     47  ccv_fet_dec_instr              fet  -> dec       
-     49  ccv_dec_ooe_uop                dec  -> ooe       
-     53  EV_DISPATCH                    ooe          
-    105  EV_WAKEUP                      ooe          
-    106  EV_WAKEUP                      ooe          
-    106  EV_ISSUE                       ooe          
-    107  ccv_ooe_rcu_issue              ooe  -> rcu     x4
-    109  EV_OOE_CANCEL_REPLAY           ooe          
-    109  ccv_rcu_lane_ops               rcu  -> lane   x32
-    113  ccv_lane_rcu_res               lane -> rcu    x32
-    114  ccv_rcu_ooe_done               rcu  -> ooe       
-    133  EV_ISSUE                       ooe          
-    134  ccv_ooe_rcu_issue              ooe  -> rcu     x4
-    136  ccv_rcu_lane_ops               rcu  -> lane   x32
-    140  ccv_lane_rcu_res               lane -> rcu    x32
-    141  ccv_rcu_ooe_done               rcu  -> ooe       
-    143  EV_RETIRE                      ooe          
+     61  ccv_fet_dec_instr              fet  -> dec       
+     63  ccv_dec_ooe_uop                dec  -> ooe       
+     67  EV_DISPATCH                    ooe          
+    130  EV_WAKEUP                      ooe          
+    131  EV_WAKEUP                      ooe          
+    131  EV_ISSUE                       ooe          
+    132  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    134  EV_OOE_CANCEL_REPLAY           ooe          
+    134  ccv_rcu_lane_ops               rcu  -> lane   x32
+    138  ccv_lane_rcu_res               lane -> rcu    x32
+    139  ccv_rcu_ooe_done               rcu  -> ooe       
+    172  EV_ISSUE                       ooe          
+    173  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    175  ccv_rcu_lane_ops               rcu  -> lane   x32
+    179  ccv_lane_rcu_res               lane -> rcu    x32
+    180  ccv_rcu_ooe_done               rcu  -> ooe       
+    182  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -387,7 +387,7 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
+KERNEL name=vadd finished=1 cycles=197 from_fetch=152 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
 TRACES records=775/775 equal=yes byte_identical=no differing_cycles=0
 ```
 
@@ -522,4 +522,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 5ccdb31d5bcd172a (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 3372035d5b3d9357 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

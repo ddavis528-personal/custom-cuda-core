@@ -1,0 +1,18 @@
+{
+  "_comment": "bad_conn.sv's reference_otop: refused (OA 481-483).",
+  "reads": {
+    "u_rd.l0_cy02h": {
+      "from": "u_wr.l0_cy06h",
+      "ahead": 4,
+      "loop": [
+        "u_rd",
+        "u_wr"
+      ],
+      "assert": "conn_l0_fresh",
+      "control": "conn-l0-dup",
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "the MIU L0 refill's shape (MI-35): a lookup reads entries its refill writes 4 stages later"
+    }
+  }
+}
