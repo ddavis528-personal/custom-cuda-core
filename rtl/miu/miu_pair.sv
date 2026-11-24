@@ -58,7 +58,7 @@ module miu_pair #(
                        ccv_prelim_pkg::CCV_L_W_MEM_OP + ccv_params_pkg::CCV_W_CHWIDTH +
                        ccv_params_pkg::CCV_MIU_PIPES + ccv_params_pkg::CCV_W_DISP + 1 +
                        ccv_params_pkg::CCV_L_W_SPACE + ccv_params_pkg::CCV_L_W_ORDERING + 1 + 4 + 1 + 2 + 1,
-  localparam int NQ  = ccv_params_pkg::CCV_W_LANE_MASK / 4,    // lane groups of 4 (miu_lead's copies), 8
+  localparam int NQ  = ccv_params_pkg::CCV_W_LANE_MASK / 8,    // lane quarters (miu_lead's copies), 4
   localparam int EW  = $clog2(NE),
   localparam int PW  = (LAG > 1) ? $clog2(LAG) : 1
 ) (
@@ -80,10 +80,10 @@ module miu_pair #(
   // 4- or 2-byte transfer (else 1): xfer_size's (1 or 2 bytes, O-80), or
   // else chwidth's span; sh2/sh1 the index's scale, when scale_en.
   output logic [NS*4-1:0]  a1x_cm05h,
-  // A1: slot k's {sh2, sh1, disp[15:0]} once per four lanes q, at
+  // A1: slot k's {sh2, sh1, disp[15:0]} once per lane quarter q, at
   // [(k*NQ + q)*18 +: 18], each its own (* keep *) flops: miu_lead's
-  // per-lane narrow adders read their four lanes' copy, so no disp flop
-  // drives more than 12 adders (MI-27 (3), MA rev 196).
+  // fixed-leader adder for quarter q reads its copy (MI-27 (3), MA rev
+  // 196; one per quarter since the fixed leader, MA rev 203).
   output logic [NS*NQ*18-1:0] a1q_cm05h
 );
 

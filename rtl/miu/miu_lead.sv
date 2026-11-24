@@ -20,7 +20,7 @@
 // bit 16 a lane's sum is (index << scale) + disp. A leader is a quarter's
 // lane 0, so per address slot and quarter only that lane adds: three
 // 16-bit 2-input adds (scale 0, 1, 2) of its index's low bits and the
-// quarter's copy of disp (miu_pair's a1q, the first of its two), the scale
+// quarter's copy of disp (miu_pair's a1q, one per quarter), the scale
 // picking after. A group of 16 or 32 lanes takes its first quarter.
 // Lookup slot k takes the group of the memop whose pipes hold k
 // (footprints are disjoint, V-60, so at most one); the route's AND-OR over
@@ -82,10 +82,10 @@ module miu_lead #(
   // A1: slot s may launch first-pass lookups (a global load on its first
   // A1, contracted, with no hold A1 knows from flopped state).
   input  logic [NS-1:0]       ld_cm05h,
-  // A1: the slot's memop fields (miu_pair's flops): its pipes, and per four
-  // lanes h a copy of {sh2, sh1, disp[15:0]} at [(s*NQ*2 + h)*18 +: 18].
+  // A1: the slot's memop fields (miu_pair's flops): its pipes, and per lane
+  // quarter q a copy of {sh2, sh1, disp[15:0]} at [(s*NQ + q)*18 +: 18].
   input  logic [NS*NS-1:0]    pipes_cm05h,
-  input  logic [NS*NQ*2*18-1:0] dq_cm05h,
+  input  logic [NS*NQ*18-1:0] dq_cm05h,
   // A1: every lane's operands (miu_cap's flops): the mask, the base (the
   // window decision's) and the index's low 16 bits.
   input  logic [NS*NL-1:0]    am_cm05h,
@@ -218,9 +218,9 @@ module miu_lead #(
       logic [47:0] lix_cm05h;        // lane 0's sums at scale 0, 1, 2
       logic [20:0] l6x_cm05h;        // and its l6 at each
       always_comb begin
-        d_cm05h   = dq_cm05h[(s*NQ + q)*36 +: 16];
-        sh1_cm05h = dq_cm05h[(s*NQ + q)*36 + 16];
-        sh2_cm05h = dq_cm05h[(s*NQ + q)*36 + 17];
+        d_cm05h   = dq_cm05h[(s*NQ + q)*18 +: 16];
+        sh1_cm05h = dq_cm05h[(s*NQ + q)*18 + 16];
+        sh2_cm05h = dq_cm05h[(s*NQ + q)*18 + 17];
         for (int c = 0; c < 3; c++)
         begin
           lix_cm05h[c*16 +: 16] = ks16(idx_cm05h[(s*NL + q*8)*16 +: 16] << c, d_cm05h);
@@ -292,7 +292,7 @@ module miu_lead #(
           h  = rsel_cm05h[(k*NS + s)*NQ + q];
           // The route and the form in one AND-OR (the form's selects are
           // early): local disp[10:2], interleaved S[10:2], else S[15:7].
-          si = si | ({SW{h && slc_cm05h[s]}} & dq_cm05h[(s*NQ + q)*36 + 2 +: SW]) |
+          si = si | ({SW{h && slc_cm05h[s]}} & dq_cm05h[(s*NQ + q)*18 + 2 +: SW]) |
                     ({SW{h && !slc_cm05h[s] && sil_cm05h[s]}} & qj_cm05h[(s*NQ + q)*SW +: SW]) |
                     ({SW{h && !slc_cm05h[s] && !sil_cm05h[s]}} & qi_cm05h[(s*NQ + q)*SW +: SW]);
           s6 = s6 | ({7{h}} & q6_cm05h[(s*NQ + q)*7 +: 7]);
