@@ -2547,6 +2547,7 @@ private:
   /// lookup slot an n-entry round-robin L0 TLB in front of the leaders (eligibility).
   struct L0Fill { uint64_t at; unsigned slot; uint64_t page; };
   std::deque<L0Fill> l0_q_, l0_w_;   // pending a grant; granted, awaiting the L0 write
+  const bool l0_bcast_ = envOn("CCV_MIU_L0_BCAST");
   const unsigned tlb_ports_ = [] {
     const char *v = std::getenv("CCV_MIU_TLB_PORTS");
     return v ? unsigned(std::strtoul(v, nullptr, 0)) : 4u;
@@ -2554,7 +2555,10 @@ private:
   /// A3: up to tlb_ports_ refills a cycle, oldest first.
   void l0Refill() {
     while (!l0_w_.empty() && l0_w_.front().at <= now_) {
-      l0_[l0_w_.front().slot].fill(l0_w_.front().page);
+      if (l0_bcast_)   // CCV_MIU_L0_BCAST=1: a refill writes every slot's L0
+        for (miu::Tlb &t : l0_) t.fill(l0_w_.front().page);
+      else
+        l0_[l0_w_.front().slot].fill(l0_w_.front().page);
       l0_w_.pop_front();
     }
     unsigned n = 0;
