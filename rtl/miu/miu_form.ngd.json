@@ -1,0 +1,119 @@
+{
+  "module": "miu_form",
+  "ports": {
+    "ctv_cm01h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_rau_miu_cta's capture: its interface flops with nothing in front (A-61, RI-11); the table write and its adds are the next cycle's logic behind the captured valid (MI-22 correction 1; MA rev 185)."
+    },
+    "ctc_cm02h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_rau_miu_cta's capture: its interface flops with nothing in front (A-61, RI-11); the table write and its adds are the next cycle's logic behind the captured valid (MI-22 correction 1; MA rev 185)."
+    },
+    "ctl_cm02h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_rau_miu_cta's capture: its interface flops with nothing in front (A-61, RI-11); the table write and its adds are the next cycle's logic behind the captured valid (MI-22 correction 1; MA rev 185)."
+    },
+    "fv_cm01h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_rsp's window fill, from its flops; every miu_form input arrives at 0, and its 25 hold the 40:1 read, the lowest lane and the 128:1 window read (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "fc_cm02h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_rsp's window fill, from its flops; every miu_form input arrives at 0, and its 25 hold the 40:1 read, the lowest lane and the 128:1 window read (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "fm_cm02h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_rsp's window fill, from its flops; every miu_form input arrives at 0, and its 25 hold the 40:1 read, the lowest lane and the 128:1 window read (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "fw_cm03h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_rsp's window fill, from its flops; every miu_form input arrives at 0, and its 25 hold the 40:1 read, the lowest lane and the 128:1 window read (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "pe_cm04h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_pair's and miu_mq's flops (pe from (* keep *) copies of miu_pair's pairing flops; miu_mq's A1 view and issue mask); every miu_form input arrives at 0 (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "mqa_cm02h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_pair's and miu_mq's flops (pe from (* keep *) copies of miu_pair's pairing flops; miu_mq's A1 view and issue mask); every miu_form input arrives at 0 (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "mqi_cm02h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_pair's and miu_mq's flops (pe from (* keep *) copies of miu_pair's pairing flops; miu_mq's A1 view and issue mask); every miu_form input arrives at 0 (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "pen_cm03h": {
+      "arrival": 3.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_pair's out 3: the OR of the paired row's valids from its own (* keep *) copies of the row-valid flops, landing straight in miu_form's enable flop (CG-5) (MI-22, MA rev 187)."
+    },
+    "win_cm05h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "wv_cm05h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "fs_cm05h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "wh_cm05h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "rk_cm05h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "dh_cm05h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "sl_cm05h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_form's H flops; a flop that also feeds inside logic gets a (* keep *) copy for the port (MI-22, MA rev 185; MIU tab rev 177)."
+    },
+    "c_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "O-69's per-slot C, formed in A1 from H flops of the local region, ctx and disp's 17 bits, and flopped for A2, which reads it at arrival 0 beside miu_agu8's sums (MI-25 (D), MA rev 195: agu8 out 0, A2 in 0)."
+    }
+  }
+}
