@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-23 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-24 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -100,14 +100,27 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 421, OA 475, TI 553 (rev 552), MA 178, DI 69,
-  MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 133, Conventions 20 (full
-  sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
+- **Bookmarks** (revs read through): AR 421, OA 501, TI 584, MA 211, DI 93,
+  MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 134, Conventions 20 (full
+  sweep read 11-24; TI 584 read only for TI-582).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
+- **Sweep 2026-11-24 (Tuesday, no pings):** register: nothing open for AR.
+  OA 476 took AR 414 (OA asked Daniel whether the 0.2% band covers all its
+  cost rulings); DA rev 134 (OA, from Daniel): OOE paths already on
+  ngd-ratchet may rise to 30 NGD until block-level assembly; MA: L0 TLB
+  4/slot in A2, 32-entry TLB to A3 (ropediv +2.1%), DCU fill bound 11; OA
+  487-492: redirect lag 1 (fet_redirect ports retagged cq04h, timing
+  only); DI asks TI for MLC-stub probe injection (TI's stub). TI-582:
+  DA-135 in the lint: AR signs CCV-L23 declarations only outside
+  ooe/miu/dcu/rcu. Merged clcw9s 7, doowtf 143, 5tdecg 2, 0ch1hh 12,
+  lecnjf 32, 664pgr 20 (6msg93, p8esoz, n6402z, 20cauz, 1vzyjg already
+  in); no conflicts; regen clean. Gate PASS on 3d4a2fe1 (ngd 13240 s, cg
+  12534 s: over 2 h, gate-wait re-armed twice); pushed 222; session home
+  matches.
 - **Sweep 2026-11-23 (Monday, no pings):** register: nothing new for AR in
   the sweep read; MA rev 173 prefers AR 410 (1), fills term = DCU's 16 MLC
   req_ids. Merged clcw9s 7, doowtf 155, 0ch1hh 18, n6402z 8, lecnjf 3,
@@ -247,6 +260,12 @@ Credit rules (TI-49):
    20+-5 default), mark each affected entry, a PF row for the read target
    (AR 412 (3)), and PF-39's HIT_MAX wording (AR 413). check-docs, push.
    Read class and AR 417's control are still TI's.
+   DANIEL (11-24): "If you have perf runs to complete, please leverage RH".
+   RH is running the re-baseline (NEW 77f7849e on doowtf vs OLD 4e3dda64;
+   recipe as on a5481843: -priv, base 1, CCV_FET_PERFECT=1 CCV_MLC_WARM=1
+   CCV_DCU_SETS=128 CCV_DCU_WAYS=8; S1 = vadd sel srd pguard merge mload
+   unal gather loop brs; OLD S1/cm32priv/cm128priv; NEW seeds 1-3; NEW
+   cm128priv CCV_TB_JITTER=0); about 17:45Z; reply by message to AR.
 000l. **Common credit RTL modules (TI-537/539/540, Daniel to TI: "a common
    RTL module ... for the block interfaces"). AR 415 (.679095): at a flopped
    end (BOUNDARY 1, the RTL default) cr_src is the counter and go only, and
