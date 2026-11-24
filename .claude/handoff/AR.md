@@ -100,7 +100,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 422, OA 501, TI 584, MA 211, DI 93,
+- **Bookmarks** (revs read through): AR 422, OA 501, TI 584, MA 215, DI 93,
   MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 134, Conventions 20 (full
   sweep read 11-24; TI 584 read only for TI-582).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
@@ -253,6 +253,10 @@ Credit rules (TI-49):
    hit-latency tables stand; AR 411 (2) corrected. MA re-runs only its
    cold (non-CCV_MLC_WARM) runs. perf-register: re-baseline section, PF-39
    HIT_MAX 28, PF-54 read-path depth target. RH's worktrees released.
+   MA rev 215 (re AR 418): MA-30 ran cold, so MA re-runs it on the fixed
+   TB (its revs 174-175 batch); S1 and cm32priv done (R3 now -0.36% on
+   cm32), cm128priv waits on DI's MA-33 fix; full table follows. Nothing
+   owed until it lands (k=4 over the bar -> MA sends a row).
 000l. **Common credit RTL modules (TI-537/539/540, Daniel to TI: "a common
    RTL module ... for the block interfaces"). AR 415 (.679095): at a flopped
    end (BOUNDARY 1, the RTL default) cr_src is the counter and go only, and
