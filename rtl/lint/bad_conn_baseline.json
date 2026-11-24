@@ -1,0 +1,31 @@
+{
+ "_comment": "check-1d's fixture baseline for bad_conn_ratchet.json.",
+ "entries": [
+  {
+   "parent": "reference_utop",
+   "instance": "u_rd",
+   "port": "l0_cy02h",
+   "net": null,
+   "net_stage": 6,
+   "port_stage": 2,
+   "deficit": 4,
+   "kind": "register",
+   "outputs": [
+    "ms_cy03h"
+   ]
+  },
+  {
+   "parent": "reference_utop",
+   "instance": "u_wr",
+   "port": "ms_cy03h",
+   "net": null,
+   "net_stage": 3,
+   "port_stage": 3,
+   "deficit": 1,
+   "kind": "register",
+   "outputs": [
+    "l0_cy06h"
+   ]
+  }
+ ]
+}

@@ -21,9 +21,11 @@ so this is a build artifact rather than something to remember.
 | `rtl/dcu/dcu_bctl.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_btag.sv` | — | `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_cap.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
+| `rtl/dcu/dcu_fill.sv` | — | `CCV_P_LINE_BYTES`, `CCV_P_W_REQ_DCU_MLC` |
 | `rtl/dcu/dcu_mshr.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_CORE_ID`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_DCU_MLC`, `CCV_P_W_REQ_MIU_DCU` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
 | `rtl/include/ooe_pl.svh` | `CCV_L_W_MEM_OP`, `CCV_L_W_OPCODE`, `CCV_P_W_BYP_GROUP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_IMM`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_IDX`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
+| `rtl/miu/miu_cred.sv` | — | `CCV_DCACHE_LOOKUPS`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA` |
 | `rtl/miu/miu_mq.sv` | `CCV_L_W_MEM_OP` | `CCV_MEMOP_CREDITS`, `CCV_P_W_CTA_SLOT`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
 | `rtl/miu/miu_pair.sv` | `CCV_L_W_MEM_OP` | `CCV_LAT_MIU_PAIR_LAG`, `CCV_MEMOP_CREDITS`, `CCV_P_W_CTA_SLOT` |
 | `rtl/ooe/ooe_mempl.sv` | `CCV_L_W_MEM_OP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_ROB_IDX`, `CCV_P_W_RS_IDX` |
@@ -81,7 +83,7 @@ so this is a build artifact rather than something to remember.
 | `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU`, `CCV_LAT_RCU_KILL_DRAIN` |
 | `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_ADDR`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/skel/kernel.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA` |
+| `sim/skel/kernel.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA`, `CCV_P_TIMEOUT_MEM`, `CCV_P_TIMEOUT_MEMOP` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | `CCV_DCU_WAYPRED_BITS` |

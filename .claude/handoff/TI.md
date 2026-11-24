@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-23. Keep this current at every task's end; it is what
+Updated 2026-11-24. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -38,9 +38,7 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-23: TI 527,
-MI 38, AR 413, DI 55, OI 405, OA 474, RA 158; the rest as of the 11-22 sweep.
-Last row TI-529. Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). 11-24: see the file. Last row TI-552. Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -77,18 +75,21 @@ background `while pgrep` wait.
   coremark128). AR 405 leaves MA to state the mispredict path; a DCU
   response field for it would be a new TI row.
 
-## In flight (11-23)
-- ti-fold fc32593d: CCV_DCU_FILL_AGE=4 (MA re:DI-37, task 71). Gate OOM-killed
-  (my measurement beside it); rerun gate-push once measurements end, then row
-  to MA, DI.
-- ti-drop branch ti-tblat 8daf7a2c (gate-scratch/TI-tblat): AR-410, kSlowEnd
-  1 MiB, CCV_TB_LATENCY, derived CCV_P_TIMEOUT_MEMOP 40960; cm128 bounded line
-  at CCV_TB_LATENCY=1000. Before/after table in scratchpad tblat-measure.tsv
-  (coremarkpl32priv before must be re-run: OOM). Then: row to AR (cc MA, DI,
-  MI), full check-kernel on ti-tblat (localsp/privwin/slotform/waypred moved:
-  re-pin expectations), merge onto FILL_AGE tip, gate-push.
-- 11-23 daily sweep repo half not run yet: after the FILL_AGE gate.
-- TI-530 (DI-38 1-4: lands with DI's tip), TI-531 (cm128 root cause, AR-410).
+## In flight (11-24)
+- LANDED b780f324 on both branches (RESUMED SCOPED PASS 28/28): AR-410, testbench
+  20+-5 seeded, swap class vadd6, MLC_HIT_MAX 28, re-pins, MA-32, dcu-wb-refetch
+  unit-held (DI-49). TI-552 told DI (merge b9aeadc7), MI, MA. Cycles old (4e3dda64)
+  vs new table being measured (run-tabulate, worktrees ti-cyc-old/new): then a
+  row to AR (re-baseline, AR 411 (4)).
+- ti-tw (worktree /home/user/ti-tw, gate-scratch/TI-tw, on b780f324): OA-479 (b)
+  two-writer table lint (Daniel approved 11-24; TI-548), row-register tables
+  (DI-51, TI-549), a row's own RMW compare from its write enable (DI-53,
+  TI-550). OA accepted (OA-480). check-1d 45 lines. Gate-push next, after
+  the cycles measurement (one heavy job at a time). DI retries its fold-table
+  declaration on 8ac04d40; MA signs it.
+- Then: DI-38 re-pins on DI's b9aeadc7 tip (task 72); MI 29603c02 held-wait
+  re-pin when MI rings (task 80; MI-33/34, TI-551); OI-204 pc_kept at:11
+  lines (task 66); AR 417 (task 79); task 76 credit modules.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).

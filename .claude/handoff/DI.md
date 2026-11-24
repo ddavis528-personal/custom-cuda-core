@@ -29,6 +29,17 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
+-8. DI-43 + fold-table port (DI-44..47) BUILT in scratch worktree m0w
+   (scratchpad/m0w; notes scratchpad/handoff-pending.md), NOT on main. Port:
+   4 credits, 2 entries, yield-once; controls port_nowait, always_yield,
+   credit_plus, rel_at_grant; bench, NGD, CG pass. Blocked on: TI's
+   two-writer CCV-L23 form (OA 479 -> DA) for 5 lines, MA-32 (16943021, only on
+   gate-scratch/TI-ma32). MA CONFIRMED 4 credits / 2 entries (MA rev 194,
+   DCU tab rev 126; overflow control 5 credits = ours); MA signs the port-level
+   L23 entry when TI's form lands: send MA its text then. When they
+   land: merge, copy bctl.sv, test/dcu/{bctl_tb.cpp,cg-build.sh,run-rtl.sh},
+   sim/dcu/{dcu_core.h,.cpp,dcu_test.cpp} from m0w (NOT its *.ngd.json), add
+   the port-level feedback entry (MA signs), gate-push.
 -7. PUSHED d400b928 (SCOPED PASS 28/28): sweep merge, UE first answer
    (3f8e66c3), dcu_mshr CG-3 (c4061f75), host CCV_DCU_WB_ACK_DELAY=8.
    Register rev 73: DI-38 tip posted, DI-33 (d) done, DI-34 closed; notices
