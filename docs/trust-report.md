@@ -18,7 +18,7 @@ so this is a build artifact rather than something to remember.
 | File | Preliminary | Provisional |
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
-| `rtl/dcu/dcu_bctl.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_FILL_AGE`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
+| `rtl/dcu/dcu_bctl.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_btag.sv` | — | `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_cap.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_fill.sv` | — | `CCV_P_LINE_BYTES`, `CCV_P_W_REQ_DCU_MLC` |
