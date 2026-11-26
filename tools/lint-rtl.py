@@ -289,8 +289,9 @@ def feedback_decls(dirpath, module):
     if not os.path.exists(p):
         return None, {}, {}, {}
     d = json.load(open(p))
+    # "tables" (OA-492) is the same form's spelling for an input port.
     return (os.path.relpath(p, ROOT), d.get("reads", {}), d.get("bypass", {}),
-            d.get("table", {}))
+            dict(d.get("table", {}), **d.get("tables", {})))
 
 
 # CCV-L23's declared table (DA rev 131, OA 452 with its seven conditions;
@@ -1495,7 +1496,19 @@ def check_file(path, rel):
             # A declared table (DA rev 131, OA 452): verified against all seven
             # conditions, the timing's (6) being check-ngd's, which measures
             # the read whatever the tags say, and the fixtures' (7) check-1d's.
+            mports = module_headers(src).get(n, ({}, ""))[0]
             for arr, d in sorted(tbl.items()):
+                # A table read through an input port (OA-492 (3)): the words
+                # are a register of a sibling, written at its stage and read
+                # here earlier, never in a cycle it is written.
+                if mports.get(arr) == "input":
+                    why = verify_port_table(n, arr, d, body, graph, signers, path)
+                    if why:
+                        add("CCV-L23", ln0, "%s: table %s (an input port) is refused: %s"
+                            % (fp, arr, why))
+                    else:
+                        fb_ok.setdefault(d.get("reader"), set()).add(arr)
+                    continue
                 readers = d.get("readers", [])
                 why = None
                 sa = stage_of(arr)
@@ -2233,6 +2246,74 @@ def check_connections(src, rel, add, signers, fbdir):
             elif key not in used:
                 add("CCV-L23", 1, "%s: cross-module loop %s names no back edge the "
                     "connections show (a stale declaration is refused)" % (fp, key))
+
+
+def verify_port_table(n, port, d, body, graph, signers, path):
+    """{"tables": {"<input port>": {"reader", "ahead", "writer": "<inst>.<reg>",
+    "assert", "control", "by", ...}}} (OA-492 (3)): by an architect; the
+    reader reads the port; ahead is the port's stage less the reader's own;
+    in the parent, the port is fed directly by instance <inst>'s output that
+    is its register <reg>; an assertion with that label in this module, that
+    the read never meets a write; and a bench control that breaks it."""
+    if d.get("by") not in signers:
+        return "not an architect's (by %r, not one of %s)" % (d.get("by"), ", ".join(signers))
+    reader = d.get("reader")
+    if not reader or port not in graph[0].get(reader, ()):
+        return "its reader %r does not read %s" % (reader, port)
+    sr, sp = stage_of(reader), stage_of(port)
+    if not sr or not sp:
+        return "the reader and the port both carry a stage tag"
+    at = sr[2] - 1 if reader in graph[1] else sr[2]
+    if d.get("ahead") != sp[2] - at:
+        return "ahead is %r, but %s lies %d stage(s) past its reader's (%02d)" % (
+            d.get("ahead"), port, sp[2] - at, at)
+    w = str(d.get("writer", ""))
+    if "." not in w:
+        return "\"writer\" names no <instance>.<register>"
+    wi, wreg = w.split(".", 1)
+    fbdir = os.path.dirname(path)
+    # The parent: a module, in the tree or beside this file, instantiating n.
+    cands = dict((k, v[1:]) for k, v in module_index().items())
+    for fn in os.listdir(fbdir):
+        if fn.endswith(".sv"):
+            for k, v in module_headers(strip_comments(open(os.path.join(fbdir, fn)).read())).items():
+                cands.setdefault(k, v)
+    parents = []
+    for pn, (pports, pbody) in cands.items():
+        if pn != n and re.search(r"\b%s\b\s*(?:#\s*\(|[a-z]\w*\s*\()" % re.escape(n), pbody):
+            parents.append((pn, pbody))
+    if not parents:
+        return "no module instantiates %s, so its writer cannot be traced" % n
+    for pn, pbody in parents:
+        insts = instances(pbody, {}, dict((k, (None,) + v) for k, v in cands.items()), fbdir)
+        rd = [v for v in insts.values() if v[0] == n]
+        if wi not in insts:
+            return "%s has no instance %s" % (pn, wi)
+        wchild, wports, wbody, wconns = insts[wi]
+        wout = [o for o, dr in wports.items() if dr == "output" and (o == wreg or re.search(
+            r"\bassign\s+%s\s*=\s*%s\s*;" % (re.escape(o), re.escape(wreg)), wbody))]
+        if wreg not in dep_graph(wbody)[1] or not wout:
+            return "%s.%s is not a register %s drives an output with" % (wi, wreg, wchild)
+        wnets = set(x for o in wout for x in conn_ids(wconns.get(o, "")))
+        for _, _, _, conns in rd:
+            if set(conn_ids(conns.get(port, ""))) != wnets or not wnets:
+                return ("in %s, %s is not fed directly by %s's register %s"
+                        % (pn, port, wi, wreg))
+    labs = d.get("assert") or []
+    labs = [labs] if isinstance(labs, str) else list(labs)
+    if not labs or any(not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(l)), body)
+                       for l in labs):
+        return ("no assertion %s in %s that the read never meets a write"
+                % (", ".join(map(repr, labs)) or "named", n))
+    ctls = d.get("control") or []
+    ctls = [ctls] if isinstance(ctls, str) else list(ctls)
+    blk = os.path.relpath(fbdir, ROOT).replace(os.sep, "/").split("/")
+    homes = ([os.path.join(ROOT, "test", blk[1]), os.path.join(ROOT, "sim", blk[1])]
+             if len(blk) > 1 and blk[0] == "rtl" and blk[1] != "lint" else [fbdir])
+    if not ctls or any(not any(control_named(h, str(c)) for h in homes) for c in ctls):
+        return "its control is missing or named nowhere in %s" % " or ".join(
+            os.path.relpath(h, ROOT) for h in homes)
+    return None
 
 
 def helper_self_loop(pbody, inets, onets, inst):

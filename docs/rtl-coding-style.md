@@ -616,6 +616,21 @@ the table's own stage, needs no listing.
 `reference_table3.sv` (passes) and `bad_table3.sv` (a row compare a stage
 early, refused) hold it.
 
+**A table read through an input port** (OA-492 (3)). A sibling's hold
+register, written at its stage and read here a stage early, never in a
+cycle it is written, is declared in the reader's `<module>.feedback.json`:
+`{"tables": {"<input port>": {"reader", "ahead", "writer":
+"<instance>.<register>", "assert", "control", "by", "date", "why"}}}`
+(`"table"` takes the same entry). The lint refuses it unless `by` is an
+architect; the reader reads the port; `ahead` is the port's stage less the
+reader's own; in every parent instantiating the module, the port is fed
+directly by that instance's output driven by that register; the module
+holds the named assertion that the read never meets a write; and the
+bench names its control. Then the read counts at the reader's stage.
+`reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
+`bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
+assertion are refused.
+
 **Across a connection** (OA 481-483; TI-554..556; MI-35). A child's port
 tags are its own numbering, not its parent's: a parent may feed a child's
 `cq01h` input from a `cq04h` net. So a connection is held to the
@@ -1109,7 +1124,11 @@ depth NGD-1 to NGD-6 and a block's own checks count it, and the 25 includes
 the tree. The paths it put over the stage then sit, each capped at its
 depth, in `rtl/ngd-fanout-baseline.json`; `rtl/ngd-ratchet.json`'s
 `fanout` holds the caps, which only fall, and an entry leaves once its path
-meets the stage. NGD-7, and a block's outputs straight from a flop, are
+meets the stage. One exception, until block-level assembly gives bottom-up
+budgets (Daniel, 2026-11-24, DA tab rev 134): an OOE path already on the
+ratchet may rise up to 30 NGD where needed to move forward, its cap raised
+above its baseline but never past 30. New paths and non-OOE paths keep 25,
+and the caps fall again once assembly rebalances the budgets. NGD-7, and a block's outputs straight from a flop, are
 measured without it. The
 static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
 XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over
