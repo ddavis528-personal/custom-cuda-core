@@ -655,11 +655,14 @@ inline const OpInfo *opByCode(unsigned c) {
 /// wrap -- a reused id would let a response match the wrong request.
 class IdPool {
 public:
-  /// `cap_env`, if set in the environment, narrows the pool below the
-  /// width for a coverage run: the exhaustion path a wider hop no longer
-  /// reaches (CCV_MIU_DCU_IDS; MA-6 widened MIU -> DCU to 64 ids).
-  explicit IdPool(unsigned chan, const char *cap_env = nullptr)
+  /// `cap` narrows the pool below the width when the block holds fewer ids
+  /// than its req_id can name (MIU's CCV_MIU_DCU_IDS, 160 inside 8 bits;
+  /// MA-34). `cap_env`, if set in the environment, narrows it further for a
+  /// coverage run: the exhaustion path a wider hop no longer reaches
+  /// (CCV_MIU_DCU_IDS=16; MA-6 widened MIU -> DCU to 64 ids).
+  explicit IdPool(unsigned chan, const char *cap_env = nullptr, unsigned cap = 0)
       : n_(1u << field(chan, "req_id").width) {
+    if (cap >= 1 && cap < n_) n_ = cap;
     if (const char *v = cap_env ? std::getenv(cap_env) : nullptr; v && *v) {
       const unsigned c = unsigned(std::strtoul(v, nullptr, 10));
       if (c >= 1 && c < n_) n_ = c;

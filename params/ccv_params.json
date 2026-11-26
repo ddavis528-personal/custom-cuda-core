@@ -277,6 +277,39 @@
       "doc": "Lookup entries in each DCU bank's queue, and MIU's entry credits for that bank (MA-25): a hard reservation, so DCU never refuses a request and never holds more. MIU's counters reset full, a request to the bank spends one at send, and DCU returns one on ccv_dcu_miu_cred's ent_ret as an entry leaves the queue (answered, or gone to MLC as a miss; a fill uses its fill buffer, not an entry). The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_QDEPTH overrides it in both for a test of the hold."
     },
     {
+      "name": "CCV_DCU_MSHR_PER_BANK",
+      "value": 16,
+      "status": "arch",
+      "source": "MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419)",
+      "require": "CCV_DCU_MSHR_PER_BANK >= 1",
+      "doc": "Miss buffers (MSHRs) in each L1 bank: dcu_mshr is CCV_DCU_BANKS instances of this many entries, a miss's DCU -> MLC req_id {bank, entry} (MA-34; DCU tab rev 147). With 8 banks, 128 lines in flight at the DRAM latency (Daniel's option B, DA rev 136, over 64 and 192)."
+    },
+    {
+      "name": "CCV_DCU_MSHR",
+      "value": 128,
+      "status": "arch",
+      "source": "MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419)",
+      "derive": "CCV_DCU_BANKS * CCV_DCU_MSHR_PER_BANK",
+      "require": "CCV_DCU_MSHR <= 2 ** CCV_P_W_REQ_DCU_MLC",
+      "doc": "Lines DCU holds in flight to MLC, all banks: CCV_DCU_BANKS x CCV_DCU_MSHR_PER_BANK, inside the DCU -> MLC req_id space (MA-34)."
+    },
+    {
+      "name": "CCV_MIU_DCU_IDS",
+      "value": 160,
+      "status": "arch",
+      "source": "MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419)",
+      "require": "(CCV_MIU_DCU_IDS <= 2 ** CCV_P_W_REQ_MIU_DCU) * (CCV_MIU_DCU_IDS >= CCV_DCU_MSHR + 4 * CCV_DCACHE_LOOKUPS) == 1",
+      "doc": "MIU's ids for ccv_miu_dcu_req, the accesses it holds outstanding at DCU (MA-34; MIU tab rev 236): every line DCU can have in flight to MLC plus four cycles of lookups at full rate, inside the req_id space. MIU's return state holds one entry per id."
+    },
+    {
+      "name": "CCV_MIU_MEMOPS_INFLIGHT",
+      "value": 8,
+      "status": "arch",
+      "source": "MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419)",
+      "require": "CCV_MIU_MEMOPS_INFLIGHT >= CCV_MIU_PIPES",
+      "doc": "Memops MIU tracks in flight between issue and completion, each with a record (bin miu_memop_rec_full when all are taken; MA-34, AR 419 (2)). CCV_MIU_PIPES stays 4: the AGU pipes are not the in-flight limit."
+    },
+    {
       "name": "CCV_DCU_BANK_STDATA",
       "value": 12,
       "status": "tunable",
@@ -1603,7 +1636,7 @@
     },
     {
       "name": "CCV_P_TIMEOUT_MEMOP",
-      "value": 40960,
+      "value": 6144,
       "status": "provisional",
       "derive": "((CCV_MEMOP_CREDITS * CCV_WARP_LANES + 2 ** CCV_P_W_REQ_DCU_MLC - 1) // 2 ** CCV_P_W_REQ_DCU_MLC) * CCV_P_TIMEOUT_MEM",
       "source": "AR rev 350 (re TI rev 424, AR 349); AR-410 (re TI-531): derived from the fill rounds a full queue can wait",
@@ -1612,7 +1645,7 @@
     },
     {
       "name": "CCV_P_TIMEOUT_UOP",
-      "value": 40960,
+      "value": 6144,
       "status": "provisional",
       "derive": "CCV_P_TIMEOUT_MEMOP",
       "require": "CCV_P_TIMEOUT_UOP >= CCV_P_TIMEOUT_MEMOP",
@@ -1711,18 +1744,18 @@
     },
     {
       "name": "CCV_P_W_REQ_MIU_DCU",
-      "value": 6,
+      "value": 8,
       "status": "provisional",
-      "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixty-four outstanding cache accesses: hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).",
+      "source": "MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419)",
+      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). CCV_MIU_DCU_IDS, 160 outstanding cache accesses, inside 8 bits (MA-34, Daniel's B, DA rev 136; was 6 bits, sixty-four): hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
       "name": "CCV_P_W_REQ_DCU_MLC",
-      "value": 4,
+      "value": 7,
       "status": "provisional",
-      "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on DCU -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen fills in flight, i.e. sixteen MSHRs.",
+      "source": "MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419)",
+      "doc": "req_id on DCU -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). 128 fills in flight, CCV_DCU_MSHR: 16 miss buffers in each of the 8 L1 banks, the id {bank, entry} (MA-34, Daniel's B, DA rev 136; was 4 bits, sixteen MSHRs).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
@@ -1735,10 +1768,10 @@
     },
     {
       "name": "CCV_P_W_REQ_MLC_EXB",
-      "value": 6,
+      "value": 8,
       "status": "provisional",
-      "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MLC -> EXB: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). The TL-C source-id width the tilelink_tlc sizing assumed (6 bits), so EXB maps it without translation.",
+      "source": "AR 417, AR 419 (DA rev 136)",
+      "doc": "req_id on MLC -> EXB: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). MLC holds 2^7 DCU misses + 2^2 FET ifills = 132 to EXB, plus its writebacks, inside 256 ids (AR 417, AR 419; was 6 bits, the TL-C source-id width the tilelink_tlc sizing assumed). The read class measures MIU's and DCU's queues, so the id space must not be the cap it finds.",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
