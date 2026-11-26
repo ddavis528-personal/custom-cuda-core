@@ -172,7 +172,7 @@ constexpr uint32_t kAOp = 0, kAParam = 3, kASize = 6, kASrc = 10, kAAddr = 16,
                    kAMask = 64, kAData = 128;
 constexpr uint32_t kAValid = 1222;                // a_valid, c_valid, e_valid
 // D channel, above B in tl_in
-constexpr uint32_t kDOp = 641, kDSize = 646, kDSrc = 650, kDData = 661;
+constexpr uint32_t kDOp = 641, kDSize = 646, kDSrc = 650, kDSink = 656, kDData = 661;
 constexpr uint32_t kDValid = 1175;                // b_valid 1174, d_valid 1175
 constexpr uint32_t kTlSrcW = 6;
 
@@ -285,7 +285,8 @@ private:
     Bits r = msgOf(ch().ext_exb);
     r.set(kDOp, 3, op);
     r.set(kDSize, 4, kTlSizeLine);
-    r.set(kDSrc, kTlSrcW, src);
+    r.set(kDSrc, kTlSrcW, src & ((1u << kTlSrcW) - 1));
+    r.set(kDSink, 4, src >> kTlSrcW);   // MLC's ids past TL's 6-bit source ride the unused sink (AR 417/420; MA's p1 knobs)
     r.setBit(kDValid, true);
     return r;
   }
@@ -297,7 +298,7 @@ private:
       const Bits &a = m.payload;
       if (!a.bit(kAValid)) { k_.fail("testbench: a link message with no A beat"); continue; }
       const unsigned op = unsigned(a.get(kAOp, 3));
-      const unsigned src = unsigned(a.get(kASrc, kTlSrcW));
+      const unsigned src = unsigned(a.get(kASrc, kTlSrcW)) | unsigned(a.get(kAParam, 3)) << kTlSrcW;
       const uint64_t addr = a.get(kAAddr, 48);
       if (addr % kLine || a.get(kASize, 4) != kTlSizeLine)
         k_.fail("testbench: not a whole-line access at %llx", (unsigned long long)addr);
@@ -371,7 +372,9 @@ private:
         Bits t = msgOf(c.exb_ext);
         t.set(kAOp, 3, wr ? kTlPutFull : kTlGet);
         t.set(kASize, 4, kTlSizeLine);
-        t.set(kASrc, kTlSrcW, get(m.payload, c.mlc_exb, "req_id"));
+        { const unsigned rid = unsigned(get(m.payload, c.mlc_exb, "req_id"));
+          t.set(kASrc, kTlSrcW, rid & ((1u << kTlSrcW) - 1));
+          t.set(kAParam, 3, rid >> kTlSrcW); }   // ids past TL's 6-bit source ride the Get's unused param (AR 417/420)
         t.set(kAAddr, 48, get(m.payload, c.mlc_exb, "phys_addr"));
         t.setBit(kAValid, true);
         if (wr) {
@@ -385,7 +388,7 @@ private:
     if (has(c.ext_exb, 0)) {
       Receiver::Msg m = take(c.ext_exb, 0);
       const Bits &d = m.payload;
-      const unsigned src = unsigned(d.get(kDSrc, kTlSrcW));
+      const unsigned src = unsigned(d.get(kDSrc, kTlSrcW)) | unsigned(d.get(kDSink, 4)) << kTlSrcW;
       bool whole = true;
       Line l{};
       if (!d.bit(kDValid)) {
