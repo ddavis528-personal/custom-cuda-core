@@ -76,14 +76,14 @@ module dcu_mshr #(
   parameter  int WO    = $clog2(ccv_prov_pkg::CCV_P_LINE_BYTES),     // line offset, 7
   parameter  int WF    = ccv_prov_pkg::CCV_DCU_WAYPRED_BITS,         // fold, 4
   parameter  int WC    = ccv_prelim_pkg::CCV_L_W_COH_OP,             // coh_op, 4
-  parameter  int WE    = ccv_prov_pkg::CCV_P_W_REQ_DCU_MLC,          // entry id, 4
+  parameter  int WE    = ccv_prov_pkg::CCV_P_W_REQ_DCU_MLC,          // entry id, 7
   parameter  int LD    = 4,                                          // merge list
   parameter  int WST   = 4,                                          // store-data index
   parameter  int NCR   = ccv_params_pkg::CCV_CREDIT_DEPTH,           // req credits, 4
   parameter  int WCID  = ccv_params_pkg::CCV_W_CORE_ID,              // 2
   parameter  int CID   = ccv_prov_pkg::CCV_P_CORE_ID,
   parameter  int WTS   = 10,                                         // retry stamp (DI-35)
-  localparam int NE    = 1 << WE,                                    // 16
+  localparam int NE    = ccv_params_pkg::CCV_DCU_MSHR_PER_BANK,      // 16 (one bank's, until MA-34's split)
   localparam int WL    = WA - WO,                                    // line, 41
   localparam int WSL   = SLOTS > 1 ? $clog2(SLOTS) : 1,              // 2
   localparam int WB    = NBK > 1 ? $clog2(NBK) : 1,                  // 3
