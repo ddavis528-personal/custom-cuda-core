@@ -1302,6 +1302,53 @@ else
   fi
 fi
 rm -rf "$cb/o"
+# One bank's miss buffers bound a memop's wait (AR 421, AR 422 (1); MA-34):
+# CCV_P_TIMEOUT_MEMOP counts fill rounds of CCV_DCU_MSHR_PER_BANK, since a
+# stream of one bank's lines waits on that bank's buffers alone. colwalk-p1k,
+# a 1 KiB row pitch, puts its four warps' lines in one bank: at
+# CCV_TB_LATENCY=1000 it passes at the derived watchdog, and its longest
+# memop credit hold is past the bound the whole id space would give
+# (2^CCV_P_W_REQ_DCU_MLC a round), so the old denominator fires.
+pb=$B/colwalk-p1k-bank; rm -rf "$pb"; mkdir -p "$pb"
+pbl=$B/kernel_colwalk-p1k-bank.log
+old=$(python3 - <<'PY'
+import json
+d = json.load(open("params/ccv_params.json"))
+v = {p["name"]: p["value"] for p in (d["params"] if isinstance(d, dict) else d)}
+r = 2 ** v["CCV_P_W_REQ_DCU_MLC"]
+print((v["CCV_MEMOP_CREDITS"] * v["CCV_WARP_LANES"] + r - 1) // r * v["CCV_P_TIMEOUT_MEM"])
+PY
+)
+if ! CCV_ORACLE_DIR="$pb/o" tools/gen-oracle.sh test/bench/colwalk-p1k >"$pb/oracle.log" 2>&1; then
+  bad "colwalk-p1k: one bank's memop watchdog" "no oracle: $(grep -m1 FAIL "$pb/oracle.log")"
+else
+  CCV_TB_LATENCY=1000 "$SKEL" --kernel "$pb/o/colwalk-p1k/oracle.jsonl" >"$pbl" 2>&1
+  rwn=$(grep -c 'response_within_n' "$pbl")
+  other=$(grep -c '^CHECK' "$pbl")
+  asrt=$(grep -c '%Error' "$pbl")
+  mh=$(sed -n 's/^BPAGE ccv_ooe_miu_memop max=\([0-9]*\) .*/\1/p' "$pbl")
+  wd=$(sed -n 's/^BPAGE ccv_ooe_miu_memop .*watchdog=\([0-9]*\).*/\1/p' "$pbl")
+  if [ "$rwn" = 0 ] && [ "$other" = 0 ] && [ "$asrt" = 0 ] && [ "$(field "$pbl" finished)" = 1 ] &&
+     [ "${mh:-0}" -gt "$old" ]; then
+    rm -rf "$B/skel-memop-old"; cp -a "$B/skel" "$B/skel-memop-old"
+    sed -e "s/ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP/$old/" \
+      rtl/generated/ccv_common_chk_bank.sv >"$pb/bank-memop-old.sv"
+    if ! tools/build-skel.sh "$B/skel-memop-old" "$pb/bank-memop-old.sv"; then
+      bad "colwalk-p1k: one bank's memop watchdog control" "the $old bank does not build ($B/skel-memop-old.log)"
+    else
+      CCV_TB_LATENCY=1000 "$B/skel-memop-old/ccv-skel" --kernel "$pb/o/colwalk-p1k/oracle.jsonl" >"$pb/ctl.log" 2>&1
+      if grep -q 'u_ooe_miu_memop_s[0-9]*.*response_within_n' "$pb/ctl.log"; then
+        say "colwalk-p1k: one bank's memop watchdog" "PASS (longest memop hold $mh of $wd at CCV_TB_LATENCY=1000; at the whole id space's $old it fires)"
+      else
+        bad "colwalk-p1k: one bank's memop watchdog control" "with the memop watchdog at $old, no response_within_n on ccv_ooe_miu_memop (hold $mh)"
+      fi
+    fi
+    rm -rf "$B/skel-memop-old" "$B/skel-memop-old.log"
+  else
+    bad "colwalk-p1k: one bank's memop watchdog" "$rwn response_within_n, $other CHECK, $asrt assertions, finished=$(field "$pbl" finished), memop hold ${mh:-none} (want 0, 0, 0, 1, >$old): if the hold is under $old, a kernel with more memops in flight (AR 422 (1))"
+  fi
+fi
+rm -rf "$pb/o"
 # DCU marks a line owned only on MLC's grant (ccv_mlc_dcu_rsp.ownership):
 # refused it, predswap's first spill (AcquireBlock) and vadd's whole-line
 # store (AcquirePerm) each stop at DCU's check.

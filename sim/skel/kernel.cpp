@@ -159,7 +159,8 @@ namespace {
 
 // The testbench link: the flattened TL-C bundle CCV_L_W_TL_OUT / _IN were
 // sized from -- A + C + E out, B + D in, each channel's fields at the stated
-// parameters (512-bit beat, 48-bit address, 6-bit source, 4-bit sink), then a
+// parameters (512-bit beat, 48-bit address, CCV_L_W_TL_SOURCE-bit source, which
+// is MLC's req_id width (AR 422), 4-bit sink), then a
 // valid bit per TL channel at the top. A 128-byte line is therefore a
 // TWO-BEAT burst, and EXB is where the sequencer lives. Flattened versus
 // decomposed is still the EXB session's decision (tilelink_tlc).
@@ -168,13 +169,18 @@ constexpr uint32_t kBeat = 64;                    // bytes per beat
 constexpr uint32_t kBeats = kLine / kBeat;        // beats per line
 constexpr uint32_t kTlSizeLine = 7;               // log2(128)
 // A channel, at the bottom of tl_out
-constexpr uint32_t kAOp = 0, kAParam = 3, kASize = 6, kASrc = 10, kAAddr = 16,
-                   kAMask = 64, kAData = 128;
-constexpr uint32_t kAValid = 1222;                // a_valid, c_valid, e_valid
+constexpr uint32_t kTlSrcW = ccv::prelim::kWTlSource;    // 8 (AR 422)
+constexpr uint32_t kTlA = 635 + kTlSrcW, kTlC = 571 + kTlSrcW, kTlB = kTlA,
+                   kTlD = 527 + kTlSrcW;                   // channel widths
+constexpr uint32_t kAOp = 0, kAParam = 3, kASize = 6, kASrc = 10, kAAddr = kASrc + kTlSrcW,
+                   kAMask = kAAddr + 48, kAData = kAMask + 64;
+constexpr uint32_t kAValid = kTlA + kTlC + 4;     // a_valid, c_valid, e_valid
 // D channel, above B in tl_in
-constexpr uint32_t kDOp = 641, kDSize = 646, kDSrc = 650, kDSink = 656, kDData = 661;
-constexpr uint32_t kDValid = 1175;                // b_valid 1174, d_valid 1175
-constexpr uint32_t kTlSrcW = 6;
+constexpr uint32_t kDOp = kTlB, kDSize = kDOp + 5, kDSrc = kDSize + 4, kDSink = kDSrc + kTlSrcW,
+                   kDData = kDSink + 4 + 1;
+constexpr uint32_t kDValid = kTlB + kTlD + 1;     // b_valid, then d_valid
+static_assert(kAValid + 3 == ccv::prelim::kWTlOut, "tl_out layout != CCV_L_W_TL_OUT");
+static_assert(kDValid + 1 == ccv::prelim::kWTlIn, "tl_in layout != CCV_L_W_TL_IN");
 
 void putBeat(Bits &b, uint32_t lsb, const Line &l, unsigned beat) {
   for (unsigned k = 0; k != kBeat; ++k) b.set(lsb + 8 * k, 8, l[beat * kBeat + k]);
@@ -285,8 +291,7 @@ private:
     Bits r = msgOf(ch().ext_exb);
     r.set(kDOp, 3, op);
     r.set(kDSize, 4, kTlSizeLine);
-    r.set(kDSrc, kTlSrcW, src & ((1u << kTlSrcW) - 1));
-    r.set(kDSink, 4, src >> kTlSrcW);   // MLC's ids past TL's 6-bit source ride the unused sink (AR 417/420; MA's p1 knobs)
+    r.set(kDSrc, kTlSrcW, src);
     r.setBit(kDValid, true);
     return r;
   }
@@ -298,7 +303,7 @@ private:
       const Bits &a = m.payload;
       if (!a.bit(kAValid)) { k_.fail("testbench: a link message with no A beat"); continue; }
       const unsigned op = unsigned(a.get(kAOp, 3));
-      const unsigned src = unsigned(a.get(kASrc, kTlSrcW)) | unsigned(a.get(kAParam, 3)) << kTlSrcW;
+      const unsigned src = unsigned(a.get(kASrc, kTlSrcW));
       const uint64_t addr = a.get(kAAddr, 48);
       if (addr % kLine || a.get(kASize, 4) != kTlSizeLine)
         k_.fail("testbench: not a whole-line access at %llx", (unsigned long long)addr);
@@ -372,9 +377,7 @@ private:
         Bits t = msgOf(c.exb_ext);
         t.set(kAOp, 3, wr ? kTlPutFull : kTlGet);
         t.set(kASize, 4, kTlSizeLine);
-        { const unsigned rid = unsigned(get(m.payload, c.mlc_exb, "req_id"));
-          t.set(kASrc, kTlSrcW, rid & ((1u << kTlSrcW) - 1));
-          t.set(kAParam, 3, rid >> kTlSrcW); }   // ids past TL's 6-bit source ride the Get's unused param (AR 417/420)
+        t.set(kASrc, kTlSrcW, get(m.payload, c.mlc_exb, "req_id"));
         t.set(kAAddr, 48, get(m.payload, c.mlc_exb, "phys_addr"));
         t.setBit(kAValid, true);
         if (wr) {
@@ -388,7 +391,7 @@ private:
     if (has(c.ext_exb, 0)) {
       Receiver::Msg m = take(c.ext_exb, 0);
       const Bits &d = m.payload;
-      const unsigned src = unsigned(d.get(kDSrc, kTlSrcW)) | unsigned(d.get(kDSink, 4)) << kTlSrcW;
+      const unsigned src = unsigned(d.get(kDSrc, kTlSrcW));
       bool whole = true;
       Line l{};
       if (!d.bit(kDValid)) {
