@@ -1770,6 +1770,7 @@
       "name": "CCV_P_W_REQ_MLC_EXB",
       "value": 8,
       "status": "provisional",
+      "require": "2 ** CCV_P_W_REQ_MLC_EXB >= 2 ** CCV_P_W_REQ_DCU_MLC + 2 ** CCV_P_W_REQ_FET_MLC",
       "source": "AR 417, AR 419 (DA rev 136)",
       "doc": "req_id on MLC -> EXB: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). MLC holds 2^7 DCU misses + 2^2 FET ifills = 132 to EXB, plus its writebacks, inside 256 ids (AR 417, AR 419; was 6 bits, the TL-C source-id width the tilelink_tlc sizing assumed). The read class measures MIU's and DCU's queues, so the id space must not be the cap it finds.",
       "decided_at": "the owning block's session, from its outstanding window"
