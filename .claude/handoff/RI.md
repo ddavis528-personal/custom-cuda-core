@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 9f124ce6 (2026-11-23 sweep, PASS full). Earlier: c3f77676 (11-22 sweep); 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: 21dd6b95 (2026-11-24 sweep, PASS full). Earlier: bd3bf7b8 (handoff, credit module); 9f124ce6 (11-23 sweep); c3f77676 (11-22 sweep); 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,12 +57,22 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-30. DONE (2026-11-24 sweep) PASS full, pushed 21dd6b95 (ri-sweep24 in ri-wt). Merged: infra 152, 9eb50716 33,
+   miu-dcu-spec 20, 58815650 (MI) 12 (resolve), 80102643 4, 57eff422 (OI) 2; no conflicts (1-base branches first).
+   Register: nothing for RI (AR 415/416 credit module, see -29; OA 484 RCU feedback decl signed by RA; OA 485 RCU's
+   16 schema-channel ports excused untagged; TI-557 RCU 0 back edges; no RCU conn-ratchet entries). Bookmarks:
+   Conv 20 AR 421 OA 502 IS 201 TI 582 OI 426 CP 160 DA 134 RA 159 RI 92 MA 211 MI 68 DI 93.
 -29. OPEN (waits on TI) TI-537 (DA): one common RTL credit module in rtl/common (TI): ccv_common_cr_src (sender),
    cr_go (comb helper), cr_dst (receiver credit return). No new per-block credit counters from now on. Once it
    lands, migrate rcu_kill (41 credit-on-landing flops) and rcu_mig (map/rau_mig pending-count returns, pca_mig
    credit on write, rcu_pca_mig demotion sender counter) onto it. RI-63 (rev 92) gave TI those ends; noticed TI.
    RA 159 adds rcu_kill's CSR responder credit; TI-539/540 cover all of it (no_flop credit flop WIDTH 41, owed
    counter with rel_n + kill-drop count sized by queue depth, release-at-write, REG form for rcu_pca_mig).
+   TI-541 (DA, AR 415 (5)): a credit/stall port may reach its own channel's valid in-cycle only via cr_go; the
+   registered form stays legal at +1 depth. AR 415/416: at a flopped end cr_src is only the counter (valid is go,
+   the boundary flop is the repeater's); each end's form (COMB full rate at 4+2N; REG/LATE need 4+2N+1) is declared
+   per end in params/links.json by the sender's architect (RA for RCU's), TI's generator adds the +1. TI holds the
+   one credit:true waiver; migration removes rcu_kill's own credit waivers (flops still count in RCU's 2%).
 -28. DONE (2026-11-23 sweep) PASS full, pushed 9f124ce6 (ri-sweep23 in ri-wt). Merged: infra 154 (carried doowtf,
    c22116ce, 3868632d, 126afa13, 57eff422), 58815650 (MI) 18, 5e4d6c70 (DI) 8, 80102643 6, 9eb50716 3,
    miu-dcu-spec 3; no conflicts. Merging the 1-base infra first cut the others' bases to 1-2 (fast). Register:
