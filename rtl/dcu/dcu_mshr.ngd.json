@@ -222,6 +222,30 @@
       "by": "MA (DCU tab rev 104's rule; the D2 hand-off of DI-36's update, tab rev 112)",
       "date": "2026-11-23",
       "why": "From dcu_btag's flops (the tab's row 'dcu_mshr inputs from dcu_btag and dcu_cap', arrival 0)."
+    },
+    "flv_cc05h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
+    },
+    "fbk_cc05h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
+    },
+    "fwpa_cc06h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
+    },
+    "fwfold_cc06h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
     }
   }
 }
