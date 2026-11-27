@@ -24,5 +24,5 @@ step "oracles"        tools/gen-oracle.sh
 step "SV-hosted build" tools/check-sv-hosted.sh --build-only
 step "walkthrough"    python3 tools/gen-walkthrough.py
 echo "  changed:"
-git status --short -- sim/generated rtl/generated rtl/top docs/payload-spec.md \
+git status --short -- sim/generated rtl/generated rtl/top test/top docs/payload-spec.md \
   docs/trust-report.md docs/walkthrough.md | sed 's/^/    /'

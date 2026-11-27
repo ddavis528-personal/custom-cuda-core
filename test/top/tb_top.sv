@@ -15,7 +15,7 @@ module tb;
   logic [32:0] csr_rsp;
   logic csr_credit;
   logic exb_ext_out_valid;
-  logic [1224:0] exb_ext_out_payload;
+  logic [1228:0] exb_ext_out_payload;
   logic exb_ext_out_credit = '0;
   logic exb_ext_out_wake;
 `ifdef CCV_TRACE
