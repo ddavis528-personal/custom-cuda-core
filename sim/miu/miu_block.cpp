@@ -1175,11 +1175,19 @@ private:
         k_.hit("credit_hold");
         return false;
       }
+      // One lookup a bank a cycle (MA-27; DCU's CHECK): the fill yields to
+      // a bank this cycle's first passes or an earlier fill took, and
+      // advance() keeps later passes off the fill's (wf_banks_; TI-544).
+      if ((firstPassBanks() | wf_banks_) >> bankOf(line) & 1u) {
+        k_.hit("window_fill_bank_wait");
+        return false;
+      }
       const uint32_t owned = firstPassSlots();
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
         if ((owned >> s & 1u) || !free(c.miu_dcu, s)) continue;
         if (!ids_.any(s)) { idStall(s); continue; }
         bankTake(bankOf(line), false);
+        wf_banks_ |= 1u << bankOf(line);
         if (fill_held_.erase(tag)) k_.hit("credit_hold_then_sent");
         Bits r = msgOf(c.miu_dcu);
         const unsigned id = ids_.take(s);
@@ -1879,6 +1887,15 @@ private:
     noHit(j.issue_at, j.memop_slot, j.tag, j.rs_idx, j.tid);
   }
 
+  /// The banks this cycle's first passes look up (drops look up none).
+  uint32_t firstPassBanks() const {
+    uint32_t m = 0;
+    for (const Job &j : jobs_)
+      if (j.first && j.h + 1 == now_)
+        for (const auto &e : j.fp) m |= 1u << bankOf(j.lines[e.second].line);
+    return m;
+  }
+  uint32_t wf_banks_ = 0;   ///< banks this cycle's window fills took, cleared in advance()
   /// The slots this cycle's first passes own: none of them is idle.
   uint32_t firstPassSlots() const {
     uint32_t m = 0;
@@ -2036,6 +2053,9 @@ private:
     if (want && !ids_.anyFree()) k_.hit("dcu_id_wait");
     uint32_t used = 0;
     std::set<unsigned> banks;
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
+      if (wf_banks_ >> b & 1u) banks.insert(b);
+    wf_banks_ = 0;
     auto request = [&](Job &job_, unsigned idx, unsigned s) {
       LineReq &lr = job_.lines[idx];
       lr.sent = true;
@@ -2141,6 +2161,11 @@ private:
       if (older_held_lines.count(fl) || older_held_banks.count(fb) || !a1Gate(fb) || !bankCan(fb, false)) {
         bank_held_.insert({j.serial, idx});
         k_.hit("credit_hold");
+        // MI-27 (1)'s price: held only because another bank is short, the
+        // leader's own gate (and everything else) sufficient.
+        if (gate_all_ && !older_held_lines.count(fl) && !older_held_banks.count(fb) &&
+            leaderGate(fb) && bankCan(fb, false))
+          k_.hit("credit_hold_other_bank");
         loseFirstPass(j, "l1_first_held");
         continue;
       }
@@ -2442,6 +2467,9 @@ private:
         if (!((a1_used_prev_ >> x & 1u) ? ge2_b_[x] : ge1_b_[x])) return false;
       return true;
     }
+    return leaderGate(b);
+  }
+  bool leaderGate(unsigned b) const {
     const bool used = a1_used_prev_ >> b & 1u;
     return used ? ge2_b_[b] : ge1_b_[b];
   }
