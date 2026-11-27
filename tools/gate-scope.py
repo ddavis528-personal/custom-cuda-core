@@ -44,6 +44,13 @@ RCU_READERS = {
     # runs check-sv-hosted whole on its split tree.
     "tools/check-sv-hosted.sh": ["svh", "links"],
 }
+# Readers that name rtl/rcu/ but run in every gate, scoped or not, each with
+# the ALWAYS sections that run it: lint-rtl.py's signer table (DA-135; also
+# run by check-docs before any section) and check-1d's signer fixtures.
+ALWAYS_READERS = {
+    "tools/lint-rtl.py": ["s1d"],
+    "tools/check-1d.sh": ["s1d"],
+}
 # First match wins: the more specific prefix comes first.
 MAP = [
     # The sources of truth everything is generated from, and the gate itself.
@@ -294,8 +301,11 @@ def selftest():
     for x, js in RCU_READERS.items():
         expect(set(js) <= set(RCU_RTL),
                "RCU_READERS maps %s to sections outside RCU_RTL: %s" % (x, js))
+    for x, js in ALWAYS_READERS.items():
+        expect(set(js) <= set(ALWAYS),
+               "ALWAYS_READERS maps %s to sections outside ALWAYS: %s" % (x, js))
     for x in rcu_rtl_readers():
-        if x not in RCU_READERS:
+        if x not in RCU_READERS and x not in ALWAYS_READERS:
             bad.append("rtl/rcu/ is read by %s, outside RCU_RTL's sections: map it there" % x)
     # Its control: a tree where the top instantiates an RCU module and a
     # script names the directory must show both.
