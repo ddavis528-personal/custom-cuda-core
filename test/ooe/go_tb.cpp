@@ -121,8 +121,8 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
   clearAll(dut->hv_cq01h, S * H);
   clearAll(dut->ha_cq01h, S * H * PA);
   clearAll(dut->px_cq01h, 4 * LX);
-  clearAll(dut->pl_cq01h, 4 * (R + 1));
-  for (unsigned r = 0; r != 4; ++r) setBit(dut->pl_cq01h, r * (R + 1), true);   // no correction: the model's credit is on time
+  clearAll(dut->pl_cq02h, 4 * (R + 1));
+  for (unsigned r = 0; r != 4; ++r) setBit(dut->pl_cq02h, r * (R + 1), true);   // no correction: the model's credit is on time
   clearAll(dut->unmet_g_cq01h, S * LU);
   clearAll(dut->unmet_p_cq01h, S * LU);
   clearAll(dut->room_g_cq01h, S * LU);
@@ -170,7 +170,7 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     unsigned k = unsigned(split_rng() % (R + 1));
     if (v + k > XM) k = 0;
     setField(dut->px_cq01h, r * LX, LX, std::min(v + k, XM));
-    for (unsigned j = 0; j != R + 1; ++j) setBit(dut->pl_cq01h, r * (R + 1) + j, j == (control == "no-corr" ? 0 : k));
+    for (unsigned j = 0; j != R + 1; ++j) setBit(dut->pl_cq02h, r * (R + 1) + j, j == (control == "no-corr" ? 0 : k));
   }
   for (unsigned s = 0; s != S; ++s) {
     const auto &q = g->adm[s];

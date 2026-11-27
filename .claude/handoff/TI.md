@@ -38,7 +38,7 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-24: see the file. Last row TI-552. Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-580 (rev 582). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -75,21 +75,30 @@ background `while pgrep` wait.
   coremark128). AR 405 leaves MA to state the mispredict path; a DCU
   response field for it would be a new TI row.
 
-## In flight (11-24)
-- LANDED b780f324 on both branches (RESUMED SCOPED PASS 28/28): AR-410, testbench
-  20+-5 seeded, swap class vadd6, MLC_HIT_MAX 28, re-pins, MA-32, dcu-wb-refetch
-  unit-held (DI-49). TI-552 told DI (merge b9aeadc7), MI, MA. Cycles old (4e3dda64)
-  vs new table being measured (run-tabulate, worktrees ti-cyc-old/new): then a
-  row to AR (re-baseline, AR 411 (4)).
-- ti-tw (worktree /home/user/ti-tw, gate-scratch/TI-tw, on b780f324): OA-479 (b)
-  two-writer table lint (Daniel approved 11-24; TI-548), row-register tables
-  (DI-51, TI-549), a row's own RMW compare from its write enable (DI-53,
-  TI-550). OA accepted (OA-480). check-1d 45 lines. Gate-push next, after
-  the cycles measurement (one heavy job at a time). DI retries its fold-table
-  declaration on 8ac04d40; MA signs it.
-- Then: DI-38 re-pins on DI's b9aeadc7 tip (task 72); MI 29603c02 held-wait
-  re-pin when MI rings (task 80; MI-33/34, TI-551); OI-204 pc_kept at:11
-  lines (task 66); AR 417 (task 79); task 76 credit modules.
+## In flight
+- ti-pt (worktree /home/user/ti-pt, on landed 77f7849e): 9578fbef input-port
+  table form (OA-492 (3)) + b3834897 check-ngd OOE cap rise to 30 (DA rev 134).
+  Gate restarted with CCV_RESUME=1 after a disk-full stop; job log
+  /root/ccv-logs/job-gate-push-20261124-094150-3345.log. On landing: row to OI, OA.
+  Never edit ti-pt while it gates.
+- ti-hop (worktree /home/user/ti-hop, gate-scratch/TI-hop @ 02dbf5c4, on
+  b3834897): orphan check (MI-44), helper hops (OI-213), named crossings
+  (OA-494), cone + registered hop (OA-495), OA-496, writer-input exemption
+  (OI-217/OA-497/OI-219), OA-498/499 cone sources, OA-500 write-pipeline
+  fixed point (u_map's ten off), OA-501 helper crossing over a sibling-output
+  source (CCV_LINT_FIXTURE_UNITS for check-1d), OI's u_gfree declarations
+  (cherry-picked cf3ce683, 9ffba2bd, ade5d5a1, f05fad61: u_gfree ratchet
+  empty, 24 entries left). check-1d 68 PASS, tree lint 0. Gate-push right
+  after ti-pt lands (merge its landed tip first); ring OI, OA, MI, MA.
+- 11-24 daily sweep: register half done (TI-580). Repo half (daily-sweep.sh)
+  waits: run it after ti-pt and ti-hop land, never beside a gate.
+- Disk: landed worktrees' build/ dirs were cleared (ti-tw, ti-conn, ti-drop,
+  ti-l23, ti-fold). 12G free.
+- Then: OA signatures on u_gfree's child-to-child entries (rt_v/row wait on
+  OI's late-return control; OI drafts sa_l/rt_l); MI writes
+  ccv_miu.feedback.json at assembly; DI-38 (1) fill-unheld line (task 72,
+  needs DI's spec); MI 29603c02 held-wait re-pin (task 80); OI-204 pc_kept
+  at:11 lines (task 66); AR 417 (task 79); task 76 credit modules.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).

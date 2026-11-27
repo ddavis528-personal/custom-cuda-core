@@ -211,6 +211,14 @@ private:
       if (req.bit(mlsb + k)) l[k] = wd[k];
   }
 
+  /// A response as it leaves: the stored check bits of its line (MA-28 (c),
+  /// AR 401), as the stub's DCU does; p1 had not been sealing since then (AR 412).
+  Bits seal(Bits r) {
+    const Ch &c = ch();
+    const Line l = getLine(r, field(c.dcu_miu, "read_data").lsb);
+    putCheckBits(r, field(c.dcu_miu, "check_bits").lsb, l);
+    return r;
+  }
   /// A response to MIU answers its request by MIU's own req_id.
   Bits rspFor(const Bits &req) {
     Bits r = msgOf(ch().dcu_miu);
@@ -494,7 +502,7 @@ private:
         k_.fail("dcu: the refill promised on slot %u at cycle %llu has no credit",
                 it->q.slot, (unsigned long long)now_);
       else
-        send(c.dcu_miu, it->q.slot, it->q.msg, it->q.tid);
+        send(c.dcu_miu, it->q.slot, seal(it->q.msg), it->q.tid);
       --resv_[it->q.slot];
       busy_lines_.erase(it->line);
       it = promised_.erase(it);
@@ -505,7 +513,7 @@ private:
     }
     for (auto it = to_miu_.begin(); it != to_miu_.end();)
       if (free(it->slot)) {
-        send(c.dcu_miu, it->slot, it->msg, it->tid);
+        send(c.dcu_miu, it->slot, seal(it->msg), it->tid);
         it = to_miu_.erase(it);
       } else {
         ++it;
