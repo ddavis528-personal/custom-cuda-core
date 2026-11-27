@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
-  MA 197, MI 53, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MA 197, MI 54, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
   MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
   deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
@@ -83,28 +83,22 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    until it lands, then swaps. MI rev 42 told TI miu_cred's needs; TI-538/539 full form, ccv_common_cr_cnt (DEPTH, SPEND_W, REFUND_W,
    THRESH list); TI-541 (DA, AR 415 (5)): link credits keep the cr_go exception at a flopped sender, depths 4+2N (FYI).
    MI rev 43: no same-cycle return, capture stays in miu_cred. TI posts the port list after AR/OA/RA/MA.
-0z. MA RULED MI-27 (MA rev 196) and MI-28 (MA rev 197). IN FLIGHT (uncommitted on mi-dev, worktree):
-   - miu_ids reshaped: no rid port; release rl_cm06h frees the id read last cycle on port j (held qi_q);
-     reads qv/qid_cm05h, rs_cm04h lead, qe_cm06h. miu_ids.ngd.json: qid_cm05h arrival 0 (by MA rev 197),
-     outputs required 0. NGD 18.0/20.8 passes, CG 581 flops clean, bench + noskip/relnow/nodrop.
-   - miu_rcap NEW (qid's source, rid_cm13h out 0; miu_rcap.ngd.json): 1109 flops CG clean, NGD 1.7,
-     test/miu/rcap_tb.cpp + control early; cg-build/cg-units/run-rtl entries. MA: both sides one commit.
-   - Model: sim/miu/miu_ids.h MiuIds (quarter pick, free 3 cycles after a release or a drop's take)
-     replaces IdPool ids_ in miu_block.cpp; drops take+hold an id; bins dcu_id_quarter_empty,
-     dcu_id_drop_held; knobs CCV_MIU_IDS_BORROW, CCV_MIU_IDS_DROPFREE. NOT YET BUILT: tools/check-skel.sh,
-     then tools/check-kernel.sh (controls! dcu-drop-answers now sees a real req_id), then commit with RTL.
-   - Old price27 run killed. NEXT: pricing for MA (MI-27 + MI-28) on S1 (vadd), coremark32priv,
-     coremark128priv, a bank-skewed kernel, a divergent kernel (lane-parity branch or tail: find or
-     write); configs base, GATE_ALL, LEAD_POS, IDS_BORROW, IDS_DROPFREE; holds and bins per 1k loads,
-     and cycles; MA re-rules if any costs over 0.1% cycles.
-   - MI-27 ruling: build A1 as (b) (narrow 16-bit sum, 14-bit pick, set index, bank, valid; every-bank
-     gate). Measure at A2: (i) flopped leader one-hot, A2 AND-OR pick of S from agu8 flops + VPN add,
-     miu_tlb/miu_a2 at that arrival; (ii) fixed first-lane leader, drops priced; (iii) TLB dual-compare
-     (high VPN vs both R_hi candidates in parallel with the pick). Report disp/sh copy flop count.
-     MA's tab: form 6,900, ids 560 at its next edit.
-   - TI-544 (TI rev 542, Needs DI, MI): rope/ropediv fail one check under the model pair ("2 lookups due
-     in bank 0; A2 drops all but one", pre-existing); cm128 at CCV_TB_LATENCY=1000 watchdog. Answer
-     whether either should hold TI's landing (likely no: models only); investigate rope.
+0z. MI-27 (MA rev 196) / MI-28 (MA rev 197) BUILT on mi-dev (unpushed): 87731fb7 (miu_ids reshaped +
+   miu_rcap + MiuIds model; CCV_MIU_DCU_IDS cap now per quarter), 8c9a6cd5 (model: window fill keeps one
+   lookup a bank a cycle, TI-544; bin credit_hold_other_bank), cde9f4a1 (miu_lead (b): NGD 21.2/24.7,
+   199 flops 2 gates, lead_tb + controls used/scale/last; miu_pair a1q {sh2,sh1,disp16} per 4 lanes,
+   576 flops, a1f/a1x keep too). Model check-kernel: only --break dcu-wb-refetch (slotform) unnoticed under
+   CCV_MIU_IMPL=model, pre-existing (committed model too); told DI in MI-29.
+   - MI-29 (MI rev 54, TI+DI rung): TI-544 answered (rope fixed, nothing holds TI's landing; cm128
+     watchdog: asked whether it was under the MIU model).
+   - PRICING IN FLIGHT (detached): scratchpad price28.sh then price28b.sh (coremark128priv one at a time:
+     each >6 GB; two at once get OOM-killed), logs scratchpad/price28/<cfg>.<kernel>.log, table:
+     python3 scratchpad/tab28.py scratchpad/price28. So far (vadd, divtail, ropediv, colwalk-p1k, cm32priv):
+     no credit or id holds anywhere; GATE_ALL, BORROW, DROPFREE cost 0 cycles; LEAD_POS +2.1% ropediv, 0
+     elsewhere. When cm128 is in: MI-30 row to MA with the table, miu_lead's numbers, copy flops 576.
+   - Still owed to MA for MI-27: (i) A2's AND-OR pick of S on the one-hot + VPN add and (iii) TLB
+     dual-compare, measured with miu_a2/miu_tlb (not built). MA's tab: form 6,900, ids 560.
+   - Push: tools/gate-push.sh after pricing ends (the gate needs the memory).
 0b'''''. MI-28 (MI rev 53, MA rung): miu_ids built on local branch mi-ids-wip 89c24f05 (not on mi-dev):
    556 flops, CG clean; NGD 18.0 inside but qid 20.8 / rid 12.5 need arrival 0 (asked MA for miu_ids.ngd.json).
    tk = miu_lead's launch flop (sv_cm06h); drop dp_cm06h from miu_a2's flop a cycle on, id free 2 cycles later;
