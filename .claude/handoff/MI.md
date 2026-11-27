@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
-  MA 173, MI 44, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MA 173, MI 48, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
   MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
   deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
@@ -83,11 +83,13 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    until it lands, then swaps. MI rev 42 told TI miu_cred's needs; TI-538/539 full form, ccv_common_cr_cnt (DEPTH, SPEND_W, REFUND_W,
    THRESH list); TI-541 (DA, AR 415 (5)): link credits keep the cr_go exception at a flopped sender, depths 4+2N (FYI).
    MI rev 43: no same-cycle return, capture stays in miu_cred. TI posts the port list after AR/OA/RA/MA.
-0b''. MI-22 (MI rev 44, MA rung): miu_form port list drafted (MIU tab 165 has no miu_form row): H-1 in pe/pv from
-   miu_pair (new keep outputs), mqa view, issue_mask from miu_mq hi (new output); own 40:1 read + 128:1 table read;
-   writes from rau_miu_cta capture, window fill (miu_rsp later), kill clear; H out per slot win, wv, fsel{slot,local,elig},
-   wh, wl, rx, dh (lane-d one-hot). agu8: local via narrow adder (b=disp); slot form base 2:1 mux +1 NGD (or in miu_cap).
-   Building miu_form RTL to this draft meanwhile.
+0b''. MI-22/23 (MI revs 44-48, MA rung): miu_form built on mi-dev (bench form_tb, controls lane0/nohi1/noctx; NGD
+   24.3 ff / 22.5 in; check-cg not yet run: OOM beside the gate, rerun alone). NOT pushable until MA sets its port
+   budgets (ccv_miu has no unit: architect's). Ports: writes valid-then-fields (ctv_cm01h, ctc/ctl_cm02h; fv_cm01h,
+   fc/fm_cm02h, fw_cm03h); pen_cm03h (new miu_pair comb out), pe_cm04h (new miu_pair keep out), mqa, mqi (new miu_mq
+   issue_mask out); H out win, wv, fs{elig,local,slot}, wh, rk {ctx,hi+1,hi,lo8,bl}, dh. MI-23: R(ctx) is NOT wiring
+   (bases differ by 2LC+PW): (b) carry-select; ctx add into lo8 moved to miu_agu8 beside its narrow sum. Asked MA: which
+   kill clears window valids. Next: miu_pair pen/pe outs, miu_mq issue_mask out, miu_agu8 narrow adder + decision.
 0b'. MI-21 DECIDED (MA rev 176, MIU tab rev 165; bookmarks MA 178, MIU 165): miu_form at H-1 beside miu_pair owns
    window table, local_base, W, R(ctx), written from ccv_rau_miu_cta (own enables); flops at H per slot: window word,
    local scalar into disp, R(ctx) bits, W high bits, form selects; one-hot of lane d flopped at H-1. Forms land in
