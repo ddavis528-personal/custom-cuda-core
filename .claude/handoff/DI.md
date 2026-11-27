@@ -42,19 +42,15 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    mshr_tb (BK 0, 5), mpick_tb, fill_tb, run-rtl controls (twolook etc.).
    All benches pass; lint clean. Per-unit results: /root/ccv-logs/m34units*.log
    (run: check-ngd.py --unit U; scratchpad/cgbudget.py U).
-   BLOCKED on DI-66 (DI rev 105, notice sent to MA): sv_cc05h straight offer
-   is an NGD-5 feedthrough (dv/hit/rpa -> sv) and 35.1 NGD across both;
-   DI proposes (A) drop straight (H+6, MA re-prices; then model sim/dcu
-   H+5 -> H+6 and remove sv ports) vs (B). Also asks MA budgets: mpick
-   hstp 24.8, rstp 21.4, hv 14.2; mshr rpa 18.6, snt 14.6; new
-   dcu_mshr.ngd.json port set, new dcu_mpick.ngd.json.
-   dcu_mpick cg: 171 flops, allowance 7; every-cycle grant/send flops
-   (input-decided, CG-5 forbids input enables) exceed it even after
-   encoding: likely needs a waiver ruling (RI-15 covers interface leads
-   only) or folding mpick into dcu_fill (allowance 114.6, 46 used): raised
-   as DI-67 (rev 106, notice sent; now 21 flops + cr_q 3, DI recommends the
-   fold). Remeasured 1c63f699: all benches pass, controls caught, CG-5
-   clean; mshr CG-3 (offer flops 62-67%) goes with DI-66 (A).
+   DI-66 RULED A (MA rev 227): no straight offer, miss at H+6. Done in
+   70c6eb89: model (bin dcu_mlc_earliest; dcu_test sample points +1), RTL
+   (sv gone, offer flops load on hnw_q only), budgets written in
+   dcu_mshr.ngd.json / dcu_mpick.ngd.json citing MA rev 227 (snt split into
+   snv+sbk: tell MA in the DI answer row). Bench control straight -> early.
+   Still open: DI-67 (rev 106) dcu_mpick 21 every-cycle flops vs allowance
+   7: fold into dcu_fill (DI's pick) or DA waiver. dcu=model kernel pins in
+   tools/check-kernel.sh (TI's file, ungated) may move with H+6: re-measure
+   with TI-590.
    Before the gate: delete docs/ma34-rtl-plan.DI.md; then bundle increment
    B, DI-25, rarb/rslot, bdat wdata, MA p1 fix (DI-63), TI-537 if landed;
    merge worktree into the branch, one gate-push from the main checkout.
