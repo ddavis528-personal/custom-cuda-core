@@ -1,0 +1,125 @@
+{
+  "module": "miu_lead",
+  "ports": {
+    "v_cm04h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "ld_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "pipes_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "dq_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux). disp and the scale arrive as miu_pair's per-quarter (* keep *) copies (MI-27 (3), MA rev 196)."
+    },
+    "am_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "base_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "idx_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "fs_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "wh_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "dh_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "ge1_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "ge2_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "From miu_cap's, miu_pair's, miu_form's and miu_cred's flops; the leader adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the leader's operand mux)."
+    },
+    "rk_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_form's flop (rk_cm05h out 0); R(ctx)'s VPN halves and l6's carry for miu_a2 (MA rev 203, re:MI-32 (1))."
+    },
+    "rv_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_lead's flops; a flop that also feeds logic inside has a (* keep *) copy for the port (MIU tab rev 163, 'Port NGD budgets')."
+    },
+    "lsi_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_lead's flops; a flop that also feeds logic inside has a (* keep *) copy for the port (MIU tab rev 163, 'Port NGD budgets')."
+    },
+    "lq_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Flops miu_a2 reads at arrival 0 (the fixed leader's parts, MA rev 199; out 0 per MA rev 203, re:MI-32 (1))."
+    },
+    "la_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Flops miu_a2 reads at arrival 0 (the fixed leader's parts, MA rev 199; out 0 per MA rev 203, re:MI-32 (1))."
+    },
+    "fm_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Flops miu_a2 reads at arrival 0 (the fixed leader's parts, MA rev 199; out 0 per MA rev 203, re:MI-32 (1))."
+    },
+    "l6_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Flops miu_a2 reads at arrival 0 (the fixed leader's parts, MA rev 199; out 0 per MA rev 203, re:MI-32 (1))."
+    },
+    "rh_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Flops miu_a2 reads at arrival 0 (the fixed leader's parts, MA rev 199; out 0 per MA rev 203, re:MI-32 (1))."
+    }
+  }
+}

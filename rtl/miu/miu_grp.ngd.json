@@ -1,0 +1,7 @@
+{
+  "module": "miu_grp",
+  "inner": true,
+  "by": "MA",
+  "date": "2026-11-24",
+  "why": "One address slot's group and page check at A2 (MIU tab module table; MA-4, MA-27), combinational: an inner helper of miu_a2, timed in it with lv/am/lc_cm06h at arrival 0 (MA revs 209 and 211). NGD-5 allows no input-to-output path through a module of its own."
+}

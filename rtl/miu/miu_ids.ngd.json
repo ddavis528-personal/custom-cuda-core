@@ -1,0 +1,29 @@
+{
+  "module": "miu_ids",
+  "ports": {
+    "qid_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_rcap's req_id capture flops, out 0 in miu_rcap.ngd.json (MI-28, MA rev 197: arrival 0 where the source port holds out 0, both sides in one change). Its 20.8 here are four 64:1 selects of 6 bits."
+    },
+    "pid_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops; pid and pv from (* keep *) copies of the preselects (MIU tab rev 181, Port NGD budgets: miu_ids outputs out 0)"
+    },
+    "pv_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops; pid and pv from (* keep *) copies of the preselects (MIU tab rev 181, Port NGD budgets: miu_ids outputs out 0)"
+    },
+    "qe_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops; pid and pv from (* keep *) copies of the preselects (MIU tab rev 181, Port NGD budgets: miu_ids outputs out 0)"
+    }
+  }
+}

@@ -54,6 +54,84 @@
       "by": "MA",
       "date": "2026-11-21",
       "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
+    },
+    "win_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "miu_form's per-octet (* keep *) copy of the window at H (MI-22 (c), MA rev 185); miu_agu8 inputs from miu_form arrive at 0."
+    },
+    "fs_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "miu_form's flops at H (MI-21, MI-22), straight from a flop; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "wh_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "miu_form's flops at H (MI-21, MI-22), straight from a flop; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "dh_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "miu_form's flops at H (MI-21, MI-22), straight from a flop; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "bw_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "every lane's base, miu_cap's flops (out budget 0), for O-83's decision on lane d; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets; MI-21 (a))"
+    },
+    "sl_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_form's per-octet (* keep *) copy of fsel's slot bit at H, the base 2:1 mux's select (MI-22 (c), MA rev 185); miu_agu8 inputs from miu_form arrive at 0."
+    },
+    "va_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
+    },
+    "fal_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
+    },
+    "ilv_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
+    },
+    "loc_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "Straight from miu_agu8's A2 flops, each lane's holding its sum (the field A2 picks by wiring); miu_a2 and miu_grp read them at arrival 0 (MI-26 under MI-25 (D), MA rev 195)."
+    },
+    "lc_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_grp's keep copy of lane 0's line, straight from its flop at LC = 1, tied 0 at LC = 0; miu_a2 reads it at arrival 0 (MA rev 211, re:MI-42)."
+    },
+    "ow_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Straight from miu_agu8's A2 flops: ow (an ordinary .global access) and we (each lane's S[47:16+k] == W >> k, on the carry-save pair); miu_a2 reads them at arrival 0 (MA rev 217, re:MI-46)."
+    },
+    "we_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Straight from miu_agu8's A2 flops: ow (an ordinary .global access) and we (each lane's S[47:16+k] == W >> k, on the carry-save pair); miu_a2 reads them at arrival 0 (MA rev 217, re:MI-46)."
     }
   }
 }

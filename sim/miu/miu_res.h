@@ -157,12 +157,14 @@ private:
 /// a hit's frame is its page.
 class Tlb {
 public:
-  explicit Tlb(unsigned entries) : e_(entries) {}
+  /// fifo: replaced in fill order, a hit leaving its age (the L0's round
+  /// robin, rtl/miu/miu_tlb.sv); else least recently used.
+  explicit Tlb(unsigned entries, bool fifo = false) : e_(entries), fifo_(fifo) {}
 
-  /// Whether vpn is held; a hit refreshes its age.
+  /// Whether vpn is held; a hit refreshes its age unless fifo.
   bool lookup(uint64_t vpn) {
     for (Ent &e : e_)
-      if (e.valid && e.vpn == vpn) { e.used = ++tick_; ++hits_; return true; }
+      if (e.valid && e.vpn == vpn) { if (!fifo_) e.used = ++tick_; ++hits_; return true; }
     ++misses_;
     return false;
   }
@@ -192,6 +194,7 @@ public:
 private:
   struct Ent { bool valid = false; uint64_t vpn = 0; uint64_t used = 0; };
   std::vector<Ent> e_;
+  bool fifo_;
   uint64_t tick_ = 0, hits_ = 0, misses_ = 0;
 };
 
@@ -312,6 +315,19 @@ private:
   unsigned level_ = 0, wait_ = 0;
   uint64_t walks_ = 0, busy_cycles_ = 0, itlb_waits_ = 0;
 };
+
+/// F-SHARED (section 12.5; MI-46, MA rev 221): a .shared lane's address is
+/// its AGU sum modulo 2^32 (O-79), an offset into its CTA's region of size
+/// bytes, and never taken signed: a negative sum is an offset near 2^32 and
+/// faults as any byte past the region does. A2's window check (miu_a2's ow)
+/// takes no .shared access, so this is the fault a negative .shared sum
+/// raises.
+inline bool sharedFault(uint64_t sum, unsigned bytes, uint64_t size) {
+  return (sum & 0xffffffffu) + bytes > size;
+}
+/// A .shared offset at or above 2^31: a negative sum, since no region is
+/// that large (the MIUBINS bin shared_neg_fault).
+inline bool sharedNegative(uint64_t sum) { return ((sum >> 31) & 1u) != 0; }
 
 } // namespace miu
 } // namespace ccv

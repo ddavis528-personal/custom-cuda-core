@@ -1,0 +1,149 @@
+{
+  "module": "miu_a2",
+  "ports": {
+    "v_cm04h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "rv_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "lsi_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "lq_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "la_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "fm_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "l6_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "rh_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "va_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "c_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "l0v_cm11h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "l0vpn_cm11h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "l0ppn_cm11h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "l0fold_cm11h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "l0pm_cm11h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "From miu_lead's, miu_agu8's, miu_form's and miu_tlb's flops (each out 0); the leader's VPN by form, the L0's compare and the drop take the whole 25: 24.6 measured, 0.4 left, any growth goes to MA first (MA rev 203, re:MI-32 (1))."
+    },
+    "vpn_cm07h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0 refill's request: miu_a2's flops, read at arrival 0 by miu_tlb's second-miss filter, a per-slot match against the pending, granted, writing and last-written VPN, 13.0 NGD inside (MA rev 207, re:MI-39 (a))."
+    },
+    "ms_cm07h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0 refill's request: miu_a2's flops, read at arrival 0 by miu_tlb's second-miss filter, a per-slot match against the pending, granted, writing and last-written VPN, 13.0 NGD inside (MA rev 207, re:MI-39 (a))."
+    },
+    "lv_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): miu_grp an inner helper of miu_a2, lv_cm06h and am_cm06h at arrival 0, ge_cm06h gone (MA rev 209)."
+    },
+    "am_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): miu_grp an inner helper of miu_a2, lv_cm06h and am_cm06h at arrival 0, ge_cm06h gone (MA rev 209)."
+    },
+    "lc_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's (* keep *) copies of lanes 0's and 16's lines, from its flops (out 0), for miu_grp's far lanes; 25.0 at the drop flop accepted at zero margin, a third copy pre-approved if it grows (MA rev 211, re:MI-42)."
+    },
+    "fal_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
+    },
+    "ilv_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
+    },
+    "ow_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
+    },
+    "we_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "miu_agu8's flops (out 0): the A2 faults, F-ALIGN and the window F-ADDR, routed by lq to the drop flop, 16.9 to 18.7 NGD inside (MA rev 217, re:MI-46)."
+    }
+  }
+}

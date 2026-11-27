@@ -1,5 +1,5 @@
 {
- "_comment": "Clock-gating and logic-depth units for MI's MIU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'; the partition is MA's Phase 2, MIU tab rev 147). Each bench is the module's value-model bench (test/miu/*_tb.cpp) in its --cg mode, built by test/miu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work nearly every cycle. miu_cap is one address slot's ccv_rcu_miu_addr capture at its one size; miu_pair pairs the four slots' addresses with their memops at its one size (LAG 3, 40 entries, the 63-bit A1 view of miu_mq); miu_mq is the memop queue's slice 1 at its one size (40 entries, 10 a slot, the 126-bit payload). miu_agu8 is one slot's lane octet of A1's sums at its one size (8 lanes, the ordinary and sized forms; MI-21 holds the slot, local and private forms). miu_cred is the DCU bank credits and the A1 credit gate at its one size (8 banks, 16 entry and 12 store-data credits a bank).",
+ "_comment": "Clock-gating and logic-depth units for MI's MIU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'; the partition is MA's Phase 2, MIU tab rev 147). Each bench is the module's value-model bench (test/miu/*_tb.cpp) in its --cg mode, built by test/miu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work nearly every cycle. miu_cap is one address slot's ccv_rcu_miu_addr capture at its one size; miu_pair pairs the four slots' addresses with their memops at its one size (LAG 3, 40 entries, the 63-bit A1 view of miu_mq); miu_mq is the memop queue's slice 1 at its one size (40 entries, 10 a slot, the 126-bit payload). miu_agu8 is one slot's lane octet of A1's sums at its one size (8 lanes, the ordinary and sized forms; MI-21 holds the slot, local and private forms). miu_cred is the DCU bank credits and the A1 credit gate at its one size (8 banks, 16 entry and 12 store-data credits a bank). miu_form is the slot, local and private forms' state and H flops at its one size (MI-21; ports drafted in MI-22, R(ctx) by MI-23 (b)): 8 CTA slots, 16 windows each, 4 slots' reads of the 40-entry A1 view. miu_form's netlist replay harness builds with clang++ (replay_cxx, as RI-10's rcu_bank_slice): g++ peaked at 11559 MiB on it cold, clang++ at 564 MiB, the same measurement (OA-505, MI-48).",
  "units": [
   {
    "name": "miu_cap",
@@ -66,6 +66,24 @@
    }
   },
   {
+   "name": "miu_agu8_lc",
+   "module": "miu_agu8",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_agu8.sv"
+   ],
+   "params": {
+    "LC": 1
+   },
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_agu8_lc {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_agu8"
+   }
+  },
+  {
    "name": "miu_cred",
    "module": "miu_cred",
    "files": [
@@ -79,6 +97,104 @@
     "build": "test/miu/cg-build.sh miu_cred {dir}",
     "run": "{dir}/tb --cg {scenario} {vcd}",
     "scope": "miu_cred"
+   }
+  },
+  {
+   "name": "miu_form",
+   "replay_cxx": "clang++",
+   "module": "miu_form",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_form.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_form {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_form"
+   }
+  },
+  {
+   "name": "miu_ids",
+   "module": "miu_ids",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_ids.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_ids {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_ids"
+   }
+  },
+  {
+   "name": "miu_rcap",
+   "module": "miu_rcap",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_rcap.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_rcap {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_rcap"
+   }
+  },
+  {
+   "name": "miu_lead",
+   "module": "miu_lead",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_lead.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_lead {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_lead"
+   }
+  },
+  {
+   "name": "miu_tlb",
+   "module": "miu_tlb",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_tlb.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_tlb {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_tlb"
+   }
+  },
+  {
+   "name": "miu_a2",
+   "module": "miu_a2",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_grp.sv",
+    "rtl/miu/miu_a2.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_a2 {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_a2"
    }
   }
  ]

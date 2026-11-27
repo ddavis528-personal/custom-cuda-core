@@ -22,14 +22,35 @@
 // lane whose low address bits are not 0 at the transfer's size; a byte is
 // always aligned.
 //
-// Flops (tag 06, A2): the 8 lanes' sums and their align faults, 408 at the
-// default sizes, one clock gate enabled by this module's flop of miu_cap's
+// Flops (tag 06, A2): the 8 lanes' sums and their align faults, ilv, loc,
+// ow (an ordinary .global access) and the lanes' window compares, 419 at
+// the default sizes, one clock gate enabled by this module's flop of miu_cap's
 // valid (CG-5): a new address is in A1 exactly the cycle after it. A lane's
 // sum is held whether or not it is active; A2 reads only active lanes.
 //
-// Not here yet (MI-21, MA): the slot, local and private-window forms (O-45,
-// O-69, O-83) and their carry-save level, whose operands and owner MA is
-// asked for. Until then this is the ordinary and sized forms' AGU.
+// The forms (MI-21 (a), MI-25 (D); miu_form's flops at H, MI-22): a slot
+// form's base is its window word, every lane's, by a 2:1 ahead of the add,
+// its select and window this octet's (* keep *) copies from miu_form. The
+// local form (O-69) and an interleaved .global access (O-83) need no adder
+// of their own (MA's (D), MA rev 191): W is a multiple of 2^k, so an
+// interleaved lane's b = S - (W << 16) is S's low 16 + k bits by wiring,
+// F-ADDR is S >> (16 + k) != W >> k at A2, and its address is R(ctx) with
+// b rearranged (only the leader's VPN takes a (5 + k)-bit add, miu_lead's
+// or A2's); the local form's address is miu_form's per-slot C with the lane
+// at [6:2]. So A1 here is the ordinary sum S, and the two flags A2 reads to
+// pick the form: ilv, O-83's decision (lane d's rbase >> k against W >> k,
+// every lane's compare in parallel, the one-hot of d picking, beside the
+// adders, for a .global memop in neither form: fs's elig), and loc. F-ALIGN
+// stays here: an interleaved lane's two low bits are S's, a local lane's
+// disp's.
+//
+// The window F-ADDR's compare (O-83, IS's rev 171) is here too, beside the
+// adders: S[47:16+k] == W >> k, on the carry-save pair (no carry chain but
+// the low 16 + k bits'), a flop a lane. A2 (miu_a2) makes it the fault: an
+// interleaved lane's b outside [0, L) where it is false, an ordinary
+// .global lane in the run's own windows where it is true. S[49:48] (F-ADDR, O-75) needs the whole sum, so
+// it is A2's (miu_a2). Not here: the
+// predicate transfers' single address (l = 0, lane d's b), miu_lead's.
 //
 // Inputs are miu_cap's and miu_pair's flops (arrival 0; MIU tab, "Port NGD
 // budgets": the adders take the whole 25), and every output comes straight
@@ -47,7 +68,12 @@ module miu_agu8 #(
   parameter  int WL = 32,                                 // a lane's base and index
   parameter  int DW = ccv_params_pkg::CCV_W_DISP,         // disp, 29
   parameter  int CW = ccv_params_pkg::CCV_W_CHWIDTH,      // chwidth, 2
-  parameter  int VW = 50                                  // the exact sum
+  parameter  int VW = 50,                                 // the exact sum
+  parameter  int IW = ccv_params_pkg::CCV_W_LANE_MASK,    // a slot's lanes, 32
+  parameter  int PW = ccv_prov_pkg::CCV_PRIV_WINDOWS,     // 1
+  parameter  int LC = 0,                                  // 1: lc_cm06h, lane 0's line again (MA rev 209)
+  localparam int PK = $clog2(PW),                         // k
+  localparam int WHW = 32 - PK                            // wh: W >> k
 ) (
   input  logic             miu_core_clk,
   input  logic             rst_n,
@@ -67,9 +93,25 @@ module miu_agu8 #(
   input  logic             sh2_cm05h,
   input  logic             b4_cm05h,
   input  logic             b2_cm05h,
-  // A2: each lane's exact sum and its align fault.
+  // A1: the slot's forms, miu_form's flops at H.
+  input  logic [31:0]      win_cm05h,     // the slot form's window, this octet's copy
+  input  logic             sl_cm05h,      // the slot form, this octet's copy
+  input  logic [2:0]       fs_cm05h,      // {elig, local, slot}; the slot bit unread
+  input  logic [WHW-1:0]   wh_cm05h,      // W >> k
+  input  logic [IW-1:0]    dh_cm05h,      // lane d's one-hot
+  // A1: every lane's base, for O-83's decision on lane d (miu_cap's).
+  input  logic [IW*WL-1:0] bw_cm05h,
+  // A2: each lane's ordinary sum and its align fault; O-83's decision and
+  // the local form, for A2 to pick the form by wiring (MI-25 (D)).
   output logic [NL*VW-1:0] va_cm06h,
-  output logic [NL-1:0]    fal_cm06h
+  output logic [NL-1:0]    fal_cm06h,
+  output logic             ilv_cm06h,
+  output logic             loc_cm06h,
+  output logic             ow_cm06h,      // an ordinary .global access
+  output logic [NL-1:0]    we_cm06h,      // each lane's S[47:16+k] == W >> k
+  // Lane 0's line, VA[47:7], a (* keep *) copy for miu_grp's far compares
+  // (MA rev 209); 0 and no flops at LC = 0.
+  output logic [40:0]      lc_cm06h
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
@@ -105,44 +147,107 @@ module miu_agu8 #(
     ks_add = (a ^ b) ^ {g[VW-2:0], 1'b0};
   endfunction
 
-  // ---- Per lane: the 3-input sum and F-ALIGN -----------------------------
+  // The carry out of a + b, LW bits, by the same prefix.
+  localparam int LW = 16 + PK;
+  function automatic logic ks_cout(input logic [LW-1:0] a, input logic [LW-1:0] b);
+    logic [LW-1:0] g, p;
+    g = a & b;
+    p = a ^ b;
+    for (int d = 1; d < LW; d = d * 2)
+      for (int i = LW - 1; i >= d; i--) begin
+        g[i] = g[i] | (p[i] & g[i-d]);
+        p[i] = p[i] & p[i-d];
+      end
+    ks_cout = g[LW-1];
+  endfunction
+
+  // ---- The slot's terms: O-83's decision on lane d (MI-25 (D)) ---------
+  logic dec_cm05h, ilv_cm05h, loc_cm05h, slt_cm05h, ow_cm05h;
+  always_comb begin
+    dec_cm05h = 1'b0;
+    for (int i = 0; i < IW; i++)
+      dec_cm05h = dec_cm05h | (dh_cm05h[i] & (bw_cm05h[i*WL + PK +: WHW] == wh_cm05h));
+    slt_cm05h = sl_cm05h;
+    loc_cm05h = fs_cm05h[1];
+    ilv_cm05h = fs_cm05h[2] & dec_cm05h;
+    ow_cm05h  = !shared_cm05h && !loc_cm05h && !ilv_cm05h;
+  end
+
+  // ---- Per lane: the ordinary sum S and F-ALIGN ---------------------------
+  // (D): an interleaved lane's b is S - (W << 16), S's low 16 + k bits by
+  // wiring (W a multiple of 2^k), and its range test S >> (16 + k) == W >> k
+  // is A2's; the local form's address is miu_form's C with the lane at
+  // [6:2], also A2's. Both keep S's (and disp's) two low bits, so F-ALIGN
+  // stays here.
   logic [NL*VW-1:0] va_d_cm05h;
-  logic [NL-1:0]    fal_d_cm05h;
+  logic [NL-1:0]    fal_d_cm05h, we_d_cm05h;
   for (genvar l = 0; l < NL; l = l + 1) begin : g_lane
     logic [WL-1:0] b_cm05h, x_cm05h;
     logic [VW-1:0] ob_cm05h, ox_cm05h, od_cm05h, s_cm05h, cs_cm05h, cc_cm05h;
+    logic [1:0]    lo_cm05h;
+    logic [WHW-1:0] wa_cm05h, wb_cm05h, wz_cm05h;
+    logic          wc_cm05h, weq_cm05h;
     always_comb begin
-      b_cm05h  = base_cm05h[l*WL +: WL];
+      b_cm05h  = slt_cm05h ? win_cm05h : base_cm05h[l*WL +: WL];
       x_cm05h  = idx_cm05h[l*WL +: WL];
       ob_cm05h = shared_cm05h ? VW'(b_cm05h) : VW'({b_cm05h, 16'b0});
       ox_cm05h = ({VW{sh2_cm05h}} & (VW'(x_cm05h) << 2)) |
                  ({VW{sh1_cm05h}} & (VW'(x_cm05h) << 1)) |
                  ({VW{!sh1_cm05h && !sh2_cm05h}} & VW'(x_cm05h));
       od_cm05h = VW'(signed'(disp_cm05h));
-      // One carry-save level, then one carry-propagate add.
       cs_cm05h = ob_cm05h ^ ox_cm05h ^ od_cm05h;
       cc_cm05h = ((ob_cm05h & ox_cm05h) | (ob_cm05h & od_cm05h) | (ox_cm05h & od_cm05h)) << 1;
       s_cm05h  = ks_add(cs_cm05h, cc_cm05h);
+      lo_cm05h = loc_cm05h ? disp_cm05h[1:0] : s_cm05h[1:0];
       va_d_cm05h[l*VW +: VW] = s_cm05h;
       fal_d_cm05h[l] = am_cm05h[l] &&
-                       ((b4_cm05h && (s_cm05h[1:0] != 2'b00)) || (b2_cm05h && s_cm05h[0]));
+                       ((b4_cm05h && (lo_cm05h != 2'b00)) || (b2_cm05h && lo_cm05h[0]));
+      // The window compare beside the add: S[47:16+k] == W >> k from the
+      // carry-save pair. With A, B the pair's bits [47:16+k] and c the carry
+      // into bit 16 + k, A + B + c == K (mod 2^n) exactly when A ^ B ^ K ==
+      // {Z[n-2:0], c}, Z = A & B | (A | B) & ~K (no carry chain past c).
+      wa_cm05h  = cs_cm05h[16+PK +: WHW];
+      wb_cm05h  = cc_cm05h[16+PK +: WHW];
+      wc_cm05h  = ks_cout(cs_cm05h[LW-1:0], cc_cm05h[LW-1:0]);
+      wz_cm05h  = (wa_cm05h & wb_cm05h) | ((wa_cm05h | wb_cm05h) & ~wh_cm05h);
+      weq_cm05h = ((wa_cm05h[WHW-1:1] ^ wb_cm05h[WHW-1:1] ^ wh_cm05h[WHW-1:1]) == wz_cm05h[WHW-2:0]) &&
+                  ((wa_cm05h[0] ^ wb_cm05h[0] ^ wh_cm05h[0]) == wc_cm05h);
+      we_d_cm05h[l] = weq_cm05h;
     end
   end
 
   // ---- Flops: A2's lanes -------------------------------------------------
-  // A guarded payload: read only through its memop, so it is written
-  // whenever its group is clocked and holds nothing of its own.
   wire va_en_cm05h = v_q_cm05h;
-  logic [NL*VW-1:0] va_q_cm06h;
+  (* keep *) logic [NL*VW-1:0] va_q_cm06h;   // never merged with lc_q (NGD-7)
   logic [NL-1:0]    fal_q_cm06h;
+  logic [NL-1:0]    we_q_cm06h;
+  logic             ilv_q_cm06h, loc_q_cm06h, ow_q_cm06h;
   always_ff @(posedge miu_core_clk) begin
     if (va_en_cm05h) begin
       va_q_cm06h  <= va_d_cm05h;
       fal_q_cm06h <= fal_d_cm05h;
+      ilv_q_cm06h <= ilv_cm05h;
+      loc_q_cm06h <= loc_cm05h;
+      ow_q_cm06h  <= ow_cm05h;
+      we_q_cm06h  <= we_d_cm05h;
     end
   end
   assign va_cm06h  = va_q_cm06h;
   assign fal_cm06h = fal_q_cm06h;
+  assign ilv_cm06h = ilv_q_cm06h;
+  assign loc_cm06h = loc_q_cm06h;
+  assign ow_cm06h  = ow_q_cm06h;
+  assign we_cm06h  = we_q_cm06h;
+
+  if (LC != 0) begin : g_lc
+    (* keep *) logic [40:0] lc_q_cm06h;
+    always_ff @(posedge miu_core_clk) begin
+      if (va_en_cm05h) lc_q_cm06h <= va_d_cm05h[7 +: 41];
+    end
+    assign lc_cm06h = lc_q_cm06h;
+  end else begin : g_nlc
+    assign lc_cm06h = '0;
+  end
 
 endmodule
 `undef CCV_CLK
