@@ -120,6 +120,18 @@
       "by": "MA",
       "date": "2026-11-24",
       "why": "miu_grp's keep copy of lane 0's line, straight from its flop at LC = 1, tied 0 at LC = 0; miu_a2 reads it at arrival 0 (MA rev 211, re:MI-42)."
+    },
+    "ow_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Straight from miu_agu8's A2 flops: ow (an ordinary .global access) and we (each lane's S[47:16+k] == W >> k, on the carry-save pair); miu_a2 reads them at arrival 0 (MA rev 217, re:MI-46)."
+    },
+    "we_cm06h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "Straight from miu_agu8's A2 flops: ow (an ordinary .global access) and we (each lane's S[47:16+k] == W >> k, on the carry-save pair); miu_a2 reads them at arrival 0 (MA rev 217, re:MI-46)."
     }
   }
 }
