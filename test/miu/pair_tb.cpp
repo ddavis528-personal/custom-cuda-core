@@ -172,7 +172,16 @@ struct Bench {
       const unsigned e = (dut->a1e_cm05h >> (k * kEW)) & ((1u << kEW) - 1);
       const uint64_t f = fieldsOf(m->entry);
       const unsigned x = unsigned(dut->a1x_cm05h >> (k * 4)) & 0xfu;
-      const bool ok = e == m->entry && getBits(dut->a1f_cm05h, k * kFW) == f && x == xferOf(f);
+      // miu_lead's copies, one per lane quarter (MA rev 203): {sh2, sh1, disp[15:0]}, disp
+      // at bit 16 of the view.
+      bool qok = true;
+      for (unsigned q = 0; q < 4; ++q) {
+        const unsigned o = (k * 4 + q) * 18;
+        unsigned v = 0;
+        for (unsigned b = 0; b < 18; ++b) v |= ((dut->a1q_cm05h[(o + b) / 32] >> ((o + b) % 32)) & 1u) << b;
+        qok = qok && v == ((x & 3u) << 16 | unsigned(f >> 16) & 0xffffu);
+      }
+      const bool ok = e == m->entry && getBits(dut->a1f_cm05h, k * kFW) == f && x == xferOf(f) && qok;
       cov_x |= 1u << x;
       if (!ok && ++fails <= 20)
         std::fprintf(stderr, "pair: cycle %llu: slot %u's A1 entry %u, want %u%s\n",
