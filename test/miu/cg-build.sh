@@ -19,7 +19,7 @@ case "$unit" in
   miu_pair)
     vl miu_pair "" "" "$PWD/rtl/miu/miu_pair.sv" "$PWD/test/miu/pair_tb.cpp" ;;
   miu_mq)
-    vl miu_mq "" "" "$PWD/rtl/miu/miu_mq.sv" "$PWD/test/miu/mq_tb.cpp" ;;
+    vl miu_mq "--trace-max-width 16384" "" "$PWD/rtl/miu/miu_mq.sv" "$PWD/test/miu/mq_tb.cpp" ;;
   miu_agu8)
     vl miu_agu8 "" "" "$PWD/rtl/miu/miu_agu8.sv" "$PWD/test/miu/agu8_tb.cpp" ;;
   miu_agu8_lc)

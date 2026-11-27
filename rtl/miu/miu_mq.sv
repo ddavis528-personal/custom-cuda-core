@@ -7,8 +7,22 @@
 //
 // Slice 1's part of the MQ: an entry for each memop as it arrives, its
 // ccv_ooe_miu_memop payload held for the memop's life, the entry freed when
-// the memop is done, and the memop credit returned on its arrival slot. The
-// lines, lane map and lost flag that A2 writes come with miu_a2.
+// the memop is done, the memop credit returned on its arrival slot, and the
+// lane map A2 writes.
+//
+// The lane map (A2's MQ write; MIU tab, the stage table's H+1 row): per
+// lane, its formed address's bits [6:0], the word in its line and the byte
+// in the word, which R1 reads by entry for the lane's selects. The line is
+// not kept: on the hit path a lane reads its group's line, and its group is
+// fixed by its position and F (MA rev 203), wiring at R1. The formed
+// address by the form (miu_agu8's flags, an octet's copy each): ordinary,
+// the sum's S[6:0]; interleaved (O-83), {lane, S[1:0]}; local (O-69),
+// C[6:0] | lane << 2, C miu_form's (miu_a2 forms the page offset the same
+// way). Address slot s's memop, at entry ae (miu_pair's), writes at A2
+// (tag 06) into the flops tagged 07. Not here yet: the lines a pass looks
+// up and the lost flag, with slice 2's passes (and OA-486's assertion with
+// them); a predicate transfer's map (one word a warp, lane d's b), with its
+// single address from miu_lead.
 //
 // The 40 entries are split by arrival slot, CCV_MEMOP_CREDITS (10) a slot:
 // slot j owns entries j*NC .. j*NC + NC - 1. A memop holds its slot's
@@ -18,7 +32,8 @@
 // credits do not already impose, and makes the allocation one slot's own
 // lowest free entry: no arbitration across slots.
 //
-// Stages (tags _cmNNh), the memop's arrival M = 00, as miu_pair counts:
+// Stages (tags _cmNNh), the memop's arrival M = 00, as miu_pair counts
+// (and for the lane map, the address's V = 03, H = 05, A2 = 06):
 //   00 M   the memop's valid on slot j (mv); a free port's valid and entry
 //   01     the payload on the wire (no-flop end, A-61); the entry, named by
 //          pre a cycle ahead, is taken and its payload written; me tells
@@ -27,6 +42,10 @@
 //   02     the entry's payload held (mq), read by miu_pair at 04 and by R1;
 //          the credit returns (cr), one a slot a cycle, any excess owed to
 //          the next cycles
+//   04     the lane map: miu_cap's valid a cycle on (av), flopped
+//   05 H   miu_pair's entry for each valid address slot (ae), flopped
+//   06 A2  each lane's formed bits (lo, the forms), written by entry into
+//   07     the lane map (lm), read by R1
 // The free state and the preselected entry (fr, psel, pre) are queue state
 // at 01; the payload array is the queue's, written at 01 and tagged 02. The
 // free ports are decoded to an entry's bit before their flop (rel), and the
@@ -69,7 +88,10 @@ module miu_mq #(
   localparam int MW = ccv_prelim_pkg::CCV_L_W_MEM_OP,
   localparam int AW = MOP + MW + ccv_prov_pkg::CCV_P_W_CTA_SLOT + ccv_params_pkg::CCV_W_WARP_ID,  // 63
   localparam int PL = HW + AW,                                                          // 126
-  localparam int OW = $clog2(NC + 1) + 1                       // credits owed a slot
+  localparam int OW = $clog2(NC + 1) + 1,                      // credits owed a slot
+  localparam int NL = ccv_params_pkg::CCV_W_LANE_MASK,         // a slot's lanes, 32
+  localparam int NQ = NL / 8,                                  // lane octets
+  localparam int LB = 7                                        // a lane's map: address [6:0]
 ) (
   input  logic             miu_core_clk,
   input  logic             rst_n,
@@ -85,7 +107,16 @@ module miu_mq #(
   output logic [NE*AW-1:0] a1_cm02h,
   output logic [NE*HW-1:0] hi_cm02h,
   // ccv_ooe_miu_memop's credit return, a pulse a slot.
-  output logic [NS-1:0]    cr_cm02h
+  output logic [NS-1:0]    cr_cm02h,
+  // ---- The lane map, A2's write, per address slot s ------------------------
+  input  logic [NS-1:0]       av_cm04h,     // miu_cap's valid a cycle on
+  input  logic [NS*EW-1:0]    ae_cm05h,     // the memop's entry (miu_pair's A1 flops)
+  input  logic [NS*NL*LB-1:0] lo_cm06h,     // each lane's sum S[6:0] (miu_agu8's flops)
+  input  logic [NS*NQ-1:0]    ilv_cm06h,    // interleaved, each octet's (miu_agu8's)
+  input  logic [NS*NQ-1:0]    loc_cm06h,    // local, each octet's (miu_agu8's)
+  input  logic [NS*LB-1:0]    cl_cm06h,     // the local form's C[6:0] (miu_form's)
+  // The lane maps, entry e's at [e*NL*LB +: NL*LB], lane l's LB bits at l*LB.
+  output logic [NE*NL*LB-1:0] lm_cm07h
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
@@ -217,13 +248,72 @@ module miu_mq #(
   end
   assign cr_cm02h = cr_q_cm02h;
 
+  // ---- The lane map (A2's write) -------------------------------------------
+  // av a cycle on enables the entry's flop; the valid a cycle on again names
+  // the slots that write (a pulse, outside the gates, within the allowance).
+  logic [NS-1:0]    av_q_cm05h, wv_cm06h;
+  logic [EW-1:0]    we_cm06h [NS];
+  wire              ae_en_cm05h = |av_q_cm05h;
+  always_ff @(posedge miu_core_clk) begin
+    if (rst_r01h) begin
+      av_q_cm05h <= '0;
+      wv_cm06h   <= '0;
+    end else begin
+      av_q_cm05h <= av_cm04h;
+      wv_cm06h   <= av_q_cm05h;
+    end
+  end
+  always_ff @(posedge miu_core_clk) begin
+    if (ae_en_cm05h)
+      for (int a = 0; a < NS; a++) we_cm06h[a] <= ae_cm05h[a*EW +: EW];
+  end
+
+  // Each slot's lanes' formed bits: the word, then the byte.
+  logic [NL*LB-1:0] lf_cm06h [NS];
+  always_comb
+    for (int a = 0; a < NS; a++)
+      for (int l = 0; l < NL; l++) begin
+        logic [LB-1:0] s, c;
+        logic          iv, lc;
+        s  = lo_cm06h[(a*NL + l)*LB +: LB];
+        c  = cl_cm06h[a*LB +: LB];
+        iv = ilv_cm06h[a*NQ + l/8];
+        lc = loc_cm06h[a*NQ + l/8];
+        lf_cm06h[a][l*LB +: LB] = lc ? (c | LB'(l << 2)) : iv ? {5'(l), s[1:0]} : s;
+      end
+
+  // Entry e takes the slot that names it (at most one: mq_a2_one).
+  logic [NS-1:0] ws_cm06h [NE];
+  logic [NE-1:0] lm_en_cm06h;
+  always_comb
+    for (int e = 0; e < NE; e++) begin
+      for (int a = 0; a < NS; a++) ws_cm06h[e][a] = wv_cm06h[a] && we_cm06h[a] == EW'(e);
+      lm_en_cm06h[e] = |ws_cm06h[e];
+    end
+  logic [NL*LB-1:0] lm_q_cm07h [NE];
+  for (genvar e = 0; e < NE; e++) begin : g_lm
+    logic [NL*LB-1:0] d_cm06h;
+    always_comb begin
+      d_cm06h = '0;
+      for (int a = 0; a < NS; a++) d_cm06h = d_cm06h | ({NL*LB{ws_cm06h[e][a]}} & lf_cm06h[a]);
+    end
+    always_ff @(posedge miu_core_clk) begin
+      if (lm_en_cm06h[e]) lm_q_cm07h[e] <= d_cm06h;
+    end
+    assign lm_cm07h[e*NL*LB +: NL*LB] = lm_q_cm07h[e];
+  end
+
   // ---- Checks ---------------------------------------------------------------
   // Per slot, folded into one property each (one label a module):
   //   a memop finds its slot's preselected entry free (its credit);
   //   a free port names a held entry;
   //   the credits owed stay within the slot's credits.
   //   the one-hot and the encoded preselection agree.
+  //   no two address slots write one entry's lane map in a cycle.
   logic [NS-1:0] take_ok_cm01h, free_ok_cm01h, owed_ok_cm02h, pre_ok_cm01h;
+  logic [NE-1:0] a2_ok_cm06h;
+  always_comb
+    for (int e = 0; e < NE; e++) a2_ok_cm06h[e] = (ws_cm06h[e] & (ws_cm06h[e] - NS'(1))) == '0;
   always_comb begin
     for (int j = 0; j < NS; j++) begin
       take_ok_cm01h[j] = !(mv_q_cm01h[j] & ~dis_cm01h[j]) ||
@@ -239,6 +329,7 @@ module miu_mq #(
   `CCV_ASSERT(mq_free_held, &free_ok_cm01h)
   `CCV_ASSERT(mq_owed_bound, &owed_ok_cm02h)
   `CCV_ASSERT(mq_pre_onehot, &pre_ok_cm01h)
+  `CCV_ASSERT(mq_a2_one, &a2_ok_cm06h)
 
 endmodule
 `undef CCV_CLK
