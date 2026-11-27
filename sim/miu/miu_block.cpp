@@ -50,7 +50,7 @@ public:
     if (!pbins_) return;
     std::fprintf(stderr, "MIUBINS");
     for (const char *n : {"credit_hold_other_bank", "dcu_id_quarter_empty", "dcu_id_drop_held",
-                          "l0_lookup", "l0_miss", "l0_refill_wait"}) {
+                          "l0_lookup", "l0_miss", "l0_refill_wait", "shared_neg_fault"}) {
       const auto it = pbin_.find(n);
       std::fprintf(stderr, " %s=%llu", n, (unsigned long long)(it == pbin_.end() ? 0 : it->second));
     }
@@ -1541,7 +1541,10 @@ private:
       const auto sp = spm_.find(cta);
       const uint64_t size = sp == spm_.end() ? 0 : sp->second.second - sp->second.first + 1;
       for (unsigned l = 0; l != kLanes; ++l)
-        if ((j.active >> l & 1u) && (j.pxfer ? 4u : j.bytes) + j.addr[l] > size) sbad |= 1u << l;
+        if ((j.active >> l & 1u) && miu::sharedFault(j.addr[l], j.pxfer ? 4u : j.bytes, size)) {
+          sbad |= 1u << l;
+          if (miu::sharedNegative(j.addr[l])) pbin("shared_neg_fault");
+        }
     }
     const uint32_t fl = bad ? bad : sbad;
     const uint32_t ro = fl ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
