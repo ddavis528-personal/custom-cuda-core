@@ -41,6 +41,12 @@ python3 tools/lint-rtl.py rtl/lint/bad_table3.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn2.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_tport.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn3.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn4.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_tport2.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn5.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn6.sv >>"$TMP/bad.log" 2>&1
+CCV_LINT_FIXTURE_UNITS=reference_xc python3 tools/lint-rtl.py rtl/lint/bad_conn7.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -156,13 +162,27 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_table3.sv rtl/lint/reference_top.sv \
          rtl/lint/reference_rd.sv rtl/lint/reference_wr.sv \
          rtl/lint/reference_pp.sv rtl/lint/reference_pc.sv rtl/lint/reference_ph.sv \
-         rtl/lint/reference_tpp.sv rtl/lint/reference_tpr.sv rtl/lint/reference_tpw.sv; do
+         rtl/lint/reference_tpp.sv rtl/lint/reference_tpr.sv rtl/lint/reference_tpw.sv \
+         rtl/lint/reference_hp.sv rtl/lint/reference_xp.sv rtl/lint/reference_xc.sv \
+         rtl/lint/reference_cnp.sv rtl/lint/reference_rhp.sv rtl/lint/reference_dc.sv \
+         rtl/lint/reference_mtpp.sv rtl/lint/reference_mtpr.sv rtl/lint/reference_mtpw.sv \
+         rtl/lint/reference_ttp.sv rtl/lint/reference_ttr.sv rtl/lint/reference_ttw.sv \
+         rtl/lint/reference_pttp.sv rtl/lint/reference_pttr.sv rtl/lint/reference_pttw.sv \
+         rtl/lint/reference_kp.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (20 fixtures)" "PASS"
+# reference_lkp.sv's sibling has no timing unit: name it a verified unit for
+# this fixture alone (OA-501; the env honours reference_* modules only).
+for g in rtl/lint/reference_lkp.sv rtl/lint/reference_lh.sv; do
+  if ! CCV_LINT_FIXTURE_UNITS=reference_xc python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
+    bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
+    gfail=1
+  fi
+done
+[ "$gfail" = "0" ] && say "compliant code is silent (38 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -257,6 +277,35 @@ a row's own read not listed|table otab_cy03h is refused: its loop writer lookup 
 ...and the refused port's stage skip reported|upe_cy02h is at stage 02 but combinational logic over stage(s) 02,04,05 gives 05
 WANT
 
+# reference_cnp.sv: a "from" cone over two listed parent registers (OA-495
+# (a)), and reference_rhp.sv: a hop through a child's register named
+# "u_d.a_cy02h>r_cy03h>y_cy03h" (OA-495 (c)), pass; bad_conn4.sv's cone
+# leaving a register out and hop naming a register its input does not reach
+# are refused.
+# reference_hp.sv: a register loop whose hop crosses a register-free helper,
+# traced as the parent's logic (OI-213), passes; reference_xp.sv names a
+# crossing of a child's combinational path, "u_x.a_cy02h>y_cy02h" (OA-494),
+# and passes; bad_conn3.sv's named crossing of a registered path is refused.
+# reference_kp.sv: a cone naming a crossing of a sibling whose input traces
+# back to a listed register (OA-498) passes; bad_conn6.sv's crossing tracing
+# to an unlisted register is refused. reference_lkp.sv: a cone from a
+# verified sibling's output through a register-free helper's named crossing
+# (OA-501), passes; bad_conn7.sv's cone omitting that output is refused.
+# reference_ttp's writer also has an
+# output the parent leaves unconnected, which reaches nothing (OI-219).
+# bad_conn5.sv's reference_vttp: a writer whose table does not verify (no
+# assertion) keeps its back edges (OA-497).
+# reference_ttp/ttr/ttw: a sibling table's writer fed from later registers,
+# its inputs reaching its output only through the table register, excused
+# by the verified table (OI-217); bad_conn5.sv's writer input reaching the
+# output around the register is reported. reference_pttp/pttr/pttw: the
+# writer's inputs reach the table register through write-pipeline registers
+# whose whole fanout ends there, excused (OA-500); bad_conn5.sv's
+# reference_xttp gives one pipeline register an output the parent reads,
+# and its input's back edge is reported.
+# reference_mtpp/mtpr/mtpw: a sibling's table register reaching its output
+# through a select, read by u_r (OA-496), passes; bad_tport2.sv's register
+# reaching the output through a second register is refused.
 # reference_tpp/tpr/tpw: a table read through an input port (OA-492 (3)),
 # rob_w and redir's shape, passes; bad_tport.sv's wrong ahead, port fed
 # through logic and missing assertion are refused.
@@ -284,7 +333,17 @@ a loop that does not close|cross-module loop u_rd.l0_cy02h is refused: the loop 
 no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion 'conn_l0_fresh' in the parent or reference_ard
 a port table's wrong ahead|table rd_cy04h (an input port) is refused: ahead is 2, but rd_cy04h lies 1 stage(s) past its reader's (03)
 a port table fed through logic|table rd_cy04h (an input port) is refused: in reference_gtpp, rd_cy04h is not fed directly by u_w's register rd_cy04h
+a table writer whose table does not verify|reference_vttp's u_w (reference_vttw): output rd_cy02h (its stage 02, the parent's 02) depends on input en_cy01h
+a cone naming an unverified sibling's output|cross-module loop u_c.v_cy01h is refused: cone output u_x.y_cy02h: reference_xc's tags are not verified
+a helper crossing whose sibling source is unlisted|cross-module loop u_c.v_cy01h is refused: u_x.y_cy02h reaches u_c.v_cy01h through the cone but no listed crossing names it
+a cone crossing traced to an unlisted register|cross-module loop u_c.v_cy01h is refused: cone crossing u_x.a_cy02h>y_cy02h: its input a_cy02h traces to oq_cy04h, not only to listed registers
+a write-pipeline register with one more fanout|reference_xttp's u_w (reference_xttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy00h (its stage 00, fed at 04)
+a table writer's input around its register|reference_lttp's u_w (reference_lttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy01h (its stage 01, fed at 04) combinationally
+a sibling table through a second register|table rd_cy04h (an input port) is refused: u_w.tab_cy03h is not a register reaching an output of reference_qtpw through combinational logic only
 a port table with no assertion|table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_stpr
+a cone missing a register|cross-module loop u_c.v_cy01h is refused: register(s) kk_cy04h reach u_c.v_cy01h through the cone but are not listed
+a registered hop its input does not reach|cross-module loop u_c.v_cy01h is refused: hop u_d.a_cy02h>s_cy03h>y_cy03h: reference_sdc's input a_cy02h does not reach s_cy03h's next value or enable
+a registered crossing|cross-module loop u_c.v_cy01h is refused: crossing u_q.a_cy02h>y_cy03h: reference_qqreg has no combinational path from a_cy02h to y_cy03h
 a register loop's untraced hop|cross-module loop u_c.v_cy01h is refused: the loop's hop rm_cy03h -> rm_cy04h is not traced
 a helper whose output feeds another register|reference_hpp's u_h (reference_hph): output y (its stage none, the parent's 02) depends on input a (its stage none, fed at 03) combinationally
 a control no bench names|cross-module loop u_rd.l0_cy02h is refused: its control 'conn-l0-nosuch' is named nowhere
@@ -299,6 +358,17 @@ else
   bad "CCV-L23's connection ratchet" "$(grep 'CCV-L23' "$TMP/cratchet.log" | head -3)"
 fi
 
+# An orphan declaration (MI-44): a <module>.feedback.json beside no .sv
+# defining that module is never read, so it is refused.
+mkdir -p "$TMP/orphan"
+cp rtl/lint/reference_hp.feedback.json "$TMP/orphan/ghost_miu.feedback.json"
+python3 tools/lint-rtl.py --orphan-root="$TMP/orphan" rtl/lint/reference_hp.sv >"$TMP/orphan.log" 2>&1
+if grep -q "ghost_miu.feedback.json is declared for module ghost_miu, which no .sv beside it defines" "$TMP/orphan.log"; then
+  say "CCV-L23: an orphan feedback declaration is refused" "PASS"
+else
+  bad "CCV-L23: an orphan feedback declaration" "no finding: $(head -2 "$TMP/orphan.log" | tr '\n' ' ')"
+fi
+
 # MA signs a declaration under rtl/miu/ or rtl/dcu/ only (MA-32): the
 # reference table, signed by MA, passes read as a DCU module and is refused
 # read as an OOE one.
@@ -311,6 +381,46 @@ if [ "$ma_dcu" = 0 ] && grep -q "table park_cy04h is refused: not an architect's
   say "CCV-L23: MA signs only for MIU and DCU" "PASS (a DCU table passes; an OOE one is refused)"
 else
   bad "CCV-L23: MA signs only for MIU and DCU" "dcu exit $ma_dcu: $(grep -m1 'CCV-L' "$TMP/ma-dcu.log"); ooe: $(grep -m1 'CCV-L23' "$TMP/ma-ooe.log")"
+fi
+
+# The block's architect signs, and no one else (DA-135): an AR-signed table
+# passes read as an AR block's module (rtl/common) and is refused read as an
+# OOE one; an RA-signed one passes read as RCU. A loop across two blocks needs
+# both: reference_kp's loop, with its sibling reference_xc placed in the MIU
+# (CCV_LINT_FIXTURE_BLOCKS), is refused signed by OA alone and by OA, MA and
+# AR, and passes signed by OA and MA.
+sed 's/"by": "OA"/"by": "AR"/' rtl/lint/reference_table.feedback.json >"$TMP/ma/reference_table.feedback.json"
+python3 tools/lint-rtl.py --signer-path=rtl/common "$TMP/ma/reference_table.sv" >"$TMP/ar-common.log" 2>&1; ar_common=$?
+python3 tools/lint-rtl.py --signer-path=rtl/ooe "$TMP/ma/reference_table.sv" >"$TMP/ar-ooe.log" 2>&1
+sed 's/"by": "OA"/"by": "RA"/' rtl/lint/reference_table.feedback.json >"$TMP/ma/reference_table.feedback.json"
+python3 tools/lint-rtl.py --signer-path=rtl/rcu "$TMP/ma/reference_table.sv" >"$TMP/ra-rcu.log" 2>&1; ra_rcu=$?
+if [ "$ar_common" = 0 ] && [ "$ra_rcu" = 0 ] &&
+   grep -q "table park_cy04h is refused: not an architect's (by 'AR'; it needs OA)" "$TMP/ar-ooe.log"; then
+  say "CCV-L23: only the block's architect signs" "PASS (AR in its block, RA in RCU; AR in OOE refused)"
+else
+  bad "CCV-L23: only the block's architect signs" "ar/common exit $ar_common, ra/rcu exit $ra_rcu: $(grep -m1 'CCV-L23' "$TMP/ar-ooe.log")"
+fi
+for v in one both extra; do
+  mkdir -p "$TMP/xb-$v"
+  cp rtl/lint/reference_kp.sv rtl/lint/reference_pc.sv rtl/lint/reference_xc.sv "$TMP/xb-$v/"
+  case $v in
+    one) by='"OA"' ;; both) by='["OA", "MA"]' ;; extra) by='["OA", "MA", "AR"]' ;;
+  esac
+  python3 - "$TMP/xb-$v/reference_kp.feedback.json" "$by" <<'PY'
+import json, sys
+d = json.load(open("rtl/lint/reference_kp.feedback.json"))
+d["reads"]["u_c.v_cy01h"]["by"] = json.loads(sys.argv[2])
+json.dump(d, open(sys.argv[1], "w"), indent=2)
+PY
+  CCV_LINT_FIXTURE_BLOCKS=reference_xc=rtl/miu python3 tools/lint-rtl.py --signer-path=rtl/ooe \
+    "$TMP/xb-$v/reference_kp.sv" >"$TMP/xb-$v.log" 2>&1
+done
+if ! grep -q "CCV-L23" "$TMP/xb-both.log" &&
+   grep -q "is refused: not its block architect's (by 'OA'; it needs MA and OA)" "$TMP/xb-one.log" &&
+   grep -q "is refused: not its block architect's (by \['OA', 'MA', 'AR'\]; it needs MA and OA)" "$TMP/xb-extra.log"; then
+  say "CCV-L23: a loop across blocks needs both architects" "PASS (OA+MA passes; OA alone and OA+MA+AR refused)"
+else
+  bad "CCV-L23: a loop across blocks needs both architects" "both: $(grep -m1 'CCV-L23' "$TMP/xb-both.log"); one: $(grep -m1 'CCV-L23' "$TMP/xb-one.log"); extra: $(grep -m1 'CCV-L23' "$TMP/xb-extra.log")"
 fi
 
 # CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a
