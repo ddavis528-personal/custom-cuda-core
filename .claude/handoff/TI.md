@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-24. Keep this current at every task's end; it is what
+Updated 2026-11-27. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -38,7 +38,7 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-580 (rev 582). Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-588 (rev 590). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -76,29 +76,27 @@ background `while pgrep` wait.
   response field for it would be a new TI row.
 
 ## In flight
-- ti-pt (worktree /home/user/ti-pt, on landed 77f7849e): 9578fbef input-port
-  table form (OA-492 (3)) + b3834897 check-ngd OOE cap rise to 30 (DA rev 134).
-  Gate restarted with CCV_RESUME=1 after a disk-full stop; job log
-  /root/ccv-logs/job-gate-push-20261124-094150-3345.log. On landing: row to OI, OA.
-  Never edit ti-pt while it gates.
-- ti-hop (worktree /home/user/ti-hop, gate-scratch/TI-hop @ 02dbf5c4, on
-  b3834897): orphan check (MI-44), helper hops (OI-213), named crossings
-  (OA-494), cone + registered hop (OA-495), OA-496, writer-input exemption
-  (OI-217/OA-497/OI-219), OA-498/499 cone sources, OA-500 write-pipeline
-  fixed point (u_map's ten off), OA-501 helper crossing over a sibling-output
-  source (CCV_LINT_FIXTURE_UNITS for check-1d), OI's u_gfree declarations
-  (cherry-picked cf3ce683, 9ffba2bd, ade5d5a1, f05fad61: u_gfree ratchet
-  empty, 24 entries left). check-1d 68 PASS, tree lint 0. Gate-push right
-  after ti-pt lands (merge its landed tip first); ring OI, OA, MI, MA.
-- 11-24 daily sweep: register half done (TI-580). Repo half (daily-sweep.sh)
-  waits: run it after ti-pt and ti-hop land, never beside a gate.
-- Disk: landed worktrees' build/ dirs were cleared (ti-tw, ti-conn, ti-drop,
-  ti-l23, ti-fold). 12G free.
-- Then: OA signatures on u_gfree's child-to-child entries (rt_v/row wait on
-  OI's late-return control; OI drafts sa_l/rt_l); MI writes
-  ccv_miu.feedback.json at assembly; DI-38 (1) fill-unheld line (task 72,
-  needs DI's spec); MI 29603c02 held-wait re-pin (task 80); OI-204 pc_kept
-  at:11 lines (task 66); AR 417 (task 79); task 76 credit modules.
+- 11-24 sweep landed a1decc2e on both branches (resumed after a reboot;
+  miu_form added to tools/heavy-units.json, a24cf95c, after a cg OOM).
+  The next sweep takes ccr-80102643 and the later repo branches.
+- COMBINED GATE: ti-rp (worktree /home/user/ti-rp, gate-scratch/TI-rp @
+  2e2e7357) = ti-hop (OA-500/501 lint, OI's u_gfree declarations and
+  ooe_rendep check-only comparators) + ti-sign (DA-135 block-architect
+  signer, 0878c4e5) + MA-34 option B params (DA rev 136), AR 420-422 (EXB 8,
+  per-bank TIMEOUT_MEMOP denominator, TL source width 8, TL_OUT 1229 /
+  TL_IN 1180), stub IdPool caps, MIU memops in flight 8, DI's dcu_mshr 8x16
+  interim (80071ac5) + bench fix (756d0367), merged with a1decc2e.
+  gate-push job log /root/ccv-logs/job-gate-push-20261127-013230-2798.log
+  (wait task in the session; rerun gate-wait on exit 3, CCV_RESUME=1 on 4).
+  Never edit ti-rp while it gates. On landing: ring OI, OA, MI, MA, DI, AR;
+  skeleton re-pins may follow (memops in flight 4->8, id pools).
+- Dropped from it: the colwalk-p1k one-bank control (AR 422 (1)).
+  colwalk-p1k stalls at CCV_TB_LATENCY >= 300 (sweep tip) / >= 600 (ti-rp),
+  200k-cycle cap, plus a stale-operand CHECK (seq 131 C_FADD R12 reads the
+  load's address, not its data) at 600-1000 on both trees. Pre-existing.
+  At 300 ti-rp finishes with memop hold 645 (< 6144 needed). Next after the
+  gate: triage the stall (stub MIU/DCU vs OOE), tell AR the control waits
+  on it and on a kernel that holds a memop past 6144.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
