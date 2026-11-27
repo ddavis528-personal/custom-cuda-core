@@ -394,6 +394,8 @@ private:
   void nfNext();
   void freeId(unsigned id);
   std::deque<std::pair<uint64_t, MlcReq>> to_mlc_;   ///< (its D2, the request), oldest first
+  uint64_t mlc_last_t_ = ~uint64_t(0) - 1;   ///< the last miss request's launch
+  unsigned mlc_last_bank_ = 0;               ///< and its bank (DI-65)
   std::set<uint64_t> wb_lines_;        ///< lines written back, not yet acked
   unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
   std::deque<unsigned> wbsend_;        ///< writeback entries unsent, oldest first

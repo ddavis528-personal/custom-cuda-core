@@ -1850,16 +1850,29 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
         h_.hit("dcu_wb_sent");
       }
     }
-  } else if (!to_mlc_.empty() && p.mlc_can && to_mlc_.front().first < t) {
+  } else if (p.mlc_can) {
     // The oldest unsent miss, its valid no earlier than D2 + 1 (H+5 for a
-    // lookup's own D2): straight from D2 when nothing older waits.
-    if (to_mlc_.front().first + 1 == t) h_.hit("dcu_mlc_straight");
-    // dcu_mpick's stamp is 10 bits, taken at D2 and compared modulo
-    // (DI-64, DCU tab rev 150): a miss picked past half the range would
-    // order wrongly in the RTL, so the bin counts any (dcu_mpick_alias).
-    if (t - to_mlc_.front().first > 512) h_.hit("dcu_mpick_alias");
-    o.mlc = to_mlc_.front().second;
-    to_mlc_.pop_front();
+    // lookup's own D2): straight from D2 when nothing older waits. A bank
+    // whose miss launched last cycle is passed over now (dcu_mpick: a bank
+    // learns of its send a cycle on, its head picked a cycle ahead; DI-65),
+    // as DI-35's retry grant passes over the bank it granted.
+    auto it = to_mlc_.begin();
+    for (; it != to_mlc_.end() && it->first < t; ++it)
+      if (!(mlc_last_t_ + 1 == t && bankOf(it->second.pa) == mlc_last_bank_)) break;
+    if (it != to_mlc_.end() && it->first < t) {
+      if (it != to_mlc_.begin()) h_.hit("dcu_mpick_pass");
+      if (it->first + 1 == t) h_.hit("dcu_mlc_straight");
+      // dcu_mpick's stamp is 10 bits, taken at D2 and compared modulo
+      // (DI-64, DCU tab rev 150): a miss picked past half the range would
+      // order wrongly in the RTL, so the bin counts any (dcu_mpick_alias).
+      if (t - it->first > 512) h_.hit("dcu_mpick_alias");
+      o.mlc = it->second;
+      mlc_last_t_ = t;
+      mlc_last_bank_ = bankOf(it->second.pa);
+      to_mlc_.erase(it);
+    } else if (!to_mlc_.empty() && to_mlc_.front().first < t) {
+      h_.hit("dcu_mpick_pass");
+    }
   }
   // Probe acks, one a cycle, in the order their probes finished; the
   // payload's launch frees the buffer, its credit and a writeback buffer.
