@@ -25,9 +25,16 @@ so this is a build artifact rather than something to remember.
 | `rtl/dcu/dcu_mshr.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_CORE_ID`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_DCU_MLC`, `CCV_P_W_REQ_MIU_DCU` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
 | `rtl/include/ooe_pl.svh` | `CCV_L_W_MEM_OP`, `CCV_L_W_OPCODE`, `CCV_P_W_BYP_GROUP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_IMM`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_IDX`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
+| `rtl/miu/miu_a2.sv` | — | `CCV_W_PA_FOLD` |
+| `rtl/miu/miu_agu8.sv` | — | `CCV_PRIV_WINDOWS` |
 | `rtl/miu/miu_cred.sv` | — | `CCV_DCACHE_LOOKUPS`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA` |
+| `rtl/miu/miu_form.sv` | `CCV_L_W_MEM_OP` | `CCV_LANE_CONTEXTS`, `CCV_MEMOP_CREDITS`, `CCV_PRIV_WINDOWS`, `CCV_P_CORE_ID`, `CCV_P_W_CTA_SLOT`, `CCV_P_W_DEV_CORE` |
+| `rtl/miu/miu_ids.sv` | — | `CCV_MEMOP_CREDITS`, `CCV_P_W_REQ_MIU_DCU` |
+| `rtl/miu/miu_lead.sv` | — | `CCV_PRIV_WINDOWS` |
 | `rtl/miu/miu_mq.sv` | `CCV_L_W_MEM_OP` | `CCV_MEMOP_CREDITS`, `CCV_P_W_CTA_SLOT`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
 | `rtl/miu/miu_pair.sv` | `CCV_L_W_MEM_OP` | `CCV_LAT_MIU_PAIR_LAG`, `CCV_MEMOP_CREDITS`, `CCV_P_W_CTA_SLOT` |
+| `rtl/miu/miu_rcap.sv` | — | `CCV_P_W_REQ_MIU_DCU` |
+| `rtl/miu/miu_tlb.sv` | — | `CCV_W_PA_FOLD` |
 | `rtl/ooe/ooe_mempl.sv` | `CCV_L_W_MEM_OP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_ROB_IDX`, `CCV_P_W_RS_IDX` |
 | `rtl/ooe/ooe_sched.sv` | — | `CCV_MEMOP_CREDITS` |
 | `rtl/ooe/ooe_wake.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
@@ -83,15 +90,17 @@ so this is a build artifact rather than something to remember.
 | `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU`, `CCV_LAT_RCU_KILL_DRAIN` |
 | `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_ADDR`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/skel/kernel.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA`, `CCV_P_TIMEOUT_MEM`, `CCV_P_TIMEOUT_MEMOP` |
+| `sim/skel/kernel.cpp` | `CCV_L_W_TL_IN`, `CCV_L_W_TL_OUT` | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA`, `CCV_P_TIMEOUT_MEM`, `CCV_P_TIMEOUT_MEMOP` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | `CCV_DCU_WAYPRED_BITS` |
 | `test/cg/tb_cg_clk.sv` | — | `CCV_CG_HYST_W` |
 | `test/dcu/bctl_tb.cpp` | — | — |
 | `test/dcu/cap_tb.cpp` | — | — |
+| `test/dcu/mshr_tb.cpp` | — | — |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
+| `test/miu/ids_tb.cpp` | — | — |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/ooe/ooe_pl_tb.sv` | — | `CCV_P_W_RS_IDX` |
 | `test/ooe/ooe_trio.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
@@ -141,8 +150,9 @@ to code that merely carries it, which will not.
 | `CCV_L_OPERANDS_PER_LANE` | 3 | **HIGH** | RCU/LANE session -- see the src_arch vs operand mismatch |
 | `CCV_L_PRF_LANE_READ_BITS` | 4096 | **HIGH** | RCU/LANE session, with CCV_L_OPERANDS_PER_LANE |
 | `CCV_L_W_OPCODE` | 9 | **HIGH** | ISA opcode census, then DEC/OOE/RCU agree the hops |
-| `CCV_L_W_TL_IN` | 1176 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
-| `CCV_L_W_TL_OUT` | 1225 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
+| `CCV_L_W_TL_IN` | 1180 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
+| `CCV_L_W_TL_OUT` | 1229 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
+| `CCV_L_W_TL_SOURCE` | 8 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_COH_OP` | 4 | med | MLC/EXB session, once the TL-C subset is chosen |
 | `CCV_L_W_CSR_ADDR` | 16 | med | CRU session -- the CSR fabric has no topology yet |
 | `CCV_L_W_GRID_SEL` | 8 | med | RAU / CRU sessions |
