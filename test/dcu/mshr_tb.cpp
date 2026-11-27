@@ -354,7 +354,11 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   for (unsigned c = 0; c < n; ++c) {
     Vdcu_mshr &d = *b.dut;
     b.quiet();
-    g.spread = rnd && (c / 1500) % 2;
+    // Random runs go in stretches: as is; slow fills over all lines alike
+    // (the entries run out); slow frees (a filled entry lingers, and new
+    // misses to its line wait, and those behind them: bank order).
+    const unsigned phase = rnd ? (c / 1500) % 3 : 0;
+    g.spread = phase == 1;
     const bool on = scenario == "idle"     ? false
                     : scenario == "medium" ? c % 3 == 0
                     : scenario == "high"   ? true
@@ -362,14 +366,24 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     // D0: new lookups, at most one live one for this bank (MA-27), others
     // for other banks, and now and then a dropped one for this bank.
     std::array<std::optional<Look>, kSlots> look0{};
-    bool mineSent = false;
+    // This bank's lookup in one slot on about a fifth of the cycles (a
+    // third in the clock-gating scenarios): one bank of eight, its waiters
+    // retried one at a time.
+    const int mineSlot = on && g.below(rnd ? 5 : 3) == 0 ? int(g.below(kSlots)) : -1;
     for (unsigned s = 0; s < kSlots; ++s) {
-      if (!on || g.below(10) >= (rnd ? 6u : 8u)) continue;
+      if (int(s) != mineSlot && (!on || g.below(10) >= (rnd ? 6u : 8u))) continue;
       Look l;
-      if (!mineSent && g.below(2) == 0) {
+      if (int(s) == mineSlot) {
         l.q = g.req();
+        // Now and then a line held by a filled entry: a new miss that waits
+        // while no waiter is queued, and the miss behind it (bank order).
+        if (rnd && g.below(4) == 0) {
+          std::vector<uint64_t> fl;
+          for (const Entry &x : m.e)
+            if (x.v && x.st == 2) fl.push_back(x.pa);
+          if (!fl.empty()) l.q.pa = fl[g.below(unsigned(fl.size()))];
+        }
         l.mine = true;
-        mineSent = true;
       } else if (rnd && g.below(8) == 0) {
         l.q = g.req();
         l.mine = true;
@@ -460,10 +474,9 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     if (fillNow) d.frid_cc04h = (kBk << 4) | *fillNow;
     else if (otherNow) d.frid_cc04h = (g.otherBank() << 4) | g.below(kNe);
     else if (rnd) d.frid_cc04h = g.below(128);
-    // Fills come slowly in alternate stretches of random runs, so the
-    // entries run out.
-    const unsigned fillRate = g.spread ? 1 : 4;
-    if (g.below(10) < fillRate) {
+    const unsigned fillRate = phase == 1 ? 1 : 8;
+    const unsigned fillDen = phase == 1 ? 20 : 20;
+    if (g.below(fillDen) < fillRate) {
       std::vector<unsigned> c2;
       for (unsigned i = 0; i < kNe; ++i)
         if (m.e[i].v && m.e[i].st == 1 && !fillPend[i] && !(fillNow && *fillNow == i)) c2.push_back(i);
@@ -477,7 +490,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       d.fv_cc03h = 1;
       otherLead = true;
     }
-    if (g.below(10) < 4) {
+    if (g.below(10) < (phase == 2 ? 1u : 4u)) {
       std::vector<unsigned> c2;
       for (unsigned i = 0; i < kNe; ++i)
         if (m.e[i].v && m.e[i].st == 2 && !freePend[i]) c2.push_back(i);

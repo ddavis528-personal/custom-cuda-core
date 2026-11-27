@@ -12,10 +12,17 @@
 #            controls flat (the model puts a new lookup ahead of the re-read),
 #            order (a miss presented past its bank's waiter)
 #            and nofree (a dropped access keeps its entry), which must fail
-#   dcu_mshr: test/dcu/mshr_tb.cpp, the miss buffers (merge, allocate, wait,
-#            bank order, the request to MLC, a fill's entry read), and its
-#            controls nomerge (dcu-mshr-nomerge), order (dcu-miss-reorder), credit and retry,
-#            which must fail
+#   dcu_mshr: test/dcu/mshr_tb.cpp, one bank's miss buffers (merge, allocate,
+#            wait, bank order, the MLC offers and their payload, a fill's
+#            entry read, other banks' fills and frees), built at banks 0 and
+#            5 (MA-34), and its controls nomerge (dcu-mshr-nomerge), order
+#            (dcu-miss-reorder) and straight (a miss sent straight past an
+#            older one), which must fail
+#   dcu_mpick: test/dcu/mpick_tb.cpp, the cross-bank picks (the retry grant
+#            and its D2 port, the MLC send, its credits and payload), and its
+#            controls retry (the lowest offering bank granted), age (the
+#            lowest bank's head sent), pass (last cycle's bank not passed
+#            over) and credit (last cycle's send not counted), which must fail
 #   dcu_fill: test/dcu/fill_tb.cpp, the fill buffers (capture, encode, the
 #            write request, answers owed, the free's credit and entry), and its
 #            controls nowait (freed with answers owed) and highest (the
@@ -86,10 +93,20 @@ asserts credit_plus dcu_bctl bctl_port_overflow --seed 1 --flood --control credi
 for seed in 1 2 3; do
   bench "dcu_mshr seed $seed" test/dcu/cg-build.sh dcu_mshr "$B/dcu_mshr" -- "$B/dcu_mshr/tb" --seed $seed
 done
+for seed in 1 2; do
+  bench "dcu_mshr bank 5 seed $seed" test/dcu/cg-build.sh dcu_mshr_bk5 "$B/dcu_mshr_bk5" -- \
+    "$B/dcu_mshr_bk5/tb" --seed $seed
+done
 control dcu_mshr nomerge
 control dcu_mshr order
-control dcu_mshr credit
-control dcu_mshr retry
+control dcu_mshr straight
+for seed in 1 2 3; do
+  bench "dcu_mpick seed $seed" test/dcu/cg-build.sh dcu_mpick "$B/dcu_mpick" -- "$B/dcu_mpick/tb" --seed $seed
+done
+control dcu_mpick retry
+control dcu_mpick age
+control dcu_mpick pass
+control dcu_mpick credit
 for seed in 1 2 3; do
   bench "dcu_fill seed $seed" test/dcu/cg-build.sh dcu_fill "$B/dcu_fill" -- "$B/dcu_fill/tb" --seed $seed
 done
