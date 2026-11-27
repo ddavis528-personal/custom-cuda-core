@@ -30,22 +30,26 @@
 // leader, MA rev 199); an L0 miss; F-ADDR on an ordinary leader (S[49:48]
 // not 0, O-75); a bank's loser (dedupe and bank conflict, from A1's flopped
 // lead_set_index: a lower lookup slot launching to the same bank; a
-// duplicate line is such a bank's loser too); and miu_grp's group check
-// (each active lane on the leader's line and page, F-ALIGN, the interleaved
-// and window F-ADDR), ge, which meets the rest only at this OR. A dropped
+// duplicate line is such a bank's loser too); and the group check, ge:
+// miu_grp, an inner helper here (MA rev 209), per address slot, each active
+// lane on its group leader's line and the active groups' leaders on one
+// page, routed to the lookup slots it leads by lq, meeting the rest only at
+// this OR. F is read from lq: a leader at quarter 1 only for 4 pipes, at
+// quarter 2 for 2 or 4 (miu_lead). F-ALIGN and the interleaved and window
+// F-ADDR join ge with the rest of miu_grp's scope. A dropped
 // lookup frees its id and refunds its credit (miu_ids, miu_cred) from this
 // flop. The no-hit (MA-4, OA-408): per address slot, any of its memop's
 // launched lookups dropped, flopped for ccv_miu_ooe_cmpl_hint at H+2.
 //
 // Not yet here: the MQ entry's lines and lane map, and drop_held (an older
-// store's overlap found at A2): they come with miu_grp and the MQ's A2
-// write.
+// store's overlap found at A2): they come with the MQ's A2 write.
 //
 // Flops (tag 07): per lookup slot the PA (48), pa_fold, perms, drop, the
 // L0 miss and its VPN; per address slot the no-hit. Clocked by this
 // module's flop of the address slots' valids two cycles on (CG-5). Inputs
-// are flops (arrival 0) but miu_grp's ge (12); every output straight from
-// a flop.
+// are flops (arrival 0), lc_cm06h miu_agu8's (* keep *) copies of lanes 0's
+// and 16's lines for miu_grp's far lanes (MA rev 209, fix (i)); every
+// output straight from a flop.
 `include "ccv_assert.svh"
 `define CCV_CLK miu_core_clk
 `define CCV_RST rst_r01h
@@ -74,8 +78,10 @@ module miu_a2 #(
   // ---- miu_agu8's and miu_form's flops: per address slot -----------------
   input  logic [NS*NQ*VW-1:0] va_cm06h,      // each octet's lane 0 sum
   input  logic [NS*VW-1:0]    c_cm06h,       // the local form's C
-  // ---- miu_grp: per lookup slot, the group's check (arrival 12) ----------
-  input  logic [NS-1:0]       ge_cm06h,
+  // ---- miu_agu8's flops: per address slot, miu_grp's lanes ----------------
+  input  logic [NS*32*VW-1:0] lv_cm06h,      // every lane's sum (miu_agu8's flops)
+  input  logic [NS*32-1:0]    am_cm06h,      // every lane's active bit
+  input  logic [NS*2*41-1:0]  lc_cm06h,      // lanes 0's and 16's lines again (miu_agu8's keep copies)
   // ---- miu_tlb's L0 flops: slot k's entry e at [k*N0 + e] -----------------
   input  logic [NS*N0-1:0]    l0v_cm11h,
   input  logic [NS*N0*32-1:0] l0vpn_cm11h,
@@ -112,6 +118,32 @@ module miu_a2 #(
       v_q_cm06h <= v_q_cm05h;
     end
   end
+
+  // ---- The group and page check, one miu_grp per address slot -----------
+  // Address slot a's footprint from the leaders' quarters: a leader at
+  // quarter 1 only for 4 pipes, at quarter 2 for 2 or 4.
+  logic [NS-1:0] ok_cm06h;
+  logic [NS-1:0] ge_cm06h;
+  logic [NS*2-1:0] fl_cm06h;
+  always_comb
+    for (int a = 0; a < NS; a++) begin
+      fl_cm06h[a*2 +: 2] = '0;
+      for (int k = 0; k < NS; k++) begin
+        fl_cm06h[a*2 + 1] = fl_cm06h[a*2 + 1] | lq_cm06h[(k*NS + a)*NQ + 1];
+        fl_cm06h[a*2]     = fl_cm06h[a*2]     | lq_cm06h[(k*NS + a)*NQ + 2];
+      end
+    end
+  for (genvar a = 0; a < NS; a++) begin : g_grp
+    miu_grp #(.NL(32), .VW(VW)) u_grp (
+      .am(am_cm06h[a*32 +: 32]), .va(lv_cm06h[a*32*VW +: 32*VW]),
+      .lc(lc_cm06h[a*2*41 +: 2*41]), .fl(fl_cm06h[a*2 +: 2]), .ok(ok_cm06h[a]));
+  end
+  always_comb
+    for (int k = 0; k < NS; k++) begin
+      ge_cm06h[k] = 1'b0;
+      for (int a = 0; a < NS; a++)
+        ge_cm06h[k] = ge_cm06h[k] | (|lq_cm06h[(k*NS + a)*NQ +: NQ] && ok_cm06h[a]);
+    end
 
   // Lookup slot k's possible leaders: (0, k), (s < k, 2), (k, 0).
   function automatic logic can(input int k, input int s, input int q);

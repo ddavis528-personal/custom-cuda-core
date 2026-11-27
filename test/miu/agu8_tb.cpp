@@ -33,6 +33,10 @@
 
 namespace {
 
+// CCV_AGU8_LC: the unit's LC (cg-build.sh), lc checked only at 1.
+#ifndef CCV_AGU8_LC
+#define CCV_AGU8_LC 0
+#endif
 constexpr unsigned kNL = 8, kVW = 50, kDW = 29, kLanes = 32, kWL = 32;
 constexpr uint64_t kVMask = (1ull << kVW) - 1;
 // The forms (MI-21): the unit's sizes.
@@ -60,7 +64,7 @@ struct Want {
   bool ilv = false, loc = false;
 };
 
-enum class Ctl { none, xfer, sext, lane0, noshift };
+enum class Ctl { none, xfer, sext, lane0, noshift, lcl1 };
 
 Want model(const Op &o, Ctl ctl) {
   Want w;
@@ -225,6 +229,18 @@ struct Bench {
                        dbg.issue ? dbg.bw[__builtin_ctz(dbg.issue)] : 0);
       }
     }
+    // lc: lane 0's line again (LC = 1, MA rev 209); lcl1, lane 1's.
+    {
+      const uint64_t lm = (1ull << 41) - 1;
+      const uint64_t wl = CCV_AGU8_LC ? (want.va[ctl == Ctl::lcl1 ? 1 : 0] >> 7) & lm : 0;
+      if ((uint64_t(dut->lc_cm06h) & lm) != wl) {
+        ok = false;
+        if (fails < 20)
+          std::fprintf(stderr, "agu8: cycle %llu: lc %011llx, want %011llx\n",
+                       (unsigned long long)cyc, (unsigned long long)dut->lc_cm06h,
+                       (unsigned long long)wl);
+      }
+    }
     if (!ok && ++fails <= 20 && dut->fal_cm06h != want.fal)
       std::fprintf(stderr, "agu8: cycle %llu: align faults %02x, want %02x\n",
                    (unsigned long long)cyc, unsigned(dut->fal_cm06h), want.fal);
@@ -340,6 +356,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
                    : ctl == Ctl::sext  ? " control sext:"
                    : ctl == Ctl::lane0 ? " control lane0:"
                    : ctl == Ctl::noshift ? " control noshift:"
+                   : ctl == Ctl::lcl1 ? " control lcl1:"
                                        : ":";
   std::printf("agu8%s %s: %llu cycles, %u values checked, %u mismatches: %s\n", cn,
               rnd ? "random" : scenario.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
@@ -361,6 +378,7 @@ int main(int argc, char **argv) {
       else if (!std::strcmp(argv[i + 1], "sext")) ctl = Ctl::sext;
       else if (!std::strcmp(argv[i + 1], "lane0")) ctl = Ctl::lane0;
       else if (!std::strcmp(argv[i + 1], "noshift")) ctl = Ctl::noshift;
+      else if (!std::strcmp(argv[i + 1], "lcl1")) ctl = Ctl::lcl1;
       else {
         std::fprintf(stderr, "agu8: unknown control %s\n", argv[i + 1]);
         return 2;
