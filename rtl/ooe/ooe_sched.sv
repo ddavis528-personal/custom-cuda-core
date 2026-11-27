@@ -136,9 +136,12 @@ module ooe_sched #(
   output logic              gnt_l_cq04h    // the grant register is clocked at the next edge (ooe_rs's issue register)
 `ifdef CCV_CHECK_SCHED
   // trio_tb's control regrant (OA 509): select's mask of last cycle's
-  // grants removed, so an entry granted then may be granted again.
+  // grants removed, so an entry granted then may be granted again; and
+  // no-hold (OA 510): select's ret hold removed, so a branch or call may be
+  // granted the cycle after a ret's grant.
   ,
-  input  logic              ctl_regrant
+  input  logic              ctl_regrant,
+  input  logic              ctl_nohold
 `endif
 );
 
@@ -324,13 +327,18 @@ module ooe_sched #(
   // grant register (OA 509): no entry it granted is granted again at the
   // next edge (no_regrant).
   logic [N-1:0] gmask_cq04h;
+  // And its ret hold, the same loop with rtq (OA 510): no branch or call is
+  // granted the cycle after a ret's grant (ret_holds).
+  logic [NR-1:0] hmask_cq04h;
 `ifdef CCV_CHECK_SCHED
   assign gmask_cq04h = ctl_regrant ? '0 : gnt_cq04h;
+  assign hmask_cq04h = ctl_nohold ? '0 : hold_cq04h;
 `else
   assign gmask_cq04h = gnt_cq04h;
+  assign hmask_cq04h = hold_cq04h;
 `endif
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
-    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gmask_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(fcp_cq04h),
+    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gmask_cq04h), .hold_cq03h(hmask_cq04h), .rhold_cq03h(fcp_cq04h),
     .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
@@ -364,6 +372,7 @@ module ooe_sched #(
   (* keep *) logic [RW-1:0] rrun_l_cq04h;
   assign gnt_l_cq04h = rq_l_cq03h != '0 || gnt_out_cq04h != '0 || force_l_cq04h || rrun_l_cq04h != '0;
   `CCV_ASSERT(no_regrant, (grant_cq03h & gnt_cq04h) == '0)
+  `CCV_ASSERT(ret_holds, (gnt_cq04h[NR-1:0] & rtq_cq04h) == '0 || (grant_cq03h[NR-1:0] & brk_cq03h) == '0)
   `CCV_ASSERT(gnt_l_covers, gnt_l_cq04h || !((rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0 || force_cq04h || rrun_cq04h != '0))
 
   // -- Registers --------------------------------------------------------------

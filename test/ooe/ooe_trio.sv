@@ -98,6 +98,7 @@ module ooe_trio #(
   // ooe_sched, so RA-17's force never holds R).
   input  logic [2:0]        ctl,
   input  logic              ctl_regrant,  // ooe_sched's regrant control (CCV_CHECK_SCHED)
+  input  logic              ctl_nohold,   // and its no-hold control (OA 510)
   // What the bench compares.
   output logic [N-1:0]      grant_cq04h,
   output logic [K-1:0]      iss_v_cq05h,
@@ -225,7 +226,7 @@ module ooe_trio #(
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
     .block_cq03h(block_cq03h), .ret_cq03h(s_ret), .brk_cq03h(brk_cq03h), .mig_cq02h(s_mig), .cret_cq02h(cret_cq02h),
-    .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w), .gnt_l_cq04h(gnt_l), .ctl_regrant(ctl_regrant));
+    .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w), .gnt_l_cq04h(gnt_l), .ctl_regrant(ctl_regrant), .ctl_nohold(ctl_nohold));
 endmodule
 `undef CCV_CLK
 `undef CCV_RST

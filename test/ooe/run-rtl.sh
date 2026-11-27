@@ -898,4 +898,12 @@ if grep -q 'CCV no_regrant failed' <<<"$rg_out"; then
 else
   say "  control regrant (trio, no_regrant assertion)" "MISSED"; fail=1
 fi
+# no-hold: select's ret hold removed (OA 510, u_select's hold loop);
+# ooe_sched's ret_holds assertion must fire, by name.
+nh_out=$(TRIO_CONTROL=no-hold "$dir/trio_tb" 6 2>&1)
+if grep -q 'CCV ret_holds failed' <<<"$nh_out"; then
+  say "  control no-hold (trio, ret_holds assertion)" "caught"
+else
+  say "  control no-hold (trio, ret_holds assertion)" "MISSED"; fail=1
+fi
 exit $fail
