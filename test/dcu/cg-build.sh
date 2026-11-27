@@ -21,6 +21,15 @@ case "$unit" in
       "$PWD/test/dcu/btag_tb.cpp" ;;
   dcu_bctl)
     vl dcu_bctl "" "" "$PWD/rtl/dcu/dcu_bctl.sv" "$PWD/test/dcu/bctl_tb.cpp" ;;
+  dcu_bctl_rel)   # the control build: a write's reservation released at its grant
+    vl dcu_bctl "+define+CCV_CTL_BCTL_REL_AT_GRANT" "" "$PWD/rtl/dcu/dcu_bctl.sv" \
+      "$PWD/test/dcu/bctl_tb.cpp" ;;
+  dcu_bctl_ayl)   # the control build: a held fill yields to the port every time
+    vl dcu_bctl "+define+CCV_CTL_BCTL_ALWAYS_YIELD" "" "$PWD/rtl/dcu/dcu_bctl.sv" \
+      "$PWD/test/dcu/bctl_tb.cpp" ;;
+  dcu_bctl_pnw)   # the control build: the port's head writes over the fill's
+    vl dcu_bctl "+define+CCV_CTL_BCTL_PORT_NOWAIT" "" "$PWD/rtl/dcu/dcu_bctl.sv" \
+      "$PWD/test/dcu/bctl_tb.cpp" ;;
   dcu_mshr)
     vl dcu_mshr "" "" "$PWD/rtl/dcu/dcu_mshr.sv" "$PWD/test/dcu/mshr_tb.cpp" ;;
   dcu_fill)
