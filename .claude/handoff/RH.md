@@ -76,7 +76,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - AR 410/412 re-baseline DONE+SENT 17:20Z 11-24 (rh-jobs/ar410, ~/ccv-logs/ar410, <tag>.<k>.cmd). All 49 runs exact. S1 (1,640) and cm32priv
   (1,177,935) are bit-identical OLD vs NEW at every seed: with warm MLC they never pay DRAM, so the 0.2% S1 bar can't be tested this way (offered a
   cold-MLC rerun). cm128priv: OLD 1,977,489; NEW s1/s2/s3 +0.050/+0.141/+0.135%; jitter 0 +0.061%; seed spread 0.091%.
-  AR booked it (perf-register eb1c3851, AR 418) and released it 17:18Z; worktrees DROPPED. No cold-MLC run needed. Logs kept to 11-25.
+  AR booked it (perf-register eb1c3851, AR 418) and released it 17:18Z; worktrees DROPPED. No cold-MLC run needed. Logs REMOVED (cleanup fired 11-25 17:20Z, run 11-27 02:42Z).
 - OI OA-466 DONE+SENT 03:16Z 11-22 at a5d5cb83 (rh-oi466, rh-jobs/oi466, ~/ccv-logs/oi466), mlc, B = beat_merge=0,demote_walk=1. All clean (0 chk):
   S1(66) +0.072%, cm32p +0.149%, cm128p -0.038% (B 2,993,073: no CHECK, no hang). Walk mean/max: 14.96/34, 36.53/40, 26.87/40. OI landed the flip as c69ee1a3
   (13:41Z 11-22) and released it: rh-oi466 and rh-oi451 DROPPED 13:42Z. Logs oi451/451b/455/455b/455c/466 REMOVED 13:45Z 11-23.

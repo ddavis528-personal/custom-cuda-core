@@ -22,8 +22,9 @@
 // lane whose low address bits are not 0 at the transfer's size; a byte is
 // always aligned.
 //
-// Flops (tag 06, A2): the 8 lanes' sums and their align faults, ilv and
-// loc, 410 at the default sizes, one clock gate enabled by this module's flop of miu_cap's
+// Flops (tag 06, A2): the 8 lanes' sums and their align faults, ilv, loc,
+// ow (an ordinary .global access) and the lanes' window compares, 419 at
+// the default sizes, one clock gate enabled by this module's flop of miu_cap's
 // valid (CG-5): a new address is in A1 exactly the cycle after it. A lane's
 // sum is held whether or not it is active; A2 reads only active lanes.
 //
@@ -43,8 +44,12 @@
 // stays here: an interleaved lane's two low bits are S's, a local lane's
 // disp's.
 //
-// Not here: an access decided ordinary into the run's own windows (also
-// F-ADDR; O-83, IS's rev 171), a compare of S with W at A2 (miu_a2); and
+// The window F-ADDR's compare (O-83, IS's rev 171) is here too, beside the
+// adders: S[47:16+k] == W >> k, on the carry-save pair (no carry chain but
+// the low 16 + k bits'), a flop a lane. A2 (miu_a2) makes it the fault: an
+// interleaved lane's b outside [0, L) where it is false, an ordinary
+// .global lane in the run's own windows where it is true. S[49:48] (F-ADDR, O-75) needs the whole sum, so
+// it is A2's (miu_a2). Not here: the
 // predicate transfers' single address (l = 0, lane d's b), miu_lead's.
 //
 // Inputs are miu_cap's and miu_pair's flops (arrival 0; MIU tab, "Port NGD
@@ -102,6 +107,8 @@ module miu_agu8 #(
   output logic [NL-1:0]    fal_cm06h,
   output logic             ilv_cm06h,
   output logic             loc_cm06h,
+  output logic             ow_cm06h,      // an ordinary .global access
+  output logic [NL-1:0]    we_cm06h,      // each lane's S[47:16+k] == W >> k
   // Lane 0's line, VA[47:7], a (* keep *) copy for miu_grp's far compares
   // (MA rev 209); 0 and no flops at LC = 0.
   output logic [40:0]      lc_cm06h
@@ -140,8 +147,22 @@ module miu_agu8 #(
     ks_add = (a ^ b) ^ {g[VW-2:0], 1'b0};
   endfunction
 
+  // The carry out of a + b, LW bits, by the same prefix.
+  localparam int LW = 16 + PK;
+  function automatic logic ks_cout(input logic [LW-1:0] a, input logic [LW-1:0] b);
+    logic [LW-1:0] g, p;
+    g = a & b;
+    p = a ^ b;
+    for (int d = 1; d < LW; d = d * 2)
+      for (int i = LW - 1; i >= d; i--) begin
+        g[i] = g[i] | (p[i] & g[i-d]);
+        p[i] = p[i] & p[i-d];
+      end
+    ks_cout = g[LW-1];
+  endfunction
+
   // ---- The slot's terms: O-83's decision on lane d (MI-25 (D)) ---------
-  logic dec_cm05h, ilv_cm05h, loc_cm05h, slt_cm05h;
+  logic dec_cm05h, ilv_cm05h, loc_cm05h, slt_cm05h, ow_cm05h;
   always_comb begin
     dec_cm05h = 1'b0;
     for (int i = 0; i < IW; i++)
@@ -149,6 +170,7 @@ module miu_agu8 #(
     slt_cm05h = sl_cm05h;
     loc_cm05h = fs_cm05h[1];
     ilv_cm05h = fs_cm05h[2] & dec_cm05h;
+    ow_cm05h  = !shared_cm05h && !loc_cm05h && !ilv_cm05h;
   end
 
   // ---- Per lane: the ordinary sum S and F-ALIGN ---------------------------
@@ -158,11 +180,13 @@ module miu_agu8 #(
   // [6:2], also A2's. Both keep S's (and disp's) two low bits, so F-ALIGN
   // stays here.
   logic [NL*VW-1:0] va_d_cm05h;
-  logic [NL-1:0]    fal_d_cm05h;
+  logic [NL-1:0]    fal_d_cm05h, we_d_cm05h;
   for (genvar l = 0; l < NL; l = l + 1) begin : g_lane
     logic [WL-1:0] b_cm05h, x_cm05h;
     logic [VW-1:0] ob_cm05h, ox_cm05h, od_cm05h, s_cm05h, cs_cm05h, cc_cm05h;
     logic [1:0]    lo_cm05h;
+    logic [WHW-1:0] wa_cm05h, wb_cm05h, wz_cm05h;
+    logic          wc_cm05h, weq_cm05h;
     always_comb begin
       b_cm05h  = slt_cm05h ? win_cm05h : base_cm05h[l*WL +: WL];
       x_cm05h  = idx_cm05h[l*WL +: WL];
@@ -178,6 +202,17 @@ module miu_agu8 #(
       va_d_cm05h[l*VW +: VW] = s_cm05h;
       fal_d_cm05h[l] = am_cm05h[l] &&
                        ((b4_cm05h && (lo_cm05h != 2'b00)) || (b2_cm05h && lo_cm05h[0]));
+      // The window compare beside the add: S[47:16+k] == W >> k from the
+      // carry-save pair. With A, B the pair's bits [47:16+k] and c the carry
+      // into bit 16 + k, A + B + c == K (mod 2^n) exactly when A ^ B ^ K ==
+      // {Z[n-2:0], c}, Z = A & B | (A | B) & ~K (no carry chain past c).
+      wa_cm05h  = cs_cm05h[16+PK +: WHW];
+      wb_cm05h  = cc_cm05h[16+PK +: WHW];
+      wc_cm05h  = ks_cout(cs_cm05h[LW-1:0], cc_cm05h[LW-1:0]);
+      wz_cm05h  = (wa_cm05h & wb_cm05h) | ((wa_cm05h | wb_cm05h) & ~wh_cm05h);
+      weq_cm05h = ((wa_cm05h[WHW-1:1] ^ wb_cm05h[WHW-1:1] ^ wh_cm05h[WHW-1:1]) == wz_cm05h[WHW-2:0]) &&
+                  ((wa_cm05h[0] ^ wb_cm05h[0] ^ wh_cm05h[0]) == wc_cm05h);
+      we_d_cm05h[l] = weq_cm05h;
     end
   end
 
@@ -185,19 +220,24 @@ module miu_agu8 #(
   wire va_en_cm05h = v_q_cm05h;
   (* keep *) logic [NL*VW-1:0] va_q_cm06h;   // never merged with lc_q (NGD-7)
   logic [NL-1:0]    fal_q_cm06h;
-  logic             ilv_q_cm06h, loc_q_cm06h;
+  logic [NL-1:0]    we_q_cm06h;
+  logic             ilv_q_cm06h, loc_q_cm06h, ow_q_cm06h;
   always_ff @(posedge miu_core_clk) begin
     if (va_en_cm05h) begin
       va_q_cm06h  <= va_d_cm05h;
       fal_q_cm06h <= fal_d_cm05h;
       ilv_q_cm06h <= ilv_cm05h;
       loc_q_cm06h <= loc_cm05h;
+      ow_q_cm06h  <= ow_cm05h;
+      we_q_cm06h  <= we_d_cm05h;
     end
   end
   assign va_cm06h  = va_q_cm06h;
   assign fal_cm06h = fal_q_cm06h;
   assign ilv_cm06h = ilv_q_cm06h;
   assign loc_cm06h = loc_q_cm06h;
+  assign ow_cm06h  = ow_q_cm06h;
+  assign we_cm06h  = we_q_cm06h;
 
   if (LC != 0) begin : g_lc
     (* keep *) logic [40:0] lc_q_cm06h;

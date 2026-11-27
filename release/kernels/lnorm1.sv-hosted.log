@@ -12,5 +12,5 @@ PERF redirect=38 redirect_wait=1298 ckpt_full=0 branches=54 br_resolved=54 br_re
 XFER events=27425 launched=27425 match=yes channels_seen=38
 - test/top/tb_sv_hosted.sv:93: Verilog $finish
 - S i m u l a t i o n   R e p o r t: Verilator 5.052 2026-09-05
-- Verilator: $finish at 26us; walltime 0.747 s; speed 34.713 us/s
-- Verilator: cpu 0.744 s on 1 threads; allocated 13 MB
+- Verilator: $finish at 26us; walltime 0.999 s; speed 25.971 us/s
+- Verilator: cpu 0.990 s on 1 threads; allocated 13 MB
