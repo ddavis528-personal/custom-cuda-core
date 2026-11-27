@@ -51,8 +51,10 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    dcu_mpick cg: 171 flops, allowance 7; every-cycle grant/send flops
    (input-decided, CG-5 forbids input enables) exceed it even after
    encoding: likely needs a waiver ruling (RI-15 covers interface leads
-   only) or folding mpick into dcu_fill (allowance 114.6, 46 used): add as
-   DI-66 (4) once remeasured. cr_q (3) CG-4 goes with TI-537.
+   only) or folding mpick into dcu_fill (allowance 114.6, 46 used): raised
+   as DI-67 (rev 106, notice sent; now 21 flops + cr_q 3, DI recommends the
+   fold). Remeasured 1c63f699: all benches pass, controls caught, CG-5
+   clean; mshr CG-3 (offer flops 62-67%) goes with DI-66 (A).
    Before the gate: delete docs/ma34-rtl-plan.DI.md; then bundle increment
    B, DI-25, rarb/rslot, bdat wdata, MA p1 fix (DI-63), TI-537 if landed;
    merge worktree into the branch, one gate-push from the main checkout.
@@ -84,6 +86,6 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - Pongs 11-27: OI and RH sender=stale; tell Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 105, MI 76, MA 226, AR 426, OA 506, TI 594, OI 427, DA 136,
-RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-66 (row id .124161).
+Conventions 20, DI 106, MI 76, MA 226, AR 426, OA 506, TI 594, OI 427, DA 136,
+RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-67 (row id .126624).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
