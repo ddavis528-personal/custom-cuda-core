@@ -89,4 +89,8 @@ control miu_lead lowest
 bench miu_tlb test/miu/cg-build.sh miu_tlb "$B/miu_tlb" -- "$B/miu_tlb/tb"
 control miu_tlb early
 control miu_tlb norr
+bench miu_a2 test/miu/cg-build.sh miu_a2 "$B/miu_a2" -- "$B/miu_a2/tb"
+control miu_a2 carry
+control miu_a2 bank
+control miu_a2 addr
 exit $fail
