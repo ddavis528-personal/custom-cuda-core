@@ -59,8 +59,9 @@ Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27.
    pick, AND-OR read; NGD 20.0, all MIU benches pass. MI-48 (rev 72) rung TI + OA. When TI lands ti-rp,
    merge it into mi-dev (1ed1800b comes with it), re-measure MI's IMPL_PINS rows (held-wait 875/876,
    privwin priv_form 10, UE rows) on its params.
-   OA-505: miu_form check-cg peaks 11559 MiB cold (others <= 1560); TI asked to list it heavy. MI: find
-   which command peaks (yosys? replay cc1plus?) and cut it.
+   OA-505 done (MI-49, rev 73): miu_form's 11.5 GB was g++ on check-cg's replay harness; replay_cxx
+   clang++ in test/miu/cg-units.json -> 564 MiB, same result. On gate-scratch/MI-rp as 3826f9cf (TI to
+   cherry-pick with 1ed1800b) and on mi-dev as 104678de (unpushed; goes with the next gate-push).
    Pings 11-27: all 11 ponged; OI and RH sender=stale (their rosters lack MI; their fix).
 1. Option B rest: model IdPool cap at ccv::kMiuDcuIds (TI-584), 8-bit req_id, memops 8 (after ti-rp lands).
 2. miu_grp remaining: window fill RTL (same-bank fill-vs-pass case + control in lead_tb, MA rev 213);
