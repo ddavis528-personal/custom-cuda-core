@@ -9,8 +9,8 @@
 // read's id is released, seven in eight (the rest a recovered UE's first
 // answer, kept live for a later read).
 // Checks, every cycle, each slot's preselected id and its valid against a
-// value model of miu_ids's scheme (64 ids in quarters of 16, slot k on
-// quarter k; the next pick the lowest free id of the quarter but the one
+// value model of miu_ids's scheme (CCV_MIU_DCU_IDS ids, 160, in quarters of
+// 40, slot k on quarter k, quarter k's ids q*4 + k; the next pick the lowest free id of the quarter but the one
 // preselected; an id released free from the next cycle, a dropped one a
 // cycle later), and each read's entry, a cycle on, against the entry its id
 // was taken for. The module's assertions (a take holds an id and was led; a
@@ -25,6 +25,7 @@
 // lookup's id held.
 //===----------------------------------------------------------------------===//
 #include "Vmiu_ids.h"
+#include "ccv_params.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 
@@ -38,7 +39,15 @@
 
 namespace {
 
-constexpr unsigned kNS = 4, kNI = 64, kQN = kNI / kNS, kIW = 6, kEW = 6, kNE = 40, kNR = 4;
+// From the generated parameters (TI-590): CCV_MIU_DCU_IDS ids in the
+// CCV_P_W_REQ_MIU_DCU-bit req_id, an MQ entry a credit of each pipe.
+constexpr unsigned kNS = ccv::kMiuPipes, kNI = ccv::kMiuDcuIds, kQN = kNI / kNS, kIW = ccv::prov::kWReqMiuDcu,
+                   kNE = ccv::kMiuPipes * ccv::prov::kMemopCredits, kNR = ccv::kMiuPipes;
+constexpr unsigned clog2(unsigned n) { return n <= 1 ? 0 : 1 + clog2((n + 1) / 2); }
+constexpr unsigned kEW = clog2(kNE), kIM = (1u << kIW) - 1u, kEM = (1u << kEW) - 1u;
+static_assert(kNI % kNS == 0 && kNI <= (1u << kIW) && kNS * kIW <= 32 && kNS * kEW <= 32, "ports in a word");
+// Quarter k's index q as an id, interleaved as miu_ids does.
+constexpr unsigned idOf(unsigned k, unsigned q) { return q * kNS + k; }
 
 enum class Ctl { none, noskip, relnow, nodrop };
 
@@ -114,7 +123,7 @@ struct Bench {
       if (pv[k] && !(tk && tk[k])) continue;
       bool f[kQN];
       for (unsigned i = 0; i < kQN; ++i)
-        f[i] = free_[k * kQN + i] || (ctl == Ctl::relnow && rel && rel[k * kQN + i]);
+        f[i] = free_[idOf(k, i)] || (ctl == Ctl::relnow && rel && rel[idOf(k, i)]);
       if (pv[k] && ctl != Ctl::noskip) f[pq[k]] = false;
       pv[k] = false;
       for (unsigned i = 0; i < kQN; ++i)
@@ -159,12 +168,12 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
     bool ok = true;
     for (unsigned k = 0; k < kNS; ++k) {
       const bool dv = b.dut->pv_cm06h >> k & 1u;
-      const unsigned did = b.dut->pid_cm06h >> (k * kIW) & 63u;
-      if (dv != b.pv[k] || (dv && did != k * kQN + b.pq[k])) {
+      const unsigned did = b.dut->pid_cm06h >> (k * kIW) & kIM;
+      if (dv != b.pv[k] || (dv && did != idOf(k, b.pq[k]))) {
         ok = false;
         if (b.fails < 20)
           std::fprintf(stderr, "ids: cycle %llu: slot %u pick %u/%u, want %u/%u\n",
-                       (unsigned long long)b.cyc, k, dv, did, b.pv[k], k * kQN + b.pq[k]);
+                       (unsigned long long)b.cyc, k, dv, did, b.pv[k], idOf(k, b.pq[k]));
       }
       b.cov_empty += !b.pv[k];
     }
@@ -172,7 +181,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
     if (rd_prev)
       for (unsigned j = 0; j < kNR; ++j)
         if (want_qv[j]) {
-          const unsigned got = b.dut->qe_cm06h >> (j * kEW) & 63u;
+          const unsigned got = b.dut->qe_cm06h >> (j * kEW) & kEM;
           if (got != want_qe[j]) {
             ok = false;
             if (b.fails < 20)
@@ -243,7 +252,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
       want_qv[j] = true;
       want_qe[j] = b.ent[id];
       rdid[j] = id;
-      ++b.cov_read[id / kQN];
+      ++b.cov_read[id % kNS];
       rd = true;
     }
     // Drive and clock.
@@ -267,10 +276,10 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
     std::vector<unsigned> taken;
     for (unsigned k = 0; k < kNS; ++k)
       if (tk[k]) {
-        const unsigned id = k * kQN + b.pq[k];
+        const unsigned id = idOf(k, b.pq[k]);
         taken.push_back(id);
         dpid[k] = id;
-        b.ent[id] = tew >> (k * kEW) & 63u;
+        b.ent[id] = tew >> (k * kEW) & kEM;
       }
     b.pick(tk, rel);
     for (unsigned id : taken) b.free_[id] = false;

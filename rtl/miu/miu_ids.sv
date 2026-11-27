@@ -8,11 +8,16 @@
 // A lookup holds its req_id from launch (the payload at A2's flops, H+2) to
 // the response MIU holds (R1). A dropped lookup (MA-27) gives its id back:
 // miu_a2's drop flop names it a cycle after the take, and the id is free
-// two cycles after that. The 64
-// ids split into NS quarters of 16, and lookup slot k takes only from
-// quarter k, so the four takes of a cycle never meet and each quarter's pick
-// is its own: a priority over 16 bits, never a serial search for four free
-// ids among 64. A slot whose quarter is empty holds its lookup, as the
+// two cycles after that. The NI ids (CCV_MIU_DCU_IDS, 160 under MA-34's
+// option B, in the 8-bit req_id) split into NS quarters of NI/NS (40), and
+// lookup slot k takes only from quarter k, so the four takes of a cycle
+// never meet and each quarter's pick is its own: a priority over 40 bits,
+// never a serial search for four free ids among 160. Quarter k holds the
+// ids q*NS + k, q below NI/NS: interleaved, so an id is its quarter's index
+// and its slot side by side, {q, k} (NS a power of two), with no adder; the
+// preselected id goes out straight from its flops, and no quarter need be a
+// power of two (160/4 = 40; TI-590). Ids at or above NI are never taken,
+// read or released (rd_rng). A slot whose quarter is empty holds its lookup, as the
 // model's IdPool does when the pool is (MI-27 notes the narrower rule).
 //
 // Each quarter keeps its next id preselected in a flop (pid, valid pv), from
@@ -55,12 +60,13 @@
 `define CCV_RST rst_r01h
 module miu_ids #(
   parameter  int NS = ccv_params_pkg::CCV_MIU_PIPES,                 // lookup slots, 4
-  parameter  int IW = ccv_prov_pkg::CCV_P_W_REQ_MIU_DCU,           // req_id, 6
+  parameter  int IW = ccv_prov_pkg::CCV_P_W_REQ_MIU_DCU,           // req_id, 8
   parameter  int NE = ccv_params_pkg::CCV_MIU_PIPES * ccv_prov_pkg::CCV_MEMOP_CREDITS,   // MQ entries, 40
   parameter  int NR = ccv_params_pkg::CCV_MIU_PIPES,                 // releases and reads a cycle, 4
-  localparam int NI = 1 << IW,                                       // ids, 64
-  localparam int QN = NI / NS,                                       // ids a quarter, 16
+  parameter  int NI = ccv_params_pkg::CCV_MIU_DCU_IDS,               // ids, 160
+  localparam int QN = NI / NS,                                       // ids a quarter, 40
   localparam int QW = $clog2(QN),
+  localparam int NSW = $clog2(NS),
   localparam int EW = $clog2(NE)
 ) (
   input  logic             miu_core_clk,
@@ -89,8 +95,8 @@ module miu_ids #(
   input  logic [NR-1:0]    rl_cm06h
 );
 
-  if (NI % NS != 0 || QN < 2) begin : g_chk
-    $error("miu_ids: %0d ids do not split into %0d quarters of 2 or more", NI, NS);
+  if (NS != (1 << NSW) || NI % NS != 0 || QN < 2 || NI > (1 << IW)) begin : g_chk
+    $error("miu_ids: %0d ids do not split into %0d (a power of two) quarters of 2 or more within %0d bits", NI, NS, IW);
   end
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
@@ -142,7 +148,7 @@ module miu_ids #(
   always_comb begin
     rl_oh_cm06h = '0;
     for (int j = 0; j < NR; j++)
-      if (rl_cm06h[j]) rl_oh_cm06h[qi_q_cm06h[j*IW +: IW]] = 1'b1;
+      if (rl_cm06h[j] && qi_q_cm06h[j*IW +: IW] < IW'(NI)) rl_oh_cm06h[qi_q_cm06h[j*IW +: IW]] = 1'b1;
   end
 
   // The id each slot took last cycle, for a drop to give back.
@@ -168,28 +174,46 @@ module miu_ids #(
   always_comb begin
     dp_oh_cm06h = '0;
     for (int k = 0; k < NS; k++)
-      if (dqv_q_cm06h[k]) dp_oh_cm06h[IW'(k * QN) | IW'(dqi_q_cm06h[k*QW +: QW])] = 1'b1;
+      if (dqv_q_cm06h[k]) dp_oh_cm06h[(IW'(dqi_q_cm06h[k*QW +: QW]) << NSW) | IW'(k)] = 1'b1;
   end
 
   // Per quarter: the next pick, the lowest free id but the preselected one;
   // the takes, decoded; the preselect's next value.
-  logic [NS*QW-1:0] nq_cm06h, pq_d_cm06h;
-  logic [NS-1:0]    nv_cm06h, pv_d_cm06h;
-  logic [NI-1:0]    tk_oh_cm06h;
+  // The picks and the preselected ids decoded come from flops alone; kept,
+  // so the take (an input) meets them only at the last mux and AND.
+  (* keep *) logic [NS*QW-1:0] nq_cm06h;
+  (* keep *) logic [NS-1:0]    nv_cm06h;
+  (* keep *) logic [NI-1:0]    ps_oh_cm06h;  // the preselected ids, one-hot
+  logic [NS*QW-1:0] pq_d_cm06h;
+  logic [NS-1:0]    pv_d_cm06h;
   always_comb begin
-    tk_oh_cm06h = '0;
+    ps_oh_cm06h = '0;
+    for (int k = 0; k < NS; k++)
+      if (pv_q_cm06h[k]) ps_oh_cm06h[(IW'(pq_q_cm06h[k*QW +: QW]) << NSW) | IW'(k)] = 1'b1;
+  end
+  logic [NI-1:0]    tk_oh_cm06h;
+  always_comb
+    for (int i = 0; i < NI; i++) tk_oh_cm06h[i] = ps_oh_cm06h[i] && tk_cm06h[i % NS];
+  always_comb begin
     for (int k = 0; k < NS; k++) begin
       logic [QN-1:0] f;
-      f = fr_q_cm06h[k*QN +: QN];
+      for (int i = 0; i < QN; i++) f[i] = fr_q_cm06h[i*NS + k];
       if (pv_q_cm06h[k]) f[pq_q_cm06h[k*QW +: QW]] = 1'b0;
-      nq_cm06h[k*QW +: QW] = '0;
-      nv_cm06h[k] = 1'b0;
-      for (int i = QN - 1; i >= 0; i--)
-        if (f[i]) begin
-          nq_cm06h[k*QW +: QW] = QW'(i);
-          nv_cm06h[k] = 1'b1;
+      // The lowest free: each bit with none free below it (a prefix OR, a
+      // tree a bit), one-hot, its index an OR over the bits that set each
+      // index bit: log depth over the 40, never a chain of 40 muxes.
+      begin
+        logic [QN-1:0] pf, oh, m;
+        pf = f;                                    // pf[i]: some free at or below i
+        for (int d = 1; d < QN; d = d * 2)
+          pf = pf | (pf << d);
+        oh = f & ~(pf << 1);
+        nv_cm06h[k] = |f;
+        for (int b = 0; b < QW; b++) begin
+          for (int i = 0; i < QN; i++) m[i] = (i >> b) & 1;
+          nq_cm06h[k*QW + b] = |(oh & m);
         end
-      if (tk_cm06h[k]) tk_oh_cm06h[IW'(k * QN) | IW'(pq_q_cm06h[k*QW +: QW])] = 1'b1;
+      end
       if (tk_cm06h[k] || !pv_q_cm06h[k]) begin
         pv_d_cm06h[k]          = nv_cm06h[k];
         pq_d_cm06h[k*QW +: QW] = nq_cm06h[k*QW +: QW];
@@ -227,11 +251,12 @@ module miu_ids #(
   end
   always_comb
     for (int k = 0; k < NS; k++)
-      pid_cm06h[k*IW +: IW] = IW'(k * QN) | IW'(pqo_q_cm06h[k*QW +: QW]);
+      pid_cm06h[k*IW +: IW] = (IW'(pqo_q_cm06h[k*QW +: QW]) << NSW) | IW'(k);
   assign pv_cm06h = pvo_q_cm06h;
 
   // ---- The id-to-entry table ---------------------------------------------
-  // One clock gate a quarter (16 rows, 96 flops), open when the quarter had
+  // Row q of quarter k is id q*NS + k's. One clock gate a quarter (40 rows,
+  // 240 flops), open when the quarter had
   // a lookup in A1 and holds a preselected id. Its preselected row is
   // written with the lookup's entry whether or not the lookup takes the id:
   // that row's id is free, so its row is read only after a take, which
@@ -239,7 +264,7 @@ module miu_ids #(
   // and the other rows hold as AND-OR on D, keeping the quarter's one
   // enable (rtl-coding-style.md, "A field held inside a group"); the take
   // touches the free vector only.
-  logic [NI*EW-1:0] tb_q_cm06h;
+  logic [NI*EW-1:0] tb_q_cm06h;       // a row an id: quarter k's are q*NS + k
   for (genvar k = 0; k < NS; k = k + 1) begin : g_tq
     wire tb_en_cm06h = lv_q_cm06h[k] && pv_q_cm06h[k];
     logic [QN*EW-1:0] tb_d_cm06h;
@@ -248,16 +273,24 @@ module miu_ids #(
         logic w;
         w = pq_q_cm06h[k*QW +: QW] == QW'(r);
         tb_d_cm06h[r*EW +: EW] = ({EW{w}} & te_cm06h[k*EW +: EW]) |
-                                 ({EW{!w}} & tb_q_cm06h[(k*QN + r)*EW +: EW]);
+                                 ({EW{!w}} & tb_q_cm06h[(r*NS + k)*EW +: EW]);
       end
     always_ff @(posedge miu_core_clk) begin
-      if (tb_en_cm06h) tb_q_cm06h[k*QN*EW +: QN*EW] <= tb_d_cm06h;
+      if (tb_en_cm06h)
+        for (int r = 0; r < QN; r++) tb_q_cm06h[(r*NS + k)*EW +: EW] <= tb_d_cm06h[r*EW +: EW];
     end
   end
+  // Read by id: the req_id decoded against each row, the rows AND-ORed (an
+  // id past NI matches no row and reads zero).
   logic [NR*EW-1:0] qe_d_cm05h;
   always_comb
-    for (int j = 0; j < NR; j++)
-      qe_d_cm05h[j*EW +: EW] = tb_q_cm06h[qid_cm05h[j*IW +: IW]*EW +: EW];
+    for (int j = 0; j < NR; j++) begin
+      logic [EW-1:0] e;
+      e = '0;
+      for (int i = 0; i < NI; i++)
+        if (qid_cm05h[j*IW +: IW] == IW'(i)) e = e | tb_q_cm06h[i*EW +: EW];
+      qe_d_cm05h[j*EW +: EW] = e;
+    end
   // The entries read and the ids, one gate.
   wire qe_en_cm05h = rs_q_cm05h;
   logic [NR*EW-1:0] qe_q_cm06h;
@@ -274,12 +307,17 @@ module miu_ids #(
   logic [NR-1:0] rl_free_cm06h;        // a release of an id already free
   always_comb
     for (int j = 0; j < NR; j++)
-      rl_free_cm06h[j] = rl_cm06h[j] && fr_q_cm06h[qi_q_cm06h[j*IW +: IW]];
+      rl_free_cm06h[j] = rl_cm06h[j] && qi_q_cm06h[j*IW +: IW] < IW'(NI) && fr_q_cm06h[qi_q_cm06h[j*IW +: IW]];
+  logic [NR-1:0] rd_out_cm05h;         // a read of an id past NI
+  always_comb
+    for (int j = 0; j < NR; j++)
+      rd_out_cm05h[j] = qv_cm05h[j] && qid_cm05h[j*IW +: IW] >= IW'(NI);
   `CCV_ASSERT(tk_held, (tk_cm06h & ~(pv_q_cm06h & lv_q_cm06h)) == '0)
   `CCV_ASSERT(dp_take, tl_q_cm06h || dp_cm06h == '0)
   `CCV_ASSERT(rs_lead, rs_q_cm05h || qv_cm05h == '0)
   `CCV_ASSERT(rl_read, rd_q_cm06h || rl_cm06h == '0)
   `CCV_ASSERT(rl_live, rl_free_cm06h == '0)
+  `CCV_ASSERT(rd_rng, rd_out_cm05h == '0)
 
 endmodule
 `undef CCV_CLK
