@@ -140,6 +140,7 @@ struct Config {
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
   unsigned ids = ccv::kDcuMshrPerBank;   ///< miss buffers a bank (MA-34): MLC req_id = {bank, entry}
   unsigned wb = 2;               ///< the writeback buffer's entries
+  unsigned fills = 4;            ///< fill buffers: ccv_mlc_dcu_rsp's credits (DCU tab, part 1)
   bool hash = false;             ///< CCV_DCU_BANK_HASH (MA-20), off
   bool no_cycle_conflict = false;///< refuse two lookups due in one bank in one cycle (MIU model: DI-25 (4))
   unsigned ue_every = 0;         ///< CCV_DCU_UE_INJECT: every Nth read hit a UE

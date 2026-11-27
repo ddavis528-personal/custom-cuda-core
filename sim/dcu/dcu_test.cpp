@@ -858,6 +858,29 @@ int main(int argc, char **argv) {
   // next miss (its bank's, MA-34) has the bank's offer to itself.
   // (dcu-late-miss-port, its control, is retired: per bank the two never
   // share a D2; DCU tab rev 148, DI-61.)
+  // MA-34 (DI-58): a miss buffer id's bank is its line's bank, checked at
+  // allocation and on MLC's answer. dcu-miss-other-bank, the control, takes
+  // another bank's offered id: refused at the miss and at its fill.
+  for (const char *brk : {"", "dcu-miss-other-bank"})
+    test(*brk ? "dcu-miss-other-bank-control" : "miss-id-bank", [brk] {
+      Config c = cfg(9);
+      c.brk = brk;
+      Bench b(c);
+      b.reqs[0].push_back(rd(0, 7, 0x2000));
+      b.run(100);
+      size_t alloc = 0, ans = 0;
+      for (const auto &f : b.h.fails) {
+        alloc += f.find("miss buffer id") != std::string::npos;
+        ans += f.find("MLC answered req_id") != std::string::npos;
+      }
+      if (*brk) {
+        EXPECT(alloc == 1 && ans == 1, "the control is caught at allocation (%zu) and fill (%zu)", alloc, ans);
+      } else {
+        EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+        EXPECT(b.rsp(7) && !b.rsp(7)->hit, "the miss is answered");
+      }
+    });
+
   test("late-miss-retry", [&] {
       unsigned retried = 0;
       for (unsigned d = 0; d != 8; ++d) {

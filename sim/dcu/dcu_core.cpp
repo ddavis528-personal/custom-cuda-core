@@ -1152,9 +1152,18 @@ bool Core::startMiss(const Req &r, uint64_t d2, unsigned, const char **why) {   
       h_.fail(fmt("dcu: a second miss buffer entry for line %llx", r.pa));
   if (wb_lines_.count(r.pa))   // dcu-wb-refetch, the control (DI-48)
     h_.fail(fmt("dcu: line %llx fetched while its writeback awaits MLC's acknowledgement", r.pa));
-  const unsigned id = *nf_[bk];
+  // dcu-miss-other-bank, the control (DI-58): the miss takes another
+  // bank's offered id, which the CHECK below refuses.
+  unsigned ob = bk;
+  if (c_.brk == "dcu-miss-other-bank")
+    for (unsigned k = 1; k != c_.banks; ++k)
+      if (nf_[(bk + k) % c_.banks]) {
+        ob = (bk + k) % c_.banks;
+        break;
+      }
+  const unsigned id = *nf_[ob];
   if (!free_ids_.erase(id)) h_.fail(fmt("dcu: miss buffer id %u offered while in use", id));
-  nf_[bk].reset();   // taken: its bank's next pick is offered next cycle
+  nf_[ob].reset();   // taken: its bank's next pick is offered next cycle
   // CHECK (MA-34): an id's bank is its line's bank.
   if (idBank(id) != bk) h_.fail(fmt("dcu: miss buffer id %u for line %llx of bank %u", id, r.pa, bk));
   ++st_.misses;
@@ -1796,6 +1805,10 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       if (it == miss_.end() || it->second.written) probeStart(x.first);
     }
   retryWaits();
+  // dcu_fill_bufs_full (MA-34, DI-58): cycles every fill buffer was held,
+  // so MLC could send no fill; the recheck of 4 buffers under gtw reads it.
+  if (size_t(std::count_if(miss_.begin(), miss_.end(), [](const auto &x) { return x.second.fb; })) >= c_.fills)
+    h_.hit("dcu_fill_bufs_full");
   // dcu_wb_full (DI-21): cycles a victim read waited for a writeback buffer.
   if (wb_used_ >= c_.wb) {
     bool waits = false;
