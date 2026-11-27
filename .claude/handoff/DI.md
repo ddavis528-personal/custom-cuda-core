@@ -66,10 +66,11 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - Pushed 5a4a865c: OA-508 merge of 7f5195a4 (DI-62, rev 101, OA notified), on
   724beb26 (TI c0883a36 + MA-34 model, SCOPED PASS 28/28). Before: f2accd75, sweep merge to
   11-27.
+- OI-225 -> DI-63 (rev 102; MA, OI notified): p1 ignores MA-27 drop; fix is MA's (dcu_p1.cpp). Repro: build/oracle/coremark32priv, CCV_MIU_IMPL=model CCV_DCU_IMPL=p1 seed 1, 3000 cycles.
 - Pongs 11-27: all answered; OI and RH sender=stale (their roster); tell
   Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 101, MI 74, MA 222, AR 426, OA 506, TI 594, OI 427, DA 136,
-RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-62 (id m8yvbw8rqgz.119788).
+Conventions 20, DI 102, MI 74, MA 222, AR 426, OA 506, TI 594, OI 427, DA 136,
+RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-63 (id m8yvbw8rqgz.120139).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
