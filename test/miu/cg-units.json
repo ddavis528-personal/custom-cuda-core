@@ -128,6 +128,22 @@
     "run": "{dir}/tb --cg {scenario} {vcd}",
     "scope": "miu_rcap"
    }
+  },
+  {
+   "name": "miu_lead",
+   "module": "miu_lead",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/miu/miu_lead.sv"
+   ],
+   "params": {},
+   "clock": "miu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/miu/cg-build.sh miu_lead {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "miu_lead"
+   }
   }
  ]
 }
