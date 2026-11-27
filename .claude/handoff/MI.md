@@ -73,24 +73,19 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Bookmarks since: OA 455, MI 12.
 
 ## Open work, most urgent first
-00. MA rev 199 (re:MI-31) RULED: front (ii) fixed leader + L0 x4 per slot at A2; 32-entry TLB at A3, refill only.
-   cm128priv > 0.5% reopens. MA's asks, all to go in MI-32 (MA rung): (1) miu_a2's rest beside the L0 (dedupe and
-   bank conflict from A1's flopped set/bank, meet at the drop's final OR); list faults that must drop at A2:
-   L0 miss, page split/drop_line, bank conflict, dup, drop_held, F-ADDR (leader only), F-ALIGN (OR of agu8 flops);
-   F-RO, F-SHARED, .const can move to A3. (2) 1-port vs 4-port TLB price (<0.1% -> 1 port). (3) page-heavy kernel
-   (rope) + zero-cost drop_l0 traced and FIXED: 29603c02 (a later pass waited for nothing: now not before h+1;
-   L0 refill as RTL: grant +2 via CCV_MIU_TLB_PORTS, readable +3 after; L0 round robin; LTRACE knob).
-   EVERY EARLIER PRICE IS STALE (MI-30's +2.1% included): edit MI-30/31 cells to say so.
-   (4) miu_tlb BUILT e1e3d708: 3,634 flops (L0s 1,104), 17.5 NGD, ins <=2.5, outs from flops, CG clean, bench +
-   controls early/norr; L0 outs l0*_cm11h, refill 5 cycles A2->L0. Fold made by the walker (ffold_cm06h in).
-   miu_a2 NOT built yet: start from scratchpad/a2p/a2l.sv MODE 2; L0 read backward across modules (cm11h at
-   cm06h) is the refill loop: needs a feedback declaration signed by OA/AR/DA -> ask in MI-32.
-   Re-pricing IN FLIGHT: scratchpad/price32.sh (job ~/ccv-logs/price32.log, logs scratchpad/price32/<cfg>.<k>.log,
-   cfgs base gate lead l0x4 l0x8 ruled ruled8 ruledp1 borrow dropfree; cm128 base ruled ruledp1 lead l0x4 last).
-   Table: python3 scratchpad/tab31.py scratchpad/price32 (check it reads the new cfgs). Quick rope: L0x4 +2.5%.
-   check-kernel under CCV_MIU_IMPL=model (scratchpad/ck-fix.log): fet-ignore-held now unnoticed because the
-   fix moved timing: IMPL_PINS row `miu=model held-wait demote=776` must become 768 (TI's file: ask TI in a row);
-   dcu-wb-refetch unnoticed pre-existing (DI-50: DCU unit-held). Push mi-dev after pricing via gate-push.
+00. MA rev 199 RULED (fixed leader, L0 x4 at A2, 32-entry TLB at A3; cm128priv > 0.5% reopens).
+   ANSWERED in MI-32 (MI rev 57, MA rung). Asks open to MA: (1) ngd budgets (architect's): miu_a2.ngd.json
+   arrival 0 on all ins but ge (12); rk_cm05h arrival 0 in miu_lead.ngd.json -> UNTIL THEN check-ngd FAILS
+   (miu_lead 34.9, miu_a2 37.6) and blocks gate-push. (2) L0 refill loop feedback declaration (OA/AR/DA).
+   (3) LRU vs round robin (RTL+model are RR). (4) miu_pair disp copies 576 -> one per quarter.
+   MI-33 (rev 58, TI rung): IMPL_PINS miu=model held-wait demote 776 -> 768 (needed for the gate too).
+   mi-dev unpushed: 29603c02 model fix, e1e3d708 miu_tlb, cf78f366 BCAST knob, 58b001a8 miu_lead (332 flops,
+   23.0), 9b9dd004 miu_a2 (361 flops, CG clean, 24.6 in at arrival 0, a2_tb + controls carry/bank/addr).
+   Pricing IN FLIGHT: scratchpad/price32.sh then price32b.sh (ruledbc), coremark32priv rest then cm128 one at a
+   time. Table: cd scratchpad; python3 tab32.py price32 base,gate,lead,l0x4,l0x8,ruled,ruled8,ruledp1,ruledbc,
+   borrow,dropfree. When in: edit MI-32's cell with cm32 rest + cm128 (the 0.5% test) and ring MA.
+   Optional: edit MI-30/31 cells "stale, see MI-32". Next RTL: miu_grp (group check ge, page split,
+   drop_line, F-ALIGN, MQ write/lane map, drop_held).
 0. MI-19 done: 2d2259bf + a0afe9fc + miu_pair pushed at 073943f3 over DI's 818285df (MI rev 35,
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
