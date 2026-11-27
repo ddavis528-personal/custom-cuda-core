@@ -42,7 +42,7 @@ inline uint64_t indexLeadSet(uint64_t pa) {
 class MiuModel : public Stub {
 public:
   MiuModel(int inst, Kernel &k)
-      : Stub(inst, k), ids_(field(ch().miu_dcu, "req_id").width, kChans[ch().miu_dcu].rate, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {
+      : Stub(inst, k), ids_(field(ch().miu_dcu, "req_id").width, kChans[ch().miu_dcu].rate, ccv::kMiuDcuIds, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {
     ids_.borrow = envOn("CCV_MIU_IDS_BORROW");
   }
   const char *kind() const override { return "miu"; }
@@ -50,7 +50,8 @@ public:
     if (!pbins_) return;
     std::fprintf(stderr, "MIUBINS");
     for (const char *n : {"credit_hold_other_bank", "dcu_id_quarter_empty", "dcu_id_drop_held",
-                          "l0_lookup", "l0_miss", "l0_refill_wait", "shared_neg_fault"}) {
+                          "l0_lookup", "l0_miss", "l0_refill_wait", "shared_neg_fault",
+                          "miu_memop_rec_full"}) {
       const auto it = pbin_.find(n);
       std::fprintf(stderr, " %s=%llu", n, (unsigned long long)(it == pbin_.end() ? 0 : it->second));
     }
@@ -1084,6 +1085,9 @@ private:
           if (g->second >= 0) release(c.ooe_miu, unsigned(g->second));
           guard_.erase(g);
         }
+        // Its write holds an in-flight record until its last line is
+        // answered (MA-34, AR 419 (2)); with none free it waits at A1.
+        if (recFull()) break;
         Job cj = *it;
         committed_.erase(it);
         // A predicate store drains as a read-merge-write of its word (MIU
@@ -1115,7 +1119,11 @@ private:
       const bool ld = contracted(t);
       const unsigned w = unsigned(get(memop_[t].msg, c.ooe_miu, "warp_id"));
       const bool was_lost = lost_.count(t) != 0;
-      if (tryStart(t)) {
+      // With every in-flight record taken (MA-34, AR 419 (2)) it waits
+      // at A1, as any held memop: a global load loses its L1 hit.
+      const bool full = recFull();
+      if (full) pbin("miu_memop_rec_full");
+      if (!full && tryStart(t)) {
         // MI-3: a younger load passing its warp's held one (MA rev 123).
         if (ld && held_warps.count(w)) k_.hit("ld_pass_held");
         continue;
@@ -1128,6 +1136,21 @@ private:
       const Memop &mo = memop_[t];
       noHit(mo.at, mo.slot, t, unsigned(get(mo.msg, c.ooe_miu, "rs_idx")), addr_[t].tid);
     }
+  }
+  /// In-flight records (MA-34, AR 419 (2)): a memop past A1 with lines
+  /// still owed holds one of CCV_MIU_MEMOPS_INFLIGHT until its last line
+  /// is answered; the walker's PTE reads hold none. CCV_MIU_MEMOPS_INFLIGHT
+  /// in the environment narrows it for a coverage run.
+  const unsigned recs_ = [] {
+    const char *v = std::getenv("CCV_MIU_MEMOPS_INFLIGHT");
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 0;
+    return n >= 1 && n < ccv::kMiuMemopsInflight ? n : ccv::kMiuMemopsInflight;
+  }();
+  bool recFull() const {
+    unsigned n = 0;
+    for (const Job &j : jobs_)
+      if (!j.walk && j.back < j.lines.size()) ++n;
+    return n >= recs_;
   }
   /// Memops that waited at A2: started later, never as hits.
   std::set<unsigned> lost_;
