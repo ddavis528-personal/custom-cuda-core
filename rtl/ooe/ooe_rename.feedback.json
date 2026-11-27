@@ -1,5 +1,5 @@
 {
-  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-502): u_go.pl (OA-494), u_gfree's section allocations sa_v/sa_row/sa_sec (OA-498) and returns rt_v/rt_row (OA-501) and leads sa_l/rt_l (OA-502), each signed by OA in the register.",
+  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-502): u_go.pl (OA-494), u_gfree's section allocations sa_v/sa_row/sa_sec (OA-498) and returns rt_v/rt_row (OA-501) and leads sa_l/rt_l (OA-502), u_go.px and u_go.pool_en (OA 509), each signed by OA in the register.",
   "reads": {
     "u_go.pl_cq02h": {
       "from": "pl_cq03h",
@@ -163,6 +163,79 @@
       "by": "OA",
       "date": "2026-11-24",
       "why": "u_gfree's return lead (OI-81/82, OA-499): a narrow lane may return its row next cycle, led into the free list a cycle ahead from u_go's grant at 02 (lane_v, lane_c, wb) and the lane's codes (cwt_cq02h); the lead is the free list's 00, two stages ahead by design. The loop closes as sa_l's, through fsp_cq03h, ucg_cq04h and u_go's room_g/fitsw. A late lead leaves a return unled: rt_led catches it (control rtl-late)."
+    },
+    "u_go.px_cq01h": {
+      "from": {
+        "cone": [
+          "pxn_cq04h",
+          "pxr_cq04h"
+        ],
+        "ahead": {
+          "pxn_cq04h": 3,
+          "pxr_cq04h": 3
+        }
+      },
+      "loop": [
+        "u_go.lane_c_cq02h",
+        "u_go.lane_v_cq02h",
+        "u_ren1.lane_v_cq02h>l_v",
+        "tq_g_cq03h",
+        "pxn_cq04h"
+      ],
+      "assert": [
+        "no_over_grant_names"
+      ],
+      "control": [
+        "no-take-q2"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "the go's lagged name count (OA 509, OI-226, as u_go.pl_cq02h, OA-494): u_go grants lanes at 02; they cross u_ren1, a register-free helper, into l_v, whose takes the parent counts into tq_g_cq03h and then the in-flight name totals pxn/pxr_cq04h, read back by u_go as px at 01, three cycles on. A stale count is safe while the lagged take corrects it; a missing take over-grants names."
+    },
+    "u_go.pool_en_cq01h": {
+      "from": {
+        "cone": [
+          "u_go.sel_cq02h",
+          "rsf_en_cq01h",
+          "tq_r_cq03h",
+          "tq_m_cq03h",
+          "tq_g_cq03h",
+          "tq_p_cq03h",
+          "u_gfree.fsp_cq03h",
+          "u_pfree.fsp_cq03h",
+          "nv_cq04h",
+          "ur_o_cq02h",
+          "ur_f_cq04h"
+        ],
+        "ahead": {
+          "u_go.sel_cq02h": 1,
+          "rsf_en_cq01h": 0,
+          "tq_r_cq03h": 2,
+          "tq_m_cq03h": 2,
+          "tq_g_cq03h": 2,
+          "tq_p_cq03h": 2,
+          "u_gfree.fsp_cq03h": 2,
+          "u_pfree.fsp_cq03h": 2,
+          "nv_cq04h": 3,
+          "ur_o_cq02h": 1,
+          "ur_f_cq04h": 3
+        }
+      },
+      "loop": [
+        "u_go.lane_c_cq02h",
+        "u_go.lane_v_cq02h",
+        "u_ren1.lane_v_cq02h>l_v",
+        "tq_g_cq03h"
+      ],
+      "assert": [
+        "fits_fresh"
+      ],
+      "control": [
+        "pool-en-short"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "the go's pool change lead (OA 509, OI-226): pool_en_cq01h is a net over the parent's registers (sel, the takes, the frees, the unmet register), a superset of every change to a slot's fits, and it only sets u_go's fits enable (chg). A late or narrowed lead leaves the fits stale, which fits_fresh catches (control pool-en-short, 8 seeds). The sel term alone covers every change the bench makes in 25 seeds; a later bench event sel does not cover needs its own control."
     }
   }
 }
