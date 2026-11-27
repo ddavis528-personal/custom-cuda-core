@@ -1,0 +1,32 @@
+{
+  "_comment": "OA-498's cone with a traced crossing for reference_kp.sv.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "from": {
+        "cone": [
+          "m_cy04h",
+          "q_cy04h",
+          "u_x.a_cy02h>y_cy02h"
+        ],
+        "ahead": {
+          "m_cy04h": 3,
+          "q_cy04h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "m_cy03h",
+        "m_cy04h"
+      ],
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "a cone over a parent register and a crossing of a sibling traced to a listed register (OA-498)"
+    }
+  }
+}

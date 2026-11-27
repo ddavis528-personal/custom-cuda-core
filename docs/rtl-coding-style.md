@@ -486,9 +486,12 @@ A declaration lives beside the module's RTL, in `<module>.feedback.json`:
 per reading net. The lint refuses it, and the stage skip stays reported,
 unless:
 
-- `by` is an architect (OA, AR or DA; MA for a module under `rtl/miu/` or
-  `rtl/dcu/` only, MA-32): a declaration is reviewed before it
-  is listed, and the list shrinks only by review;
+- `by` is the architect who owns the module's block, and no one else
+  (DA-135): MA for `rtl/miu/` and `rtl/dcu/`, OA for `rtl/ooe/`, RA for
+  `rtl/rcu/`, AR for every other directory. A cross-module loop whose
+  named instances lie in more than one block is signed by each of their
+  architects, `"by": ["OA", "MA"]`, exactly those. A declaration is
+  reviewed before it is listed, and the list shrinks only by review;
 - the reader reads it: a stale declaration is refused;
 - the reader and the read both carry stage tags, and the read's tag lies
   exactly `<stages ahead>` stages past the reader's, one or more (a read
@@ -627,6 +630,24 @@ reader's own; in every parent instantiating the module, the port is fed
 directly by that instance's output driven by that register; the module
 holds the named assertion that the read never meets a write; and the
 bench names its control. Then the read counts at the reader's stage.
+The writer's register may reach its output through the writer's
+combinational logic, never another register (OA-496: a sibling child's
+table, as u_map's read by u_dep; `reference_mtpp.sv` passes,
+`bad_tport2.sv` is refused). A writer so declared may be fed from later
+stages: its inputs whose every path to an output passes through the table
+register are its table's write, excused at the connection (OI-217): only
+where the input's cone inside the writer ends solely at the declared
+registers' next value or enable, no other register or output the parent
+reads (an output left unconnected, or whose net the parent names nowhere
+else, reaches nothing, OI-219), and only while the table verifies in the
+same run (OA-497; `reference_ttp.sv`). The cone may pass through
+write-pipeline registers whose whole fanout ends at the declared
+registers or at another such register; a register that feeds nothing, or
+only an output the parent does not read, is a dead end and counts as one
+(OA-500: u_map's write stage at 02; `reference_pttp.sv`). An input
+reaching anything else, through one extra fanout of a pipeline register
+too, or a writer whose table does not verify, keeps its back edge
+(`bad_conn5.sv`, `reference_xttp` the extra fanout).
 `reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
 `bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
 assertion are refused.
@@ -661,7 +682,37 @@ with `"from"` naming the parent register the child input reads, and
 order, the last being `"from"`; each hop is traced (the first register's
 next value or enable reads a listed output's net, each later one the
 register before it, through combinational nets only), and `ahead` is
-`"from"`'s stage less the input's tag. `reference_pp.sv` holds both;
+`"from"`'s stage less the input's tag. A hop may cross a register-free
+helper unnamed, as the parent's logic (OI-213; `reference_hp.sv`), and any
+child through a combinational path named in the loop as
+`"<inst>.<input>><output>"` (OA-494; `reference_xp.sv`); a named crossing
+of a registered path is refused (`bad_conn3.sv`). OA-495 adds two more:
+`"from"` may be a cone, `{"cone": [<parent registers>], "ahead": {<register>:
+n}}`, when the input reads combinational logic over several parent
+registers. Every register that reaches the input through the parent's
+combinational nets and crossings must be listed, and every listed one
+must reach it, each `ahead` matching its tags; the loop's last hop is one
+of them (`reference_cnp.sv`). A cone may also name a crossing of a sibling,
+`"<inst>.<input>><output>"`, whose output it reads and whose input traces
+back, through the parent's combinational nets, only to listed registers;
+every sibling output the cone reads must be so named (OA-498;
+`reference_kp.sv`, `bad_conn6.sv`). Or the cone may name the sibling's
+output directly, `"<inst>.<output>"`, its `ahead` from its net's tag, only
+where that sibling's tags are verified in the same run: it has a timing
+unit and is not on `rtl/stage-ratchet.json` (OA-499). The two compose: a
+crossing of a register-free helper may read such a listed sibling output,
+its input tracing to listed registers and listed sibling outputs only (the
+leads' `u_go.lane_v_cq02h` through `u_ren1.lane_v_cq02h>l_v`, OA-501;
+`reference_lkp.sv` passes, `bad_conn7.sv`'s cone omitting the sibling
+output is refused). check-1d names a fixture's sibling a verified unit
+through `CCV_LINT_FIXTURE_UNITS`, which lint honours for `reference_*`
+modules only. And a hop may cross a child through one of
+its registers, `"<inst>.<input>><register>><output>"`, where the input
+reaches that register's next value or enable and the register reaches the
+output, each combinationally (`reference_rhp.sv`); `bad_conn4.sv` holds
+both refusals. A `<module>.feedback.json` beside no
+`.sv` defining its module is refused, since the lint would never read it
+(MI-44). `reference_pp.sv` holds both;
 `bad_conn2.sv`'s untraced hop and helper feeding a second register are
 refused.
 
