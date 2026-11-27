@@ -2569,10 +2569,13 @@ private:
       it = l0_q_.erase(it);
     }
   }
+  /// CCV_MIU_L0_LRU=1 (pricing aid, MA rev 203 (3)): the L0 replaces its
+  /// least recently used entry, a hit refreshing it; else round robin.
   std::vector<miu::Tlb> l0_ = [] {
     const char *v = std::getenv("CCV_MIU_L0");
     const unsigned n = v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
-    return n ? std::vector<miu::Tlb>(ccv::prov::kDcacheLookups, miu::Tlb(n, true)) : std::vector<miu::Tlb>();
+    return n ? std::vector<miu::Tlb>(ccv::prov::kDcacheLookups, miu::Tlb(n, !envOn("CCV_MIU_L0_LRU")))
+             : std::vector<miu::Tlb>();
   }();
   void a1GateFlop() {
     ge1_b_ = ge1_a_;
