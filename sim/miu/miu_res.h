@@ -157,12 +157,14 @@ private:
 /// a hit's frame is its page.
 class Tlb {
 public:
-  explicit Tlb(unsigned entries) : e_(entries) {}
+  /// fifo: replaced in fill order, a hit leaving its age (the L0's round
+  /// robin, rtl/miu/miu_tlb.sv); else least recently used.
+  explicit Tlb(unsigned entries, bool fifo = false) : e_(entries), fifo_(fifo) {}
 
-  /// Whether vpn is held; a hit refreshes its age.
+  /// Whether vpn is held; a hit refreshes its age unless fifo.
   bool lookup(uint64_t vpn) {
     for (Ent &e : e_)
-      if (e.valid && e.vpn == vpn) { e.used = ++tick_; ++hits_; return true; }
+      if (e.valid && e.vpn == vpn) { if (!fifo_) e.used = ++tick_; ++hits_; return true; }
     ++misses_;
     return false;
   }
@@ -192,6 +194,7 @@ public:
 private:
   struct Ent { bool valid = false; uint64_t vpn = 0; uint64_t used = 0; };
   std::vector<Ent> e_;
+  bool fifo_;
   uint64_t tick_ = 0, hits_ = 0, misses_ = 0;
 };
 

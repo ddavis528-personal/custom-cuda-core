@@ -1,0 +1,47 @@
+{
+  "module": "miu_tlb",
+  "ports": {
+    "l0v_cm11h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0's entries, flops read by miu_a2's compare at arrival 0 (MA rev 203, re:MI-32 (1))."
+    },
+    "l0vpn_cm11h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0's entries, flops read by miu_a2's compare at arrival 0 (MA rev 203, re:MI-32 (1))."
+    },
+    "l0ppn_cm11h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0's entries, flops read by miu_a2's compare at arrival 0 (MA rev 203, re:MI-32 (1))."
+    },
+    "l0fold_cm11h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0's entries, flops read by miu_a2's compare at arrival 0 (MA rev 203, re:MI-32 (1))."
+    },
+    "l0pm_cm11h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0's entries, flops read by miu_a2's compare at arrival 0 (MA rev 203, re:MI-32 (1))."
+    },
+    "vpn_cm07h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0 refill's request: miu_a2's flops (out 0), read by miu_tlb's second-miss filter, a per-slot match against the pending, granted, writing and last-written VPN, 13.0 NGD inside (MA rev 207, re:MI-39 (a))."
+    },
+    "ms_cm07h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0 refill's request: miu_a2's flops (out 0), read by miu_tlb's second-miss filter, a per-slot match against the pending, granted, writing and last-written VPN, 13.0 NGD inside (MA rev 207, re:MI-39 (a))."
+    }
+  }
+}

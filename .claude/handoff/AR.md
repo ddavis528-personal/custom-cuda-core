@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-23 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-24 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -77,8 +77,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 417 .684284 (tab rev 421).
-  - **The next AR row inserts after .684284**, labelled AR 418.
+  - Latest row: AR 418 .685318 (tab rev 422).
+  - **The next AR row inserts after .685318**, labelled AR 419.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -100,14 +100,27 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 421, OA 475, TI 553 (rev 552), MA 178, DI 69,
-  MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 133, Conventions 20 (full
-  sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
+- **Bookmarks** (revs read through): AR 422, OA 501, TI 584, MA 215, DI 93,
+  MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 134, Conventions 20 (full
+  sweep read 11-24; TI 584 read only for TI-582).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
+- **Sweep 2026-11-24 (Tuesday, no pings):** register: nothing open for AR.
+  OA 476 took AR 414 (OA asked Daniel whether the 0.2% band covers all its
+  cost rulings); DA rev 134 (OA, from Daniel): OOE paths already on
+  ngd-ratchet may rise to 30 NGD until block-level assembly; MA: L0 TLB
+  4/slot in A2, 32-entry TLB to A3 (ropediv +2.1%), DCU fill bound 11; OA
+  487-492: redirect lag 1 (fet_redirect ports retagged cq04h, timing
+  only); DI asks TI for MLC-stub probe injection (TI's stub). TI-582:
+  DA-135 in the lint: AR signs CCV-L23 declarations only outside
+  ooe/miu/dcu/rcu. Merged clcw9s 7, doowtf 143, 5tdecg 2, 0ch1hh 12,
+  lecnjf 32, 664pgr 20 (6msg93, p8esoz, n6402z, 20cauz, 1vzyjg already
+  in); no conflicts; regen clean. Gate PASS on 3d4a2fe1 (ngd 13240 s, cg
+  12534 s: over 2 h, gate-wait re-armed twice); pushed 222; session home
+  matches.
 - **Sweep 2026-11-23 (Monday, no pings):** register: nothing new for AR in
   the sweep read; MA rev 173 prefers AR 410 (1), fills term = DCU's 16 MLC
   req_ids. Merged clcw9s 7, doowtf 155, 0ch1hh 18, n6402z 8, lecnjf 3,
@@ -232,21 +245,18 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
-000i1. **RE-BASELINE NOW DUE (TI-553, 11-24).** b780f324 (on doowtf and
-   claude/custom-cuda-core-infra-6msg93; RESUMED SCOPED PASS) landed AR 410
-   (kSlowEnd 1 MiB, CCV_TB_LATENCY, MEMOP timeout 40960), AR 412 (1)(2)
-   (20+-5 seeded, tb_overtaken, vadd6 swap class), HIT_MAX 28. TI's default
-   gate-kernel table, 4e3dda64 -> b780f324: median +14.6%; short kernels
-   +14..40 cycles; localsp 2175->233, privwin 1161->203, slotform 4348->486,
-   waypred 1211->255; full 66 rows in TI's scratch (cyc/run-summary.txt).
-   TI gives no S1 or coremark -priv numbers. So AR re-runs perf-register's
-   baselines itself once the sweep has merged b780f324: S1 (sweep.sh's ten),
-   coremark32priv, coremark128priv in perf-register's standard config
-   (base 1, perfect fetch, warm MLC), with run-tabulate, never beside a gate.
-   Then edit perf-register: a re-baseline note (11-13 slow region and 10 ->
-   20+-5 default), mark each affected entry, a PF row for the read target
-   (AR 412 (3)), and PF-39's HIT_MAX wording (AR 413). check-docs, push.
-   Read class and AR 417's control are still TI's.
+000i1. **Re-baseline DONE (eb1c3851, AR 418 .685318, 11-24; MA rung).**
+   RH's runs (warm-MLC recipe, 4e3dda64 vs 77f7849e, 49 exact): S1 1,640
+   and cm32priv 1,177,935 unchanged at every seed; cm128priv 1,977,489 ->
+   1,978,481 (+0.050% seed 1; +0.061% jitter 0; seed spread 0.091%).
+   Warm-MLC figures never paid the slow region, so the L1 capacity and
+   hit-latency tables stand; AR 411 (2) corrected. MA re-runs only its
+   cold (non-CCV_MLC_WARM) runs. perf-register: re-baseline section, PF-39
+   HIT_MAX 28, PF-54 read-path depth target. RH's worktrees released.
+   MA rev 215 (re AR 418): MA-30 ran cold, so MA re-runs it on the fixed
+   TB (its revs 174-175 batch); S1 and cm32priv done (R3 now -0.36% on
+   cm32), cm128priv waits on DI's MA-33 fix; full table follows. Nothing
+   owed until it lands (k=4 over the bar -> MA sends a row).
 000l. **Common credit RTL modules (TI-537/539/540, Daniel to TI: "a common
    RTL module ... for the block interfaces"). AR 415 (.679095): at a flopped
    end (BOUNDARY 1, the RTL default) cr_src is the counter and go only, and

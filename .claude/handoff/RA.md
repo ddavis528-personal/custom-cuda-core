@@ -361,11 +361,23 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 474, RA 158, RI 91, TI 529, AR 414, DA 131, OI 405, Conventions 20, CP 160, IS 201, MA 173, MI 38, DI 69.
+Bookmarks: OA 502, RA 159, RI 92, TI 582, AR 421, DA 134, OI 426, Conventions 20, CP 160, IS 201, MA 211, MI 68, DI 93.
 RA 158 (11-23): OA 469 / AR 406 (3) misrouted RAU's pc_kept to RA; RAU is TI's stub. OA 472, AR 407-408, TI-526 agree;
 closed. Sweep 11-23: nothing for RA. Watch AR 410 / TI-531: CCV_P_TIMEOUT_MEMOP derived, slow memory regions end at
 1 MiB, perf-register cycles move above 0xC0000 (AR re-baselines). Merged 183cc441 (173, carried OI's 57eff422),
 80102643 (6), 9eb50716 (3), miu-dcu-spec (3), 58815650 (18, resolve), 5e4d6c70 (8, resolve): all branches merged.
+RA 159 (11-23): TI-537 common credit ends (cr_src/cr_go/cr_dst in rtl/common, Daniel's ask relayed by TI; no DA
+row) confirmed with 5 corrections: wire-valid 1-flop mode + width param, release-count owed counter, parent's flopped
+reset, CG-5 of credit_in stated, flopped stall. RCU migration (RI): rcu_kill pulses + CSR, rcu_mig counts/FIFO/dm_cred. TI-539 took all 5.
+TI-541 (Daniel via TI, no DA row; AR 415 (5) option A): credit/stall -> cr_go -> same channel's valid at a flopped
+sending end is a named exception, timed as the port-budget pair (credit/stall at 0), never NGD-5; depths stay 4+2N.
+When RI moves rcu_mig's rcu_pca_mig sender onto cr_go, RA sets ccv_rcu's boundary budgets for that pair (architect's).
+Sweep 11-24: nothing for RA. OWED when TI's list exists: AR 416 has the SENDER's architect declare each credited
+end's form (COMB 4+2N / REG or LATE +1) in params/links.json; RCU's sender is rcu_pca_mig (rcu_mig demotion), which
+flops the returned credit a cycle before it counts (RI-63), so REG/LATE (+1) unless RI moves it to COMB: raise as an
+RA row Needs TI. OA 484: RA signs "by" on RCU parent-level CCV-L23 declarations. DA 133 (AR owns MLC spec) and
+DA 134 (OOE ratchet paths may rise to 30 NGD; not RCU). AR 415: at a flopped end the wrapper holds the flops;
+rcu_kill's credit waiver goes on migration.
 Sweep 11-22: nothing for RA. DA 129-131 (OOE: mempl waiver, redirect lag D, L23 table form). AR 403-405: CE corrected
 by MIU as a later ccv_miu_rcu_data write then completion; way mispredict = AR 368 miss then late completion at due+2,
 same req_id; L1_HIT 8 and L1_ECC 1 unchanged. Merged 183cc441 (126), 5e4d6c70 (10), 9eb50716 (5), c22116ce (2),
