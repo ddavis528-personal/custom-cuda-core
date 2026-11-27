@@ -67,6 +67,10 @@ file holds AR's.
    holds the other side's exact blob, else stops; `KEEP_OURS="<file>"` keeps
    ours by hand for a file you checked. It signs with commit-tree -S (without
    -S GitHub shows the merge Unverified). Proposed to TI for tools/ (AR 425).
+   TI-605: tools/sweep-merge.sh (6a3b5132, virtual base, RI-65) replaces it
+   once on our branch: `tools/sweep-merge.sh origin/<b> "<message>"` per
+   branch. Until TI signs its merge (AR 430: -S under commit.gpgsign),
+   re-sign its merges on the same trees before pushing.
    Never git's recursive merge at many bases: 10 bases ran 5.5 h on one
    branch on 11-27 without finishing. Conflicts by hand:
    - walkthrough: take theirs;
@@ -85,8 +89,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 429 .701506 (tab rev 434).
-  - **The next AR row inserts after .701506**, labelled AR 430.
+  - Latest row: AR 430 .702029 (tab rev 435).
+  - **The next AR row inserts after .702029**, labelled AR 431.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -108,7 +112,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 434, OA 507, TI 600, MA 221, DI 99,
+- **Bookmarks** (revs read through): AR 435, OA 507, TI 605, MA 221, DI 99,
   MI 74, RA 161, RI 100, IS 201, CP 160, OI 427, DA 136, Conventions 20 (full
   sweep read 11-27; TI, RA, RI read further from notices).
 - **Pings:** Friday 11-27 to all 11 (OA IS TI OI CP RA RI MA RH MI DI); all
