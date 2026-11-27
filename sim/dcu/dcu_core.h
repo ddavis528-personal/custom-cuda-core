@@ -138,7 +138,7 @@ struct Config {
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
-  unsigned ids = 1u << ccv::prov::kWReqDcuMlc;       ///< miss buffers: MLC req_ids
+  unsigned ids = ccv::kDcuMshrPerBank;   ///< miss buffers: MLC req_ids (one bank's 16 until MA-34's split)
   unsigned wb = 2;               ///< the writeback buffer's entries
   bool hash = false;             ///< CCV_DCU_BANK_HASH (MA-20), off
   bool no_cycle_conflict = false;///< refuse two lookups due in one bank in one cycle (MIU model: DI-25 (4))

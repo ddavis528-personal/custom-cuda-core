@@ -26,6 +26,7 @@
 #include "Vdcu_mshr.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
+#include "../../sim/generated/ccv_params.h"   // the req_id widths
 
 #include <array>
 #include <cstdint>
@@ -43,6 +44,8 @@ namespace {
 constexpr unsigned kSlots = 4, kBanks = 8, kNe = 16, kLd = 4, kPorts = kSlots + 1, kNf = kPorts,
                    kCr = 4;
 constexpr unsigned kWl = 41;   // the line's PA bits
+constexpr unsigned kWi = ccv::prov::kWReqMiuDcu;   // MIU req_id
+constexpr unsigned kWle = kWi + 7;                  // list item {req_id, op, exclusive, std index}
 constexpr uint64_t kLineMask = (uint64_t(1) << kWl) - 1;
 
 int g_argc;
@@ -319,7 +322,7 @@ struct Gen {
   Req req() {
     Req q;
     q.pa = lines[below(unsigned(lines.size()))];
-    q.rid = below(64);
+    q.rid = below(1u << kWi);
     q.op = below(3);
     q.fold = below(16);
     q.excl = r() & 1;
@@ -385,7 +388,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       }
     for (unsigned s = 0; s < kSlots; ++s) {
       const Req q = look1[s] ? *look1[s] : rnd ? g.req() : Req{};   // noise when none (random runs)
-      setInt(d.rid_cc03h, s * 6, 6, q.rid);
+      setInt(d.rid_cc03h, s * kWi, kWi, q.rid);
       setBits(d.pa_cc03h, s * kWl, kWl, q.pa);
       setInt(d.fold_cc03h, s * 4, 4, q.fold);
       setInt(d.coh_cc03h, s * 4, 4, cohOf(q.op));
@@ -410,7 +413,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       if (offer[bk]) d.rov_cc02h |= 1u << bk;
       setBits(d.rstp_cc02h, bk * 10, 10, offer[bk] || rnd ? q.stamp & kStampMask : 0);
       setBits(d.rpa_cc03h, bk * kWl, kWl, q.pa);
-      setInt(d.rrid_cc03h, bk * 6, 6, q.rid);
+      setInt(d.rrid_cc03h, bk * kWi, kWi, q.rid);
       setInt(d.rop_cc03h, bk * 2, 2, q.op);
       setInt(d.rexcl_cc03h, bk, 1, q.excl);
       setInt(d.rfold_cc03h, bk * 4, 4, q.fold);
@@ -537,7 +540,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       b.expect(d.fcoh_cc05h == x.coh, "fill read: coh_op");
       b.expect(d.fcnt_cc05h == x.cnt, "fill read: count");
       for (unsigned k = 0; k < x.cnt; ++k)
-        b.expect(((d.flist_cc05h >> (13 * k)) & 0x1fff) == x.list[k], "fill read: list item " + std::to_string(k));
+        b.expect(((d.flist_cc05h >> (kWle * k)) & ((1u << kWle) - 1)) == x.list[k], "fill read: list item " + std::to_string(k));
     }
     // A control's model diverges, and its driving would then break the
     // RTL's input contract: stop at its first mismatch.

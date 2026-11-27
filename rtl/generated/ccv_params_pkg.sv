@@ -114,6 +114,22 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (MA-29, AR 404)
   localparam int CCV_DCU_ECC_CHECK_W = 72;
 
+  // Miss buffers (MSHRs) in each L1 bank: dcu_mshr is CCV_DCU_BANKS instances of this many entries, a miss's DCU -> MLC req_id {bank, entry} (MA-34; DCU tab rev 147). With 8 banks, 128 lines in flight at the DRAM latency (Daniel's option B, DA rev 136, over 64 and 192).  Requires: CCV_DCU_MSHR_PER_BANK >= 1.
+  // decided at the block-level grill-me (MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419))
+  localparam int CCV_DCU_MSHR_PER_BANK = 16;
+
+  // Lines DCU holds in flight to MLC, all banks: CCV_DCU_BANKS x CCV_DCU_MSHR_PER_BANK, inside the DCU -> MLC req_id space (MA-34).  Derived: = CCV_DCU_BANKS * CCV_DCU_MSHR_PER_BANK.  Requires: CCV_DCU_MSHR <= 2 ** CCV_P_W_REQ_DCU_MLC.
+  // decided at the block-level grill-me (MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419))
+  localparam int CCV_DCU_MSHR = 128;
+
+  // MIU's ids for ccv_miu_dcu_req, the accesses it holds outstanding at DCU (MA-34; MIU tab rev 236): every line DCU can have in flight to MLC plus four cycles of lookups at full rate, inside the req_id space. MIU's return state holds one entry per id.  Requires: (CCV_MIU_DCU_IDS <= 2 ** CCV_P_W_REQ_MIU_DCU) * (CCV_MIU_DCU_IDS >= CCV_DCU_MSHR + 4 * CCV_DCACHE_LOOKUPS) == 1.
+  // decided at the block-level grill-me (MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419))
+  localparam int CCV_MIU_DCU_IDS = 160;
+
+  // Memops MIU tracks in flight between issue and completion, each with a record (bin miu_memop_rec_full when all are taken; MA-34, AR 419 (2)). CCV_MIU_PIPES stays 4: the AGU pipes are not the in-flight limit.  Requires: CCV_MIU_MEMOPS_INFLIGHT >= CCV_MIU_PIPES.
+  // decided at the block-level grill-me (MA-34 (Daniel's option B, DA rev 136; MA-31, AR 419))
+  localparam int CCV_MIU_MEMOPS_INFLIGHT = 8;
+
   // Scratchpad capacity, 128 KB.
   // decided at the block-level grill-me (grill-me 2026-09-23)
   localparam int CCV_SPM_BYTES = 131072;
@@ -824,7 +840,7 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEM
   localparam int CCV_P_TIMEOUT_BP = 8192;
 
-  // Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). A memop can wait behind the fills of every other entry of its slot: CCV_MEMOP_CREDITS entries of up to CCV_WARP_LANES lines each, fetched 2^CCV_P_W_REQ_DCU_MLC at a time (DCU's req_ids to MLC, its fills in flight), each round within CCV_P_TIMEOUT_MEM, the bound on any external latency (AR-410, re TI-531). So it is ceil(CCV_MEMOP_CREDITS x CCV_WARP_LANES / 2^CCV_P_W_REQ_DCU_MLC) rounds of CCV_P_TIMEOUT_MEM, and it moves by itself when the memory timeout follows a real DRAM latency. The skeleton's testbench refuses any latency over CCV_P_TIMEOUT_MEM (its slow regions and CCV_TB_LATENCY). The corpus's holds must stay under it: every gate run fires response_within_n past it, and check-kernel's coremark128 line runs at CCV_TB_LATENCY=1000 so its hold passes CCV_P_TIMEOUT_BP. A watchdog and a sizing signal: each gate run reports the channel's longest credit hold (BPAGE). Before AR-410 it was CCV_MEMOP_CREDITS x CCV_P_TIMEOUT_MEM (20480, AR 350), which coremark128 nearly met only because its data sat in the testbench's 1000-cycle region by accident.  Derived: = ((CCV_MEMOP_CREDITS * CCV_WARP_LANES + 2 ** CCV_P_W_REQ_DCU_MLC - 1) // 2 ** CCV_P_W_REQ_DCU_MLC) * CCV_P_TIMEOUT_MEM.
+  // Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). A memop can wait behind the fills of every other entry of its slot: CCV_MEMOP_CREDITS entries of up to CCV_WARP_LANES lines each, fetched CCV_DCU_MSHR_PER_BANK at a time (one bank's miss buffers: a stream of one bank's lines, a 1 KiB stride, puts them all there; AR 421, MA-34), each round within CCV_P_TIMEOUT_MEM, the bound on any external latency (AR-410, re TI-531). So it is ceil(CCV_MEMOP_CREDITS x CCV_WARP_LANES / CCV_DCU_MSHR_PER_BANK) rounds of CCV_P_TIMEOUT_MEM, and it moves by itself when the memory timeout follows a real DRAM latency. The skeleton's testbench refuses any latency over CCV_P_TIMEOUT_MEM (its slow regions and CCV_TB_LATENCY). The corpus's holds must stay under it: every gate run fires response_within_n past it, and check-kernel's coremark128 line runs at CCV_TB_LATENCY=1000 so its hold passes CCV_P_TIMEOUT_BP. A watchdog and a sizing signal: each gate run reports the channel's longest credit hold (BPAGE). Before AR-410 it was CCV_MEMOP_CREDITS x CCV_P_TIMEOUT_MEM (20480, AR 350), which coremark128 nearly met only because its data sat in the testbench's 1000-cycle region by accident.  Derived: = ((CCV_MEMOP_CREDITS * CCV_WARP_LANES + CCV_DCU_MSHR_PER_BANK - 1) // CCV_DCU_MSHR_PER_BANK) * CCV_P_TIMEOUT_MEM.
   // PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEM
   localparam int CCV_P_TIMEOUT_MEMOP = 40960;
 
@@ -848,21 +864,21 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
   localparam int CCV_P_W_REQ_MIU_SPM = 5;
 
-  // req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixty-four outstanding cache accesses: hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).
+  // req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). CCV_MIU_DCU_IDS, 160 outstanding cache accesses, inside 8 bits (MA-34, Daniel's B, DA rev 136; was 6 bits, sixty-four): hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
-  localparam int CCV_P_W_REQ_MIU_DCU = 6;
+  localparam int CCV_P_W_REQ_MIU_DCU = 8;
 
-  // req_id on DCU -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen fills in flight, i.e. sixteen MSHRs.
+  // req_id on DCU -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). 128 fills in flight, CCV_DCU_MSHR: 16 miss buffers in each of the 8 L1 banks, the id {bank, entry} (MA-34, Daniel's B, DA rev 136; was 4 bits, sixteen MSHRs).
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
-  localparam int CCV_P_W_REQ_DCU_MLC = 4;
+  localparam int CCV_P_W_REQ_DCU_MLC = 7;
 
   // req_id on FET -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Four instruction fills in flight.
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
   localparam int CCV_P_W_REQ_FET_MLC = 2;
 
-  // req_id on MLC -> EXB: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). The TL-C source-id width the tilelink_tlc sizing assumed (6 bits), so EXB maps it without translation.
+  // req_id on MLC -> EXB: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). MLC holds 2^7 DCU misses + 2^2 FET ifills = 132 to EXB, plus its writebacks, inside 256 ids (AR 417, AR 419; was 6 bits, the TL-C source-id width the tilelink_tlc sizing assumed). The read class measures MIU's and DCU's queues, so the id space must not be the cap it finds.  Requires: 2 ** CCV_P_W_REQ_MLC_EXB >= 2 ** CCV_P_W_REQ_DCU_MLC + 2 ** CCV_P_W_REQ_FET_MLC.
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
-  localparam int CCV_P_W_REQ_MLC_EXB = 6;
+  localparam int CCV_P_W_REQ_MLC_EXB = 8;
 
   // req_id on MLC -> DCU probe and its acknowledgement: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Four probes in flight.
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
@@ -952,13 +968,17 @@ package ccv_prelim_pkg;
   // PRELIMINARY -- churn: HIGH  (the FIELD may change shape, not just this number)
   localparam int CCV_L_OPERANDS_PER_LANE = 3;
 
-  // TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, 6-bit source, 4-bit sink: A 641 (opcode 3, param 3, size 4, source 6, address 48, mask 64, data 512, corrupt 1), C 577 (A without mask), E 4 (sink), valids 3.
+  // TL-C source id width on A, B, C and D: MLC's req_id to EXB, which EXB maps to the link without translation (AR 422; was 6, the tilelink_tlc sizing's). CCV_L_W_TL_OUT and CCV_L_W_TL_IN are derived from it.  Derived: = CCV_P_W_REQ_MLC_EXB.
   // PRELIMINARY -- churn: HIGH  (the FIELD may change shape, not just this number)
-  localparam int CCV_L_W_TL_OUT = 1225;
+  localparam int CCV_L_W_TL_SOURCE = 8;
 
-  // TL-C inbound, B + D plus a valid bit per TL channel: B 641 (as A), D 533 (opcode 3, param 2, size 4, source 6, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe.
+  // TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, CCV_L_W_TL_SOURCE-bit source (8), 4-bit sink: A 635 + source (opcode 3, param 3, size 4, source, address 48, mask 64, data 512, corrupt 1), C 571 + source (A without mask), E 4 (sink), valids 3.  Derived: = (635 + CCV_L_W_TL_SOURCE) + (571 + CCV_L_W_TL_SOURCE) + 4 + 3.
   // PRELIMINARY -- churn: HIGH  (the FIELD may change shape, not just this number)
-  localparam int CCV_L_W_TL_IN = 1176;
+  localparam int CCV_L_W_TL_OUT = 1229;
+
+  // TL-C inbound, B + D plus a valid bit per TL channel: B 635 + source (as A), D 527 + source (opcode 3, param 2, size 4, source CCV_L_W_TL_SOURCE, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe.  Derived: = (635 + CCV_L_W_TL_SOURCE) + (527 + CCV_L_W_TL_SOURCE) + 2.
+  // PRELIMINARY -- churn: HIGH  (the FIELD may change shape, not just this number)
+  localparam int CCV_L_W_TL_IN = 1180;
 
   // CSR address. A first guess, made only so the common CSR port can be declared: the schema gave csr_req as 'address, write data, write enable' with no widths, and there is no CSR map yet.
   // PRELIMINARY -- churn: MED

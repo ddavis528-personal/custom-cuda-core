@@ -310,7 +310,7 @@ inline constexpr FieldDesc kF_ccv_spm_miu_rsp[] = {
   {"conflict_serialization", 0, 6, false},
 };
 inline constexpr FieldDesc kF_ccv_miu_dcu_req[] = {
-  {"req_id", 1222, 6, false},
+  {"req_id", 1222, 8, false},
   {"phys_addr", 1174, 48, false},
   {"size", 1171, 3, false},
   {"coh_op", 1167, 4, false},
@@ -322,7 +322,7 @@ inline constexpr FieldDesc kF_ccv_miu_dcu_req[] = {
   {"pa_fold", 0, 4, false},
 };
 inline constexpr FieldDesc kF_ccv_dcu_miu_rsp[] = {
-  {"req_id", 1099, 6, false},
+  {"req_id", 1099, 8, false},
   {"read_data", 75, 1024, false},
   {"hit", 74, 1, false},
   {"ownership_granted", 73, 1, false},
@@ -330,14 +330,14 @@ inline constexpr FieldDesc kF_ccv_dcu_miu_rsp[] = {
   {"check_bits", 0, 72, false},
 };
 inline constexpr FieldDesc kF_ccv_dcu_mlc_req[] = {
-  {"req_id", 1078, 4, false},
+  {"req_id", 1078, 7, false},
   {"phys_addr", 1030, 48, false},
   {"coh_op", 1026, 4, false},
   {"core_id", 1024, 2, false},
   {"writeback_data", 0, 1024, false},
 };
 inline constexpr FieldDesc kF_ccv_mlc_dcu_rsp[] = {
-  {"req_id", 1026, 4, false},
+  {"req_id", 1026, 7, false},
   {"line_data", 2, 1024, false},
   {"ownership", 1, 1, false},
   {"miss", 0, 1, false},
@@ -368,7 +368,7 @@ inline constexpr FieldDesc kF_ccv_fet_miu_itlb_req[] = {
   {"asid", 0, 8, false},
 };
 inline constexpr FieldDesc kF_ccv_mlc_exb_req[] = {
-  {"req_id", 1084, 6, false},
+  {"req_id", 1084, 8, false},
   {"phys_addr", 1036, 48, false},
   {"size", 1033, 3, false},
   {"coh_op", 1029, 4, false},
@@ -377,7 +377,7 @@ inline constexpr FieldDesc kF_ccv_mlc_exb_req[] = {
   {"writeback_data", 0, 1024, false},
 };
 inline constexpr FieldDesc kF_ccv_exb_mlc_rsp[] = {
-  {"req_id", 1076, 6, false},
+  {"req_id", 1076, 8, false},
   {"probe_type", 1074, 2, false},
   {"phys_addr", 1026, 48, false},
   {"line_data", 2, 1024, false},
@@ -385,7 +385,7 @@ inline constexpr FieldDesc kF_ccv_exb_mlc_rsp[] = {
   {"miss", 0, 1, false},
 };
 inline constexpr FieldDesc kF_ccv_exb_ext_out[] = {
-  {"tl_out", 0, 1225, false},
+  {"tl_out", 0, 1229, false},
 };
 inline constexpr FieldDesc kF_ccv_rau_fet_launch[] = {
   {"warp_id", 205, 5, false},
@@ -537,10 +537,10 @@ inline constexpr FieldDesc kF_ccv_cru_rau_cfg[] = {
   {"kill_grid", 0, 8, false},
 };
 inline constexpr FieldDesc kF_ccv_ext_exb_in[] = {
-  {"tl_in", 0, 1176, false},
+  {"tl_in", 0, 1180, false},
 };
 inline constexpr FieldDesc kF_ccv_dcu_miu_fill_ntc[] = {
-  {"req_id", 0, 6, false},
+  {"req_id", 0, 8, false},
 };
 inline constexpr FieldDesc kF_ccv_dcu_miu_cred[] = {
   {"ent_ret", 8, 8, false},
@@ -569,19 +569,19 @@ inline constexpr ChanDesc kChans[] = {
   {13, "ccv_ooe_fet_ckpt_free", Blk::OOE, Blk::FET, 1, 16, 1, kF_ccv_ooe_fet_ckpt_free, 1, false, 0, Order::kNone, -1, false, 1, -1, true, false, 4, 8192},
   {14, "ccv_miu_spm_req", Blk::MIU, Blk::SPM, 4, 1479, 5, kF_ccv_miu_spm_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
   {15, "ccv_spm_miu_rsp", Blk::SPM, Blk::MIU, 4, 1035, 3, kF_ccv_spm_miu_rsp, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
-  {16, "ccv_miu_dcu_req", Blk::MIU, Blk::DCU, 4, 1228, 10, kF_ccv_miu_dcu_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, true, 4, 8192},
-  {17, "ccv_dcu_miu_rsp", Blk::DCU, Blk::MIU, 4, 1105, 6, kF_ccv_dcu_miu_rsp, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
-  {18, "ccv_dcu_mlc_req", Blk::DCU, Blk::MLC, 1, 1082, 5, kF_ccv_dcu_mlc_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
-  {19, "ccv_mlc_dcu_rsp", Blk::MLC, Blk::DCU, 1, 1030, 4, kF_ccv_mlc_dcu_rsp, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
+  {16, "ccv_miu_dcu_req", Blk::MIU, Blk::DCU, 4, 1230, 10, kF_ccv_miu_dcu_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, true, 4, 8192},
+  {17, "ccv_dcu_miu_rsp", Blk::DCU, Blk::MIU, 4, 1107, 6, kF_ccv_dcu_miu_rsp, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
+  {18, "ccv_dcu_mlc_req", Blk::DCU, Blk::MLC, 1, 1085, 5, kF_ccv_dcu_mlc_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
+  {19, "ccv_mlc_dcu_rsp", Blk::MLC, Blk::DCU, 1, 1033, 4, kF_ccv_mlc_dcu_rsp, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
   {20, "ccv_mlc_dcu_probe", Blk::MLC, Blk::DCU, 1, 51, 3, kF_ccv_mlc_dcu_probe, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {21, "ccv_dcu_mlc_probe_ack", Blk::DCU, Blk::MLC, 1, 1027, 3, kF_ccv_dcu_mlc_probe_ack, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {22, "ccv_fet_mlc_ifill", Blk::FET, Blk::MLC, 1, 50, 2, kF_ccv_fet_mlc_ifill, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
   {23, "ccv_mlc_fet_ifill_rsp", Blk::MLC, Blk::FET, 1, 1026, 2, kF_ccv_mlc_fet_ifill_rsp, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
   {24, "ccv_miu_fet_itlb", Blk::MIU, Blk::FET, 1, 64, 1, kF_ccv_miu_fet_itlb, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
   {25, "ccv_fet_miu_itlb_req", Blk::FET, Blk::MIU, 1, 56, 2, kF_ccv_fet_miu_itlb_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
-  {26, "ccv_mlc_exb_req", Blk::MLC, Blk::EXB, 1, 1090, 7, kF_ccv_mlc_exb_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
-  {27, "ccv_exb_mlc_rsp", Blk::EXB, Blk::MLC, 1, 1082, 6, kF_ccv_exb_mlc_rsp, 1, false, 0, Order::kNone, -1, false, 5, -1, false, false, 4, 8192},
-  {28, "ccv_exb_ext_out", Blk::EXB, Blk::EXTERNAL, 1, 1225, 1, kF_ccv_exb_ext_out, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
+  {26, "ccv_mlc_exb_req", Blk::MLC, Blk::EXB, 1, 1092, 7, kF_ccv_mlc_exb_req, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
+  {27, "ccv_exb_mlc_rsp", Blk::EXB, Blk::MLC, 1, 1084, 6, kF_ccv_exb_mlc_rsp, 1, false, 0, Order::kNone, -1, false, 5, -1, false, false, 4, 8192},
+  {28, "ccv_exb_ext_out", Blk::EXB, Blk::EXTERNAL, 1, 1229, 1, kF_ccv_exb_ext_out, 1, false, 0, Order::kNone, -1, false, 4, -1, false, false, 4, 8192},
   {29, "ccv_rau_fet_launch", Blk::RAU, Blk::FET, 1, 210, 7, kF_ccv_rau_fet_launch, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {30, "ccv_rau_ooe_alloc", Blk::RAU, Blk::OOE, 1, 54, 7, kF_ccv_rau_ooe_alloc, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {31, "ccv_ooe_rau_status", Blk::OOE, Blk::RAU, 1, 17, 6, kF_ccv_ooe_rau_status, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
@@ -606,8 +606,8 @@ inline constexpr ChanDesc kChans[] = {
   {50, "ccv_ooe_cru_fault", Blk::OOE, Blk::CRU, 1, 172, 6, kF_ccv_ooe_cru_fault, 1, false, 0, Order::kNone, -1, false, 2, -1, false, false, 4, 8192},
   {51, "ccv_dcu_cru_err", Blk::DCU, Blk::CRU, 1, 2, 2, kF_ccv_dcu_cru_err, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {52, "ccv_cru_rau_cfg", Blk::CRU, Blk::RAU, 1, 74, 5, kF_ccv_cru_rau_cfg, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
-  {53, "ccv_ext_exb_in", Blk::EXTERNAL, Blk::EXB, 1, 1176, 1, kF_ccv_ext_exb_in, 1, false, 0, Order::kNone, -1, false, 5, -1, false, false, 4, 8192},
-  {54, "ccv_dcu_miu_fill_ntc", Blk::DCU, Blk::MIU, 4, 6, 1, kF_ccv_dcu_miu_fill_ntc, 1, false, 0, Order::kNone, -1, false, 4, -1, true, false, 4, 8192},
+  {53, "ccv_ext_exb_in", Blk::EXTERNAL, Blk::EXB, 1, 1180, 1, kF_ccv_ext_exb_in, 1, false, 0, Order::kNone, -1, false, 5, -1, false, false, 4, 8192},
+  {54, "ccv_dcu_miu_fill_ntc", Blk::DCU, Blk::MIU, 4, 8, 1, kF_ccv_dcu_miu_fill_ntc, 1, false, 0, Order::kNone, -1, false, 4, -1, true, false, 4, 8192},
   {55, "ccv_dcu_miu_cred", Blk::DCU, Blk::MIU, 1, 16, 2, kF_ccv_dcu_miu_cred, 1, false, 0, Order::kNone, -1, false, 1, -1, true, false, 4, 8192},
   {56, "ccv_miu_ooe_cmpl_hint", Blk::MIU, Blk::OOE, 4, 14, 3, kF_ccv_miu_ooe_cmpl_hint, 1, false, 0, Order::kNone, -1, false, 2, -1, true, false, 4, 8192},
 };
@@ -776,50 +776,50 @@ inline constexpr ChanInst kChanInsts[] = {
   {14, 0, 36, 37, 120, 37489, 0, 0, 0, 0, 0},
   {15, 0, 37, 36, 124, 43405, 0, 0, 0, 0, 0},
   {16, 0, 36, 38, 128, 47545, 0, 0, 0, 0, 0},
-  {17, 0, 38, 36, 132, 52457, 0, 0, 0, 0, 0},
-  {18, 0, 38, 39, 136, 56877, 0, 0, 0, 0, 0},
-  {19, 0, 39, 38, 137, 57959, 0, 0, 0, 0, 0},
-  {20, 0, 39, 38, 138, 58989, 0, 0, 0, 0, 0},
-  {21, 0, 38, 39, 139, 59040, 0, 0, 0, 0, 0},
-  {22, 0, 0, 39, 140, 60067, 0, 0, 0, 0, 0},
-  {23, 0, 39, 0, 141, 60117, 0, 0, 0, 0, 0},
-  {24, 0, 36, 0, 142, 61143, 0, 0, 0, 0, 0},
-  {25, 0, 0, 36, 143, 61207, 0, 0, 0, 0, 0},
-  {26, 0, 39, 44, 144, 61263, 0, 0, 0, 0, 0},
-  {27, 0, 44, 39, 145, 62353, 0, 0, 0, 0, 0},
-  {28, 0, 44, -1, 146, 63435, 0, 0, 0, 0, 0},
-  {29, 0, 40, 0, 147, 64660, 0, 0, 0, 0, 0},
-  {30, 0, 40, 2, 148, 64870, 0, 0, 0, 0, 0},
-  {31, 0, 2, 40, 149, 64924, 0, 0, 0, 0, 0},
-  {32, 0, 40, 2, 150, 64941, 0, 0, 0, 0, 0},
-  {33, 0, 2, 40, 151, 64947, 0, 0, 0, 0, 0},
-  {34, 0, 40, 3, 152, 65019, 0, 0, 0, 0, 0},
-  {35, 0, 2, 3, 153, 65025, 0, 0, 0, 0, 0},
-  {36, 0, 3, 42, 154, 65247, 0, 0, 0, 0, 0},
-  {37, 0, 42, 3, 155, 66281, 0, 0, 0, 0, 0},
-  {38, 0, 0, 42, 156, 67315, 0, 0, 0, 0, 0},
-  {39, 0, 42, 0, 157, 68371, 0, 0, 0, 0, 0},
-  {40, 0, 40, 0, 158, 69427, 0, 0, 0, 0, 0},
-  {41, 0, 42, 40, 159, 69435, 0, 0, 0, 0, 0},
-  {42, 0, 40, 42, 160, 69441, 0, 0, 0, 0, 0},
-  {43, 0, 36, 40, 161, 69452, 0, 0, 0, 0, 0},
-  {44, 0, 40, 36, 162, 69457, 0, 0, 0, 0, 0},
-  {45, 0, 2, 41, 163, 69734, 0, 0, 0, 0, 0},
-  {46, 0, 41, 2, 164, 69845, 0, 0, 0, 0, 0},
-  {47, 0, 41, 0, 165, 69850, 0, 0, 0, 0, 0},
-  {48, 0, 41, 40, 166, 69887, 0, 0, 0, 0, 0},
-  {49, 0, 40, 41, 167, 69892, 0, 0, 0, 0, 0},
-  {50, 0, 2, 43, 168, 69950, 0, 0, 0, 0, 0},
-  {51, 0, 38, 43, 169, 70122, 0, 0, 0, 0, 0},
-  {52, 0, 43, 40, 170, 70124, 0, 0, 0, 0, 0},
-  {53, 0, -1, 44, 171, 70198, 0, 0, 0, 0, 0},
-  {54, 0, 38, 36, 172, 71374, 0, 0, 0, 0, 0},
-  {55, 0, 38, 36, 176, 71398, 0, 0, 0, 0, 0},
-  {56, 0, 36, 2, 177, 71414, 0, 0, 0, 0, 0},
+  {17, 0, 38, 36, 132, 52465, 0, 0, 0, 0, 0},
+  {18, 0, 38, 39, 136, 56893, 0, 0, 0, 0, 0},
+  {19, 0, 39, 38, 137, 57978, 0, 0, 0, 0, 0},
+  {20, 0, 39, 38, 138, 59011, 0, 0, 0, 0, 0},
+  {21, 0, 38, 39, 139, 59062, 0, 0, 0, 0, 0},
+  {22, 0, 0, 39, 140, 60089, 0, 0, 0, 0, 0},
+  {23, 0, 39, 0, 141, 60139, 0, 0, 0, 0, 0},
+  {24, 0, 36, 0, 142, 61165, 0, 0, 0, 0, 0},
+  {25, 0, 0, 36, 143, 61229, 0, 0, 0, 0, 0},
+  {26, 0, 39, 44, 144, 61285, 0, 0, 0, 0, 0},
+  {27, 0, 44, 39, 145, 62377, 0, 0, 0, 0, 0},
+  {28, 0, 44, -1, 146, 63461, 0, 0, 0, 0, 0},
+  {29, 0, 40, 0, 147, 64690, 0, 0, 0, 0, 0},
+  {30, 0, 40, 2, 148, 64900, 0, 0, 0, 0, 0},
+  {31, 0, 2, 40, 149, 64954, 0, 0, 0, 0, 0},
+  {32, 0, 40, 2, 150, 64971, 0, 0, 0, 0, 0},
+  {33, 0, 2, 40, 151, 64977, 0, 0, 0, 0, 0},
+  {34, 0, 40, 3, 152, 65049, 0, 0, 0, 0, 0},
+  {35, 0, 2, 3, 153, 65055, 0, 0, 0, 0, 0},
+  {36, 0, 3, 42, 154, 65277, 0, 0, 0, 0, 0},
+  {37, 0, 42, 3, 155, 66311, 0, 0, 0, 0, 0},
+  {38, 0, 0, 42, 156, 67345, 0, 0, 0, 0, 0},
+  {39, 0, 42, 0, 157, 68401, 0, 0, 0, 0, 0},
+  {40, 0, 40, 0, 158, 69457, 0, 0, 0, 0, 0},
+  {41, 0, 42, 40, 159, 69465, 0, 0, 0, 0, 0},
+  {42, 0, 40, 42, 160, 69471, 0, 0, 0, 0, 0},
+  {43, 0, 36, 40, 161, 69482, 0, 0, 0, 0, 0},
+  {44, 0, 40, 36, 162, 69487, 0, 0, 0, 0, 0},
+  {45, 0, 2, 41, 163, 69764, 0, 0, 0, 0, 0},
+  {46, 0, 41, 2, 164, 69875, 0, 0, 0, 0, 0},
+  {47, 0, 41, 0, 165, 69880, 0, 0, 0, 0, 0},
+  {48, 0, 41, 40, 166, 69917, 0, 0, 0, 0, 0},
+  {49, 0, 40, 41, 167, 69922, 0, 0, 0, 0, 0},
+  {50, 0, 2, 43, 168, 69980, 0, 0, 0, 0, 0},
+  {51, 0, 38, 43, 169, 70152, 0, 0, 0, 0, 0},
+  {52, 0, 43, 40, 170, 70154, 0, 0, 0, 0, 0},
+  {53, 0, -1, 44, 171, 70228, 0, 0, 0, 0, 0},
+  {54, 0, 38, 36, 172, 71408, 0, 0, 0, 0, 0},
+  {55, 0, 38, 36, 176, 71440, 0, 0, 0, 0, 0},
+  {56, 0, 36, 2, 177, 71456, 0, 0, 0, 0, 0},
 };
 constexpr unsigned kNumChanInsts = 119;
 constexpr unsigned kNumSlots = 181;
-constexpr uint64_t kPayloadBits = 71470;
+constexpr uint64_t kPayloadBits = 71512;
 
 /// Fabrics between blocks, outside the credit scheme (schema
 /// common_ports): a broadcast is driven by `end` and read by every

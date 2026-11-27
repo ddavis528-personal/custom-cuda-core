@@ -163,7 +163,7 @@ for cfg in "gpr 0 $phys 0" "gsec 0 $phys $ns" "pred 1 $preds 0"; do
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
   ctl="drop-free extra-alloc no-lead wrong-owner one-step"
-  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early no-lead one-step"
+  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early sa-late rt-late sal-late rtl-late no-lead one-step"
   for c in $ctl; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
@@ -763,7 +763,7 @@ done
 # sectioned rows (NS 4, slice 6: the narrow allocator), its random cores
 # held to the decided form (its directed cores, timed for whole rows, are
 # the first build's).
-for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec" \
+for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec,no-prv" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
            "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take" \
            "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write,pend-follows"; do
