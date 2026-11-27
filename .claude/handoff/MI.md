@@ -73,4 +73,4 @@ every agent's ping to MI answered.
 
 ## Pushed
 - ccr-58815650-0ch1hh at 208e4c46: SCOPED PASS (miu_form clang++, handoff); RI and TI rung.
-- Sweep merge of Fri 11-27 (2nd firing, 8 branches) on mi-dev: full gate-push in flight.
+- ccr-58815650-0ch1hh at 8719d88b: full PASS (sweep merge of 8 branches incl. TI's c0883a36).
