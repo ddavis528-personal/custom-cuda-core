@@ -765,7 +765,7 @@ done
 # the first build's).
 for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec,no-prv" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
-           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take,no-room-take,pool-en-short" \
+           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take,no-room-take,pool-en-short:8" \
            "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write,pend-follows"; do
   set -- $cfg
   name=$1 env=$2 nseeds=$3 ctls=$4
@@ -793,8 +793,12 @@ for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-
     say "$name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
   [ "$ctls" = - ] && continue
-  for c in ${ctls//,/ }; do
-    if RENAME_CONTROL=$c "$dir/rename_tb" 3 >/dev/null 2>&1; then
+  # A control runs 3 seeds unless it names its own (<control>:<seeds>):
+  # pool-en-short's stale fits need a free the other change terms miss,
+  # first met at seed 5 (11 such cycles in 25 seeds).
+  for cs in ${ctls//,/ }; do
+    c=${cs%%:*} cn=3; [ "$c" != "$cs" ] && cn=${cs#*:}
+    if RENAME_CONTROL=$c "$dir/rename_tb" "$cn" >/dev/null 2>&1; then
       say "  control $c ($name)" "MISSED"; fail=1
     else
       say "  control $c ($name)" "caught"

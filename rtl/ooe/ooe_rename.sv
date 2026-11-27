@@ -234,7 +234,7 @@ module ooe_rename #(
   input  logic              ctl_unow,
   input  logic              ctl_nolt,
   input  logic              ctl_norq,       // the go's room read with no lagged take subtracted (u_go.room)
-  input  logic              ctl_pels,       // the go's pool change lead its sel term alone (u_go.pool_en)
+  input  logic              ctl_pels,       // the go's pool change lead cut off (u_go.pool_en)
   input  logic              ctl_noprv       // ooe_rendep's G-1 hits dropped from prv_dep (OA-496)
 `endif
 );
@@ -1041,8 +1041,9 @@ module ooe_rename #(
   // or pool registers' enable, a slot's occupancy changing, the unmet's
   // register taking (OI-134; its take terms are within cnt_en).
 `ifdef CCV_CHECK_RENAME
-  // pool-en-off: no lead, so a take, a free or the unmet's register moves
-  // the go's inputs unled.
+  // pool-en-short: no lead, so a take, a free or the unmet's register moves
+  // the go's inputs unled. (Its sel term alone is never caught in 25 seeds:
+  // there the sel term covers every change the bench makes.)
   assign pool_en_cq04h = !ctl_pels && (sel_cq02h != '0 || (cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_o_cq02h || ur_f_cq04h != '0));
 `else
   assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_o_cq02h || ur_f_cq04h != '0;

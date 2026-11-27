@@ -44,8 +44,8 @@
 // register drops the older take: OA's rev 219), unmet-now (the go reads the
 // unmet on time, not its register: OI-134) and no-last-take (the register's
 // unmet, its last take not subtracted), no-room-take (the go's room read
-// with no lagged take) and pool-en-short (the go's pool change lead its sel
-// term alone), no-prv (ooe_rendep's G-1 hits
+// with no lagged take) and pool-en-short (the go's pool change lead cut
+// off; fits_fresh, from seed 5), no-prv (ooe_rendep's G-1 hits
 // dropped from prv_dep: OA-496's control for u_map's table read).
 // no-take-q to pool-en-short need names that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
 // GPR ceiling of 24, the model's set alike.
