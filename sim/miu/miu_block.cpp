@@ -50,7 +50,7 @@ public:
     if (!pbins_) return;
     std::fprintf(stderr, "MIUBINS");
     for (const char *n : {"credit_hold_other_bank", "dcu_id_quarter_empty", "dcu_id_drop_held",
-                          "l0_lookup", "l0_miss"}) {
+                          "l0_lookup", "l0_miss", "l0_refill_wait"}) {
       const auto it = pbin_.find(n);
       std::fprintf(stderr, " %s=%llu", n, (unsigned long long)(it == pbin_.end() ? 0 : it->second));
     }
@@ -786,6 +786,7 @@ private:
     drain(to_ooe_, c.miu_ooe);
     drain(to_dcu_, c.miu_dcu);
     drain(to_rau_, c.miu_ready);
+    if (!l0_.empty()) l0Refill();
     a1GateFlop();
     ids_.tick();
   }
@@ -903,6 +904,9 @@ private:
   void sendCmpl(unsigned slot, const Bits &m, uint64_t tid) {
     const Ch &c = ch();
     send(c.miu_ooe, slot, withLead(m), tid);
+    if (ltrace_)
+      std::fprintf(stderr, "LTRACE %llu cmpl tag %u\n", (unsigned long long)now_,
+                   unsigned(get(m, c.miu_ooe, "rob_tag")));
     if (!entries_[slot]) {
       k_.fail("miu: a last completion on slot %u, which holds no memop entry", slot);
       return;
@@ -1594,6 +1598,9 @@ private:
       j.inelig = true;
     } else if (j.global && j.active) {
       const char *why = eligibility(j, mo);
+      if (ltrace_)
+        std::fprintf(stderr, "LTRACE %llu a2 tag %u issue %llu %s\n", (unsigned long long)now_, tag,
+                     (unsigned long long)mo.at, why ? why : "elig");
       if (why) dropAll(why);
       // Lanes over two pages leave the hit path (MIU tab, translation).
       // two-page-hit: such a load keeps its contract.
@@ -1660,7 +1667,13 @@ private:
         pbin("l0_lookup");
         if (!l0_[slot].lookup(page)) {
           pbin("l0_miss");
-          l0_[slot].fill(page);
+          // The refill, as rtl/miu/miu_tlb.sv: pending from A2's flop, granted
+          // two cycles on through CCV_MIU_TLB_PORTS read ports (default 4)
+          // shared by the slots, the L0 entry readable three cycles after.
+          bool queued = false;
+          for (const L0Fill &q : l0_q_) queued = queued || (q.slot == slot && q.page == page);
+          for (const L0Fill &q : l0_w_) queued = queued || (q.slot == slot && q.page == page);
+          if (!queued) l0_q_.push_back({now_ + 2, slot, page});
           if (!why) why = "drop_l0";
         }
       }
@@ -2108,6 +2121,9 @@ private:
       const uint64_t tid =
           makeUid(IdClass::kTxn, uidSeq(job_.tid), lr.sub, /*owned=*/true);
       send(c.miu_dcu, s, r, tid);
+      if (ltrace_)
+        std::fprintf(stderr, "LTRACE %llu req tag %u slot %u line %llx\n", (unsigned long long)now_,
+                     job_.tag, s, (unsigned long long)lr.line);
       outstanding_[id] = {job_.serial, lr.line};
       k_.hit("dcu_lookups");
       if (job_.frame) k_.hit("frame_lookups");
@@ -2223,7 +2239,11 @@ private:
     std::set<uint64_t> held_lines;
     std::set<unsigned> held_store_banks;
     for (Job &j : jobs_) {
-      if (j.first || j.next == j.lines.size()) continue;
+      // No pass leaves before A2's flops (h + 1), where a first pass leaves:
+      // a load that lost its contract at A2 (drop_l0, drop_split, ...)
+      // sends its lines from the same flops, never a cycle ahead of the
+      // first pass it lost (MI-31 trace; MA rev 199 (3)).
+      if (j.first || j.next == j.lines.size() || now_ < j.h + 1) continue;
       for (unsigned idx = 0; idx != j.lines.size(); ++idx) {
         if (j.lines[idx].sent || banks.count(bankOf(j.lines[idx].line))) continue;
         const uint64_t ln = j.lines[idx].line;
@@ -2521,12 +2541,34 @@ private:
     ++pbin_[n];
   }
   const bool pbins_ = envOn("CCV_MIU_PBINS");
+  /// CCV_MIU_LTRACE=1 (model-only): each load's A2 eligibility and each completion, to stderr.
+  const bool ltrace_ = envOn("CCV_MIU_LTRACE");
   /// MI-30 pricing aid (model-only, default off): CCV_MIU_L0=n gives each
-  /// lookup slot an n-entry LRU L0 TLB in front of the leaders (eligibility).
+  /// lookup slot an n-entry round-robin L0 TLB in front of the leaders (eligibility).
+  struct L0Fill { uint64_t at; unsigned slot; uint64_t page; };
+  std::deque<L0Fill> l0_q_, l0_w_;   // pending a grant; granted, awaiting the L0 write
+  const unsigned tlb_ports_ = [] {
+    const char *v = std::getenv("CCV_MIU_TLB_PORTS");
+    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 4u;
+  }();
+  /// A3: up to tlb_ports_ refills a cycle, oldest first.
+  void l0Refill() {
+    while (!l0_w_.empty() && l0_w_.front().at <= now_) {
+      l0_[l0_w_.front().slot].fill(l0_w_.front().page);
+      l0_w_.pop_front();
+    }
+    unsigned n = 0;
+    for (auto it = l0_q_.begin(); it != l0_q_.end() && it->at <= now_;) {
+      if (n == tlb_ports_) { pbin("l0_refill_wait"); ++it; continue; }
+      l0_w_.push_back({now_ + 3, it->slot, it->page});
+      ++n;
+      it = l0_q_.erase(it);
+    }
+  }
   std::vector<miu::Tlb> l0_ = [] {
     const char *v = std::getenv("CCV_MIU_L0");
     const unsigned n = v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
-    return n ? std::vector<miu::Tlb>(ccv::prov::kDcacheLookups, miu::Tlb(n)) : std::vector<miu::Tlb>();
+    return n ? std::vector<miu::Tlb>(ccv::prov::kDcacheLookups, miu::Tlb(n, true)) : std::vector<miu::Tlb>();
   }();
   void a1GateFlop() {
     ge1_b_ = ge1_a_;
