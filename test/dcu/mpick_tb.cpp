@@ -4,16 +4,15 @@
 // its oldest miss-wait waiter (a valid and a 10-bit stamp; a bank still
 // offers the cycle after its grant, as it learns of it a cycle late) and
 // holds its payload in flops; each bank's dcu_mshr offers its oldest unsent
-// entry (hv and the 10-bit stamp of its D2, up to 511 cycles old) or, with
-// none, a miss its D2 allocates now (sv), and a cycle on the payload of
-// what it offered; MLC returns credits for the sends, 3 to 10 cycles on.
+// entry (hv and the 10-bit stamp of its D2, up to 511 cycles old; no
+// straight offer, DI-66), and a cycle on the payload of what it offered; MLC returns credits for the sends, 3 to 10 cycles on.
 //
 // Checks, every cycle, against a value model of the DCU model's picks
 // (sim/dcu/dcu_core.cpp: retryWaits() and the MLC request in step()) with
 // the stamps unwrapped: the retry grant (the oldest offer, ties to the
 // lowest bank, last cycle's grant passed over) and its payload at D2; the
-// MLC send (the oldest head, ties to the lowest bank, else the lowest bank
-// sending straight, the bank sent from last cycle passed over, a credit
+// MLC send (the oldest head, ties to the lowest bank, the bank sent from
+// last cycle passed over, a credit
 // left counting last cycle's send), the bank told of its send, and the
 // payload a cycle on (req_id {bank, entry}).
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
@@ -104,7 +103,6 @@ struct Bench {
   void quiet() {
     dut->rov_cc02h = 0;
     dut->hv_cc05h = 0;
-    dut->sv_cc05h = 0;
     dut->mcr_cc04h = 0;
   }
   void reset() {
@@ -152,8 +150,8 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   int cr = kCr;
   bool sentLast = false, creditPrev = false;
   std::vector<uint64_t> credBack;
-  unsigned cov_rgrant = 0, cov_rpass = 0, cov_rtie = 0, cov_head = 0, cov_str = 0, cov_mpass = 0,
-           cov_crstall = 0, cov_htie = 0, cov_wrap = 0, cov_strlost = 0;
+  unsigned cov_rgrant = 0, cov_rpass = 0, cov_rtie = 0, cov_head = 0, cov_mpass = 0,
+           cov_crstall = 0, cov_htie = 0, cov_wrap = 0;
   uint64_t maxAge = 0;
 
   for (uint64_t c = 0; c < n; ++c) {
@@ -209,7 +207,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     }
 
     // ---- The MLC request: each bank's offer, then the pick.
-    std::array<bool, kBanks> hv{}, sv{};
+    std::array<bool, kBanks> hv{};
     for (unsigned bk = 0; bk < kBanks; ++bk) {
       if (on && below(3) == 0) {
         hv[bk] = true;
@@ -217,20 +215,15 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
         if (hstamp[bk] >= c || c - hstamp[bk] > 511) hstamp[bk] = c - 1;
         d.hv_cc05h |= 1u << bk;
         maxAge = std::max(maxAge, c - hstamp[bk]);
-      } else if (on && below(4) == 0) {
-        sv[bk] = true;
-        d.sv_cc05h |= 1u << bk;
       }
       setInt(d.hstp_cc05h, bk * kWts, kWts, hv[bk] || rnd ? hstamp[bk] & kStampMask : 0);
     }
-    std::optional<unsigned> hpick, spick;
-    bool anyHead = false;
+    std::optional<unsigned> hpick;
     for (unsigned bk = 0; bk < kBanks; ++bk) {
       const bool passed = sentPrev && *sentPrev == bk && ctl != "pass";
-      if (passed && (hv[bk] || sv[bk])) ++cov_mpass;
+      if (passed && hv[bk]) ++cov_mpass;
       if (passed) continue;
       if (hv[bk]) {
-        anyHead = true;
         if (!hpick) {
           hpick = bk;
         } else if (ctl != "age") {
@@ -238,15 +231,13 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
           else if (hstamp[bk] == hstamp[*hpick]) ++cov_htie;
         }
       }
-      if (sv[bk] && !spick) spick = bk;
     }
-    const std::optional<unsigned> mpick = anyHead ? hpick : spick;
-    if (anyHead && spick) ++cov_strlost;
+    const std::optional<unsigned> mpick = hpick;
     // A credit left: last cycle's send counted (--control credit: not).
     const int crg = cr + (ctl == "credit" && sentLast ? 1 : 0);
     const bool send = mpick && crg > 0;
     if (mpick && crg <= 0) ++cov_crstall;
-    if (send) (anyHead ? cov_head : cov_str)++;
+    if (send) ++cov_head;
     if (send && c - hstamp[*mpick] > 0 && (hstamp[*mpick] & kStampMask) > (c & kStampMask)) ++cov_wrap;
     // Each bank's payload of what it offered last cycle (the sent one's is
     // captured now).
@@ -303,13 +294,13 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     (void)rpayPrev;
     (void)mpayPrev;
   }
-  if (rnd && (!cov_rgrant || !cov_rpass || !cov_rtie || !cov_head || !cov_str || !cov_mpass ||
-              !cov_crstall || !cov_htie || !cov_wrap || !cov_strlost || maxAge < 500)) {
+  if (rnd && (!cov_rgrant || !cov_rpass || !cov_rtie || !cov_head || !cov_mpass ||
+              !cov_crstall || !cov_htie || !cov_wrap || maxAge < 500)) {
     std::fprintf(stderr,
-                 "mpick: coverage: retries %u passed %u ties %u; sends head %u straight %u passed %u "
-                 "credit stalls %u head ties %u wrapped %u straight lost %u oldest %llu\n",
-                 cov_rgrant, cov_rpass, cov_rtie, cov_head, cov_str, cov_mpass, cov_crstall, cov_htie,
-                 cov_wrap, cov_strlost, (unsigned long long)maxAge);
+                 "mpick: coverage: retries %u passed %u ties %u; sends %u passed %u "
+                 "credit stalls %u head ties %u wrapped %u oldest %llu\n",
+                 cov_rgrant, cov_rpass, cov_rtie, cov_head, cov_mpass, cov_crstall, cov_htie,
+                 cov_wrap, (unsigned long long)maxAge);
     if (ctl.empty()) ++b.fails;
   }
   (void)grant2;

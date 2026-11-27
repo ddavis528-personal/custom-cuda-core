@@ -17,14 +17,14 @@
 // Checks, every cycle, against a value model of the DCU model's miss
 // buffers (sim/dcu/dcu_core.cpp, startMiss() and the MLC request in step())
 // at the RTL's stages (rtl/dcu/dcu_mshr.sv's header): the outcome and wait
-// cause at D3, the MLC offers (head valid and stamp, straight), the offered
+// cause at D3, the MLC offer (head valid and stamp), the offered
 // payload a cycle on, the entry a fill reads at F+1 (zero for another
 // bank's) and its write request.
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py). --control nomerge models a second miss to a line
 // allocating its own entry (dcu-mshr-nomerge), --control order a new miss
-// passing a waiting one (dcu-miss-reorder), and --control straight a miss
-// offered straight while an older entry is unsent (DI-64); each must fail.
+// passing a waiting one (dcu-miss-reorder), and --control early a miss
+// offered at its own D2, not a cycle on (DI-66); each must fail.
 // --control twolook sends two live lookups to the bank in one cycle (MIU's
 // pass-wins-bank, DI-65): assertion mshr_one_lookup must fail.
 //===----------------------------------------------------------------------===//
@@ -107,7 +107,7 @@ struct Offer {
 struct Out {
   bool ov = false, ow = false;
   unsigned why = 0;
-  bool hv = false, sv = false;
+  bool hv = false;
   unsigned hstp = 0;
   std::optional<Offer> offer;   // what the bank offered (its payload a cycle on)
   std::optional<Entry> snap;    // the fill's read
@@ -119,14 +119,14 @@ unsigned cohOf(unsigned op) { return op == 0 ? 0 : 2; }   // the coh_op the bank
 struct Model {
   std::array<Entry, kNe> e{};
   std::deque<unsigned> unsent;   // allocation order (the age matrix)
-  std::optional<unsigned> head, offPrev;
+  std::optional<unsigned> head, offPrev, allocPrev;
   bool owPrev = false;
-  bool nomerge = false, noorder = false, straightCtl = false;
+  bool nomerge = false, noorder = false, earlyCtl = false;
   // The offered id and the pick a cycle ahead (rtl/dcu/dcu_mshr.sv: DI-34 (2)).
   std::optional<unsigned> nf = 0u, pk = 1u;
   std::array<bool, kNe> ua{};
   // Coverage.
-  unsigned merges = 0, allocs = 0, sends = 0, straight = 0, reads = 0, frees = 0, skipped = 0;
+  unsigned merges = 0, allocs = 0, sends = 0, early = 0, fresh = 0, reads = 0, frees = 0, skipped = 0;
   std::array<unsigned, 4> waits{};
 
   // pq: the request at D2 (a retry or the bank's new miss). pres: a lead
@@ -145,6 +145,7 @@ struct Model {
     }
     o.hv = head.has_value();
     o.hstp = head ? e[*head].stamp : 0;
+    fresh += head && allocPrev && *head == *allocPrev;   // offered a cycle after its D2
     bool mg = false, al = false;
     int mid = -1;
     unsigned aid = 0;
@@ -166,10 +167,15 @@ struct Model {
       o.why = ord ? 3 : filled ? 2 : full ? 1 : 0;
       if (o.ow) ++waits[o.why];
     }
-    // The offers: the head picked last cycle, else this D2's allocation.
-    o.sv = al && (!o.hv || straightCtl);
+    // The offer: the head picked last cycle, never this D2's allocation
+    // (DI-66: a miss is offered a cycle after its D2 at the earliest);
+    // --control early expects it offered at its D2 when no head is held.
     if (o.hv) o.offer = Offer{*head, e[*head].coh, e[*head].pa};
-    else if (al) o.offer = Offer{aid, cohOf(pq->op), pq->pa};
+    if (!o.hv && al && earlyCtl) {
+      o.hv = true;
+      o.hstp = now;
+      ++early;
+    }
     offPrev = o.offer ? std::optional<unsigned>(o.offer->id) : std::nullopt;
     // The fill's read, from the cycle's start.
     if (fill) {
@@ -188,8 +194,8 @@ struct Model {
       x.list[0] = pq->item();
       unsent.push_back(aid);
       ++allocs;
-      straight += o.sv;
     }
+    allocPrev = al ? std::optional<unsigned>(aid) : std::nullopt;
     if (mg) {
       Entry &x = e[unsigned(mid)];
       x.list[x.cnt++] = pq->item();
@@ -331,7 +337,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   Model m;
   m.nomerge = ctl == "nomerge";
   m.noorder = ctl == "order";
-  m.straightCtl = ctl == "straight";
+  m.earlyCtl = ctl == "early";
   b.reset();
   const bool rnd = scenario.empty();
   const unsigned n = rnd ? 60000 : scenario == "idle" ? 3000 : 4000;
@@ -531,7 +537,6 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     b.eval();
     b.expect(bool(d.hv_cc05h) == o.hv, "head offer valid");
     if (o.hv) b.expect(d.hstp_cc05h == o.hstp, "head offer stamp");
-    b.expect(bool(d.sv_cc05h) == o.sv, o.sv ? "should offer straight" : "should not offer straight");
     if (offerPrev) {
       b.expect(d.pid_cc05h == offerPrev->id, "offered payload: entry");
       b.expect(uint64_t(d.ppa_cc05h) == offerPrev->pa, "offered payload: line");
@@ -539,7 +544,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     }
     // dcu_mpick: it sends from this bank's offer, at random, but never the
     // cycle after a send from it (passed over: the head may be stale).
-    const bool offered = o.hv || o.sv;
+    const bool offered = o.hv && o.offer.has_value();
     if (offered && sentPrev) ++cov_passed;
     const bool send = offered && !sentPrev && (rnd ? g.below(3) != 0 : true);
     cov_head_sent += send && o.hv;
@@ -600,14 +605,14 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     look2 = look1;
     look1 = look0;
   }
-  if (rnd && (!m.merges || !m.allocs || !m.straight || !cov_head_sent || !m.reads || !m.frees ||
+  if (rnd && (!m.merges || !m.allocs || !m.fresh || !cov_head_sent || !m.reads || !m.frees ||
               !m.waits[0] || !m.waits[1] || !m.waits[2] || !m.waits[3] || !cov_retry_placed ||
               !cov_passed || !cov_other_fill || !cov_drop || !m.skipped)) {
     std::fprintf(stderr,
-                 "mshr bank %u: coverage: merges %u allocs %u straight %u head sends %u reads %u "
+                 "mshr bank %u: coverage: merges %u allocs %u fresh %u head sends %u reads %u "
                  "frees %u waits %u/%u/%u/%u retries placed %u passed over %u other fills %u "
                  "drops %u ids skipped %u\n",
-                 kBk, m.merges, m.allocs, m.straight, cov_head_sent, m.reads, m.frees, m.waits[0],
+                 kBk, m.merges, m.allocs, m.fresh, cov_head_sent, m.reads, m.frees, m.waits[0],
                  m.waits[1], m.waits[2], m.waits[3], cov_retry_placed, cov_passed, cov_other_fill,
                  cov_drop, m.skipped);
     if (ctl.empty()) ++b.fails;
@@ -631,7 +636,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i) {
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "nomerge" && ctl != "order" && ctl != "straight" && ctl != "twolook") {
+      if (ctl != "nomerge" && ctl != "order" && ctl != "early" && ctl != "twolook") {
         std::fprintf(stderr, "mshr: unknown control %s\n", ctl.c_str());
         return 2;
       }

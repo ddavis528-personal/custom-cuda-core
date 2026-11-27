@@ -16,16 +16,15 @@
 //   bank granted at R is passed over at R+1, since it learns of its grant
 //   only then. At R+1 the granted bank's payload, from its flops, is
 //   captured here; at R+2, the retry's D2, it goes to the bank's dcu_mshr
-//   (rv, one-hot, and the payload, from flops).
+//   (the payload, from flops; the bank's own flop of rgv/rgb is its valid).
 //
 //   The MLC request (DI-64, DI-65). Each bank's dcu_mshr offers its oldest
 //   unsent entry from flops, picked a cycle ahead (hv, hstp: a 10-bit stamp
-//   taken at its D2), and, when it holds none, a miss its D2 allocates now
-//   (sv, sent straight). The pick at T: the oldest head by stamp modulo
-//   2^10, ties to the lowest bank; else the lowest bank sending straight
-//   (every head is older than any miss at its own D2). A bank sent from at
-//   T-1 is passed over at T: its head flops still name the entry sent. The
-//   valid launches at T+1 (H+5 for a straight send) if the channel holds a
+//   taken at its D2), a cycle after its D2 at the earliest (no straight
+//   offer: DI-66, MA rev 227). The pick at T: the oldest head by stamp
+//   modulo 2^10, ties to the lowest bank. A bank sent from at T-1 is passed
+//   over at T: its head flops still name the entry sent. The valid
+//   launches at T+1 (H+6 at the earliest for a lookup's miss) if the channel holds a
 //   credit, counting the send of T-1, which the count takes a cycle late
 //   (DI-34 update 2). At T+1 the sent bank's dcu_mshr learns of its send
 //   (snt, one-hot, from flops) and offers that entry's payload from its
@@ -86,7 +85,6 @@ module dcu_mpick #(
   // payload (T+1), the channel's credit, valid (T+1) and payload (T+2).
   input  logic [NBK-1:0]         hv_cc05h,
   input  logic [NBK*WTS-1:0]     hstp_cc05h,
-  input  logic [NBK-1:0]         sv_cc05h,
   output logic [WB-1:0]          sbk_cc05h,      // the bank sent from, under mv_cc05h
   input  logic [NBK*WEB-1:0]     pid_cc05h,
   input  logic [NBK*WL-1:0]      ppa_cc05h,
@@ -195,7 +193,7 @@ module dcu_mpick #(
   (* keep *) logic           mv_q_cc05h, mvi_q_cc05h;
   logic [WCR-1:0] cr_q_cc05h;                 // ccv_dcu_mlc_req's credits
   logic           crq_q_cc05h;                // a credit back, a cycle on
-  logic [NBK-1:0] hok_cc05h, sok_cc05h, hwin_cc05h, swin_cc05h, win_cc05h;
+  logic [NBK-1:0] hok_cc05h, hwin_cc05h, win_cc05h;
   logic           hold_cc05h [NBK][NBK];      // [i][j]: head i's stamp strictly older than j's
   logic           crok_cc05h, snd_cc05h;
   logic [NBK-1:0] smh_cc05h;                  // last cycle's send, one-hot
@@ -209,15 +207,13 @@ module dcu_mpick #(
         hold_cc05h[i][j] = |d && !d[WTS-1];
       end
     hok_cc05h = hv_cc05h & ~smh_cc05h;
-    sok_cc05h = sv_cc05h & ~smh_cc05h;
     for (int i = 0; i < NBK; i++) begin
       hwin_cc05h[i] = hok_cc05h[i];
       for (int j = 0; j < NBK; j++)
         if (j < i && hok_cc05h[j] && !hold_cc05h[i][j]) hwin_cc05h[i] = 1'b0;
         else if (j > i && hok_cc05h[j] && hold_cc05h[j][i]) hwin_cc05h[i] = 1'b0;
     end
-    swin_cc05h = sok_cc05h & ~(sok_cc05h - NBK'(1));   // the lowest bank
-    win_cc05h  = |hok_cc05h ? hwin_cc05h : swin_cc05h;
+    win_cc05h  = hwin_cc05h;
     // The count takes last cycle's send only now (mvi_q): a credit is left.
     crok_cc05h = cr_q_cc05h > WCR'(mvi_q_cc05h);
     snd_cc05h  = crok_cc05h && |win_cc05h;
@@ -258,7 +254,7 @@ module dcu_mpick #(
   end
 
   // T+2: the payload, from the sent bank's flops (its entry, or the record
-  // of its straight send), req_id {bank, entry}.
+  // of its allocation), req_id {bank, entry}.
   logic [WB-1:0]  pb_cc05h;
   logic [WEB-1:0] pidn_cc05h;
   logic [WL-1:0]  ppan_cc05h;
@@ -288,12 +284,11 @@ module dcu_mpick #(
 
   // ---- CHECKs -------------------------------------------------------------
   // One bank a send, never without a credit, never the bank of last cycle's
-  // send; a straight offer only from a bank with no head.
+  // send.
   `CCV_ASSERT(mpick_one_bank, !snd_cc05h || $onehot(win_cc05h))
   `CCV_ASSERT(mpick_credit, cr_q_cc05h <= WCR'(NCR))
   `CCV_ASSERT(mpick_credit_floor, cr_q_cc05h >= WCR'(mvi_q_cc05h))
   `CCV_ASSERT(mpick_pass_over, !(|(win_cc05h & smh_cc05h)))
-  `CCV_ASSERT(mpick_straight_no_head, !(|(sv_cc05h & hv_cc05h & ~smh_cc05h)))
 
 endmodule
 `undef CCV_CLK

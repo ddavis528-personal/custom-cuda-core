@@ -36,11 +36,12 @@
 //        dcu_bctl from flops.
 //   The MLC request (DI-64, DI-65). At T this bank offers dcu_mpick its
 //        oldest unsent entry (hv, and the stamp of its D2), from flops
-//        picked at T-1; with none, a miss its D2 allocates now (sv, sent
-//        straight). At T+1 dcu_mpick names the bank it sent from (snt, from
+//        picked at T-1, so a miss is offered a cycle after its D2 at the
+//        earliest (H+6 from its head; no straight offer: DI-66, MA rev 227).
+//        At T+1 dcu_mpick names the bank it sent from (snv and sbk, from
 //        flops): that entry turns sent, and its payload (entry, line,
-//        coh_op), captured at T from the entry, the record or the D2
-//        request, is offered from flops. The head picked at T for T+1 still
+//        coh_op), captured at T from the entry or the record, is offered
+//        from flops. The head picked at T for T+1 still
 //        names an entry sent at T (the bank learns of it at T+1); dcu_mpick
 //        passes over the bank at T+1.
 //   F    a fill's req_id, on ccv_mlc_dcu_rsp's wires (arrival 0) under its
@@ -125,7 +126,6 @@ module dcu_mshr #(
   // sent from (T+1) and the payload of what it offered at T (T+1).
   output logic                   hv_cc05h,
   output logic [WTS-1:0]         hstp_cc05h,
-  output logic                   sv_cc05h,
   input  logic                   snv_cc05h,     // dcu_mpick sent last cycle's offer of
   input  logic [WB-1:0]          sbk_cc05h,     // this bank (sbk == BK)
   output logic [WEB-1:0]         pid_cc05h,
@@ -298,7 +298,7 @@ module dcu_mshr #(
   // The MLC offer: the head picked last cycle (valid in two copies: the
   // output's and the rest's; its id one-hot; whether it is the record of
   // last cycle's D2, whose entry is written only now; its stamp), and the
-  // offer of last cycle (valid, the id, whether it went straight).
+  // offer of last cycle (valid and id).
   (* keep *) logic hv_q_cc05h;
   (* keep *) logic hvi_q_cc05h;
   logic [NE-1:0]  hoh_q_cc05h;
@@ -407,7 +407,7 @@ module dcu_mshr #(
 
   // ---- The MLC offer -----------------------------------------------------
   // Unsent: a written entry, less the one sent now (it turns sent only
-  // now), and last cycle's allocation unless it went straight and was sent.
+  // now), and the record (last cycle's allocation) unless sent now.
   // The head for next cycle: the oldest written one (the age matrix), else
   // the record, else this D2's allocation (each younger than the last).
   logic [NE-1:0]  un_cc05h, uo_cc05h, usv_cc05h;
@@ -459,12 +459,10 @@ module dcu_mshr #(
   end
   assign hv_cc05h   = hv_q_cc05h;
   assign hstp_cc05h = hstp_q_cc05h;
-  // Straight: this D2 allocates and nothing older is unsent.
-  assign sv_cc05h = al_cc05h && !hvi_q_cc05h;
 
-  // What this bank offered (the head, or this D2's allocation), for the
-  // cycle on: its id, and its payload from the entry (written by now), the
-  // record (the head was last cycle's allocation) or this D2's request.
+  // What this bank offered (the head), for the cycle on: its id, and its
+  // payload from the entry (written by now) or the record (the head is
+  // last cycle's allocation).
   logic            of_en_cc05h;
   logic [NE-1:0]   ofhn_cc05h;
   logic [WEB-1:0]  pidn_cc05h;
@@ -478,28 +476,26 @@ module dcu_mshr #(
         hpa_cc05h = hpa_cc05h | epa_q_cc05h[e];
         hco_cc05h = hco_cc05h | ecoh_q_cc05h[e];
       end
-    ofhn_cc05h = hvi_q_cc05h ? hoh_q_cc05h : nfoh_q_cc05h;
+    ofhn_cc05h = hoh_q_cc05h;
     pidn_cc05h = '0;
     for (int e = 0; e < NE; e++)
       if (ofhn_cc05h[e]) pidn_cc05h = pidn_cc05h | WEB'(e);
-    ppan_cc05h = !hvi_q_cc05h ? qpa_cc04h : hrc_q_cc05h ? rcpa_q_cc05h : hpa_cc05h;
-    pcon_cc05h = !hvi_q_cc05h ? coh_of(qop_cc04h)
-               : hrc_q_cc05h ? coh_of(rcop_q_cc05h) : hco_cc05h;
+    ppan_cc05h = hrc_q_cc05h ? rcpa_q_cc05h : hpa_cc05h;
+    pcon_cc05h = hrc_q_cc05h ? coh_of(rcop_q_cc05h) : hco_cc05h;
   end
   // The head changes only when it is sent or a head appears (an allocation
   // is younger than every unsent entry; a record turned entry keeps its id
   // and payload): the flops take a new head the cycle after either (hnw_q,
-  // from snt, a flop's enable never an input's, CG-5), and this D2's
-  // request while no head is held.
+  // from snt, a flop's enable never an input's, CG-5).
   logic hnw_q_cc05h;
   always_ff @(posedge dcu_core_clk) begin
     if (rst_r01h) hnw_q_cc05h <= 1'b0;
     else          hnw_q_cc05h <= hvn_cc05h && (!hvi_q_cc05h || snt_cc05h);
   end
-  assign of_en_cc05h = rst_r01h || (pres_cc04h && !hvi_q_cc05h) || hnw_q_cc05h;
+  assign of_en_cc05h = rst_r01h || hnw_q_cc05h;
   always_ff @(posedge dcu_core_clk) begin
     if (rst_r01h) ofv_q_cc05h <= 1'b0;
-    else          ofv_q_cc05h <= hvi_q_cc05h || al_cc05h;
+    else          ofv_q_cc05h <= hvi_q_cc05h;
   end
   always_ff @(posedge dcu_core_clk) begin
     if (of_en_cc05h) begin
@@ -515,8 +511,8 @@ module dcu_mshr #(
 
   // ---- The entries, written at D3 from the record (one clock gate) --------
   // Valid, state and count through masks (an AND-OR, not a per-field hold,
-  // which synthesis would split into gates of 1 to 3 flops). An entry sent
-  // straight is allocated and sent in one write. A send can come only when
+  // which synthesis would split into gates of 1 to 3 flops). A send can
+  // come only when
   // this bank offered last cycle (ofv_q: snt is an input, CG-5).
   logic ctl_en_cc05h;
   assign ctl_en_cc05h = rst_r01h || rcal_q_cc05h || rcmg_q_cc05h || ofv_q_cc05h ||

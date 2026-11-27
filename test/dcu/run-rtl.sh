@@ -16,8 +16,8 @@
 #            wait, bank order, the MLC offers and their payload, a fill's
 #            entry read, other banks' fills and frees), built at banks 0 and
 #            5 (MA-34), and its controls nomerge (dcu-mshr-nomerge), order
-#            (dcu-miss-reorder) and straight (a miss sent straight past an
-#            older one), which must fail, and twolook (two live lookups to
+#            (dcu-miss-reorder) and early (a miss offered at its own D2, not
+#            a cycle on: DI-66), which must fail, and twolook (two live lookups to
 #            the bank, MIU's pass-wins-bank), which must fail mshr_one_lookup
 #   dcu_mpick: test/dcu/mpick_tb.cpp, the cross-bank picks (the retry grant
 #            and its D2 port, the MLC send, its credits and payload), and its
@@ -100,7 +100,7 @@ for seed in 1 2; do
 done
 control dcu_mshr nomerge
 control dcu_mshr order
-control dcu_mshr straight
+control dcu_mshr early
 asserts twolook dcu_mshr mshr_one_lookup --control twolook
 for seed in 1 2 3; do
   bench "dcu_mpick seed $seed" test/dcu/cg-build.sh dcu_mpick "$B/dcu_mpick" -- "$B/dcu_mpick/tb" --seed $seed

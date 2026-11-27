@@ -1851,8 +1851,9 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       }
     }
   } else if (p.mlc_can) {
-    // The oldest unsent miss, its valid no earlier than D2 + 1 (H+5 for a
-    // lookup's own D2): straight from D2 when nothing older waits. A bank
+    // The oldest unsent miss, its valid no earlier than D2 + 2 (H+6 for a
+    // lookup's own D2): offered from its bank's head flops the cycle after
+    // its allocation, never straight from D2 (DI-66, MA rev 227). A bank
     // whose miss launched last cycle is passed over now (dcu_mpick: a bank
     // learns of its send a cycle on, its head picked a cycle ahead; DI-65),
     // as DI-35's retry grant passes over the bank it granted.
@@ -1860,7 +1861,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     auto pass = [&](const MlcReq &q) { return mlc_last_t_ + 1 == t && bankOf(q.pa) == mlc_last_bank_; };
     auto it = to_mlc_.end();
     for (auto j = to_mlc_.begin(); j != to_mlc_.end(); ++j) {
-      if (j->first >= t || pass(j->second)) continue;
+      if (j->first + 1 >= t || pass(j->second)) continue;
       if (it == to_mlc_.end() || j->first < it->first ||
           (j->first == it->first && bankOf(j->second.pa) < bankOf(it->second.pa)))
         it = j;
@@ -1869,7 +1870,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       if (std::any_of(to_mlc_.begin(), to_mlc_.end(), [&](const auto &q) {
             return q.first < it->first && pass(q.second); }))
         h_.hit("dcu_mpick_pass");
-      if (it->first + 1 == t) h_.hit("dcu_mlc_straight");
+      if (it->first + 2 == t) h_.hit("dcu_mlc_earliest");
       // dcu_mpick's stamp is 10 bits, taken at D2 and compared modulo
       // (DI-64, DCU tab rev 150): a miss picked past half the range would
       // order wrongly in the RTL, so the bin counts any (dcu_mpick_alias).
@@ -1878,7 +1879,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       mlc_last_t_ = t;
       mlc_last_bank_ = bankOf(it->second.pa);
       to_mlc_.erase(it);
-    } else if (!to_mlc_.empty() && to_mlc_.front().first < t) {
+    } else if (!to_mlc_.empty() && to_mlc_.front().first + 1 < t) {
       h_.hit("dcu_mpick_pass");
     }
   }
