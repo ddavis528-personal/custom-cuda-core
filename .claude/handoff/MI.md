@@ -30,6 +30,21 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
+- Daily sweep 2026-11-24 (Tue): AR 421, OA 502, IS 201, TI 582, OI 426, CP 160, RA 159, RI 92,
+  MA 211, MI 68, DI 93, DA 134, Conventions 20; specs MIU 226, Common 9, DCU 126. Next pings: Friday.
+  2f3c8db4 pushed (SCOPED PASS); TI and MA told. Sweep merge eba4a37a: ccr-183cc441 13 (carries TI's
+  infra and DI's ccr-5e4d6c70), ccr-9eb50716 33, MA's spec branch 20, ccr-80102643 4, ccr-57eff422 2;
+  full gate-push on it.
+  To close at MI's next write: MI-20 (DI rev 73: UE second answer works under both MIUs), MI-29
+  (DI-50: dcu-wb-refetch needs no kernel; unit control holds it). TI-571: orphan-declaration check
+  in TI's 55d089a6 (refuses a feedback.json with no module beside it, or a key naming an absent
+  instance): ccv_miu.feedback.json lands with the ccv_miu assembly. TI-580: MA may sign under rtl/miu.
+  AR 416: credit avail form per end in params/links.json (sender's architect); MIU NS multi-spend
+  reads registered thr_q (+1 depth); {K,2K} QDEPTH 16 waiver 8 flops, charged to MIU's 2%.
+  DA 134: non-OOE NGD caps stay 25.
+  MA-33 (2) answered in MI-45 (rev 69, MA rung): rope/ropediv's bank CHECK was the window-fill bank
+  bug fixed in 8c9a6cd5 (unpushed at MA's 922bcc25). Ring MA with the pushed tip. RTL: fill-vs-pass
+  same-bank case + control into lead_tb with the window fill.
 - Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
   MA 197, MI 54, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
@@ -106,7 +121,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    who signs miu_grp's inner decl. a2_tb now models it (leaders per F as miu_lead, lanes, lc; controls line,
    split, fone FAIL; PASS), cg-build a2 adds miu_grp + --trace-max-width 8192; re-measured at N0=6: a2 in-flop
    25.0, CG unchanged. budgets final (MA rev 211 accepted MI-42): a2 lc arrival 0, agu8 lc required 0, miu_grp inner decl by MA revs 209+211; third copy pre-approved if a2 grows. v5 READY to commit after the slice-1 commit (grp/v5 has all files). MA rev 210 (OA-486): with the MQ's A2 write, add an assertion (an outstanding MQ line completes or re-misses within pass + refill bound) and a control (mutation marks the lost line done). wt-tr holds v5
-   now; the slice-1 commit set is in grp/commit (restore before copying to mi-wt). Next row MI-44.
+   now; the slice-1 commit set is in grp/commit (restore before copying to mi-wt). Next row MI-45.
    Next MI row MI-42.
    PRICING DONE: MI-43 (rev 67) to MA, cm128 at 6 +0.471%. (old: price32f relaunched as price32g (bg-run, ~/ccv-logs/price32g.log; skips kept runs): reruns lost runs from scratchpad/orc on skel-lru, then cm128
    base/ruledp1/ruled6 one at a time. Table: cd scratchpad; python3 tab32.py price32 <cfgs>.
@@ -240,3 +255,9 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   (CCV-L11, L08); miu_tlb CCV-L23 (dup_cm07h read iv_q_cm06h; l0late_cm08h read age_q_cm09h). Fixed in
   scratchpad/lintfix (miu_grp ternary spl + Spec line; iv_cm06h/iv_q_cm07h; l0late_cm09h; tlb_tb iv_cm06h):
   lint clean, benches+controls pass, a2 25.0, tlb 17.7/14.8. That gate also failed check-ngd: miu_grp had no timing unit (added test/miu/ngd-units.json). All committed; GATE-PUSH IN FLIGHT (newest job-gate-push log).
+- TI-568 (77f7849e/e113961e: list form landed). MI-44 (rev 68, TI rung): ccv_miu.feedback.json drafted at
+  scratchpad/fb/ccv_miu.feedback.json, lint passes it UNREAD (no rtl/miu/ccv_miu wiring u_a2/u_tlb yet); held for
+  the assembly commit; asked TI about refusing orphan declarations. Next row MI-45. Scratch worktree
+  scratchpad/wt-fb = my 2f3c8db4 + TI tip merged (git worktree; remove when done).
+- TI-569 (rev 571): agreed; TI's next push refuses an orphan feedback.json. Keep holding ccv_miu.feedback.json
+  for the assembly commit. MI-44 closed by it.
