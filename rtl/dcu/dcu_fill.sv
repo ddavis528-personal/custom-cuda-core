@@ -62,10 +62,10 @@
 module dcu_fill #(
   parameter  int NFB   = ccv_params_pkg::CCV_CREDIT_DEPTH,           // fill buffers, 4
   parameter  int NBK   = ccv_params_pkg::CCV_DCU_BANKS,              // 8
-  parameter  int WE    = ccv_prov_pkg::CCV_P_W_REQ_DCU_MLC,          // entry id, 4
+  parameter  int WE    = ccv_prov_pkg::CCV_P_W_REQ_DCU_MLC,          // req_id {bank, entry}, 7
   parameter  int LB    = 8 * ccv_prov_pkg::CCV_P_LINE_BYTES,         // line bits, 1024
   parameter  int LD    = 4,                                          // merge list
-  parameter  int WLE   = 13,                                         // list item
+  parameter  int WLE   = ccv_prov_pkg::CCV_P_W_REQ_MIU_DCU + 7,      // list item, 15
   localparam int NW    = 8,                                          // code words
   localparam int KW    = LB / NW,                                    // 128
   localparam int R     = $clog2(KW + $clog2(KW) + 1) + 1,            // 9
@@ -81,9 +81,10 @@ module dcu_fill #(
   input  logic [LB-1:0]          fdata_cc04h,
   input  logic                   fown_cc04h,
   input  logic                   fmiss_cc04h,
-  // F+1: dcu_mshr's read of the fill's entry.
-  input  logic [WLC-1:0]         fcnt_cc05h,
-  input  logic [LD*WLE-1:0]      flist_cc05h,
+  // F+1: each bank's dcu_mshr's read of the fill's entry, zero but the
+  // fill's bank's (MA-34).
+  input  logic [NBK*WLC-1:0]     fcnt_cc05h,
+  input  logic [NBK*LD*WLE-1:0]  flist_cc05h,
   // F+1: the write request (DI-39), beside dcu_mshr's line and fold.
   output logic [WFB-1:0]         wb_cc06h,
   output logic                   wown_cc06h,
@@ -156,6 +157,18 @@ module dcu_fill #(
   end
 
   // ---- F+1: encode, the entry's list, the write request --------------------
+  // The fill's entry read: the banks' reads ORed (only its bank's is not
+  // zero).
+  logic [WLC-1:0]    frc_cc05h;
+  logic [LD*WLE-1:0] frl_cc05h;
+  always_comb begin
+    frc_cc05h = '0;
+    frl_cc05h = '0;
+    for (int k = 0; k < NBK; k++) begin
+      frc_cc05h = frc_cc05h | fcnt_cc05h[k*WLC +: WLC];
+      frl_cc05h = frl_cc05h | flist_cc05h[k*LD*WLE +: LD*WLE];
+    end
+  end
   logic [NFB-1:0] new_q_cc05h;          // the buffer captured last cycle, one hot
   always_ff @(posedge dcu_core_clk) begin
     new_q_cc05h  <= rst_r01h ? '0 : take_cc05h;
@@ -197,7 +210,7 @@ module dcu_fill #(
     always_ff @(posedge dcu_core_clk) begin
       if (enc_en_cc05h) begin
         bc_q_cc05h[b] <= nchk_cc05h;
-        bl_q_cc05h[b] <= flist_cc05h;
+        bl_q_cc05h[b] <= frl_cc05h;
       end
     end
   end
@@ -212,7 +225,7 @@ module dcu_fill #(
       wdone_cc05h[b] = 1'b0;
       for (int k = 0; k < NBK; k++)
         wdone_cc05h[b] = wdone_cc05h[b] || (wdv_cc05h[k] && wdb_cc05h[k*WFB +: WFB] == WFB'(b));
-      cntn_cc05h[b] = new_q_cc05h[b] ? fcnt_cc05h : cnt_q_cc05h[b] - atk_cc05h[b*WLC +: WLC];
+      cntn_cc05h[b] = new_q_cc05h[b] ? frc_cc05h : cnt_q_cc05h[b] - atk_cc05h[b*WLC +: WLC];
       // Written, listed and owing nothing (its own flops: a free is a cycle
       // after the last answer or the write).
       ready_cc05h[b] = busy_q_cc05h[b] && lst_q_cc05h[b] && wrt_q_cc05h[b] && cnt_q_cc05h[b] == '0;
