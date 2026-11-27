@@ -13,13 +13,20 @@
 //   - every held entry's two views (A1 and HI, miu_mq's) are its payload,
 //     from the cycle after it is written until it is freed;
 //   - cr: a credit on the entry's slot for each freed entry and each bulk
-//     discard, one a cycle a slot, the excess on the following cycles.
+//     discard, one a cycle a slot, the excess on the following cycles;
+//   - lm: A2's write of a held entry's lane map, from any address slot (av
+//     at 04, the entry at 05, the lanes' sums and forms at 06), is each
+//     lane's formed address [6:0]: S[6:0], {lane, S[1:0]} interleaved,
+//     C | lane << 2 local; held from the cycle after until the entry frees.
+//     An entry frees only after its write (as in MIU), and the wires carry
+//     noise in cycles with no write.
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py): idle is reset and no memop; medium memops on about a
 // third of the cycles; high nearly every cycle; the payload's wires change
 // only with a memop. --control slot models a freed entry's credit returned
-// on the next slot, and --control discard a bulk discard's credit kept as
-// if it took an entry; each must fail.
+// on the next slot, --control discard a bulk discard's credit kept as if
+// it took an entry, --control ilv an interleaved lane's word as its sum's,
+// and --control local a local lane's byte as its sum's; each must fail.
 //===----------------------------------------------------------------------===//
 #include "Vmiu_mq.h"
 #include "ccv_skel_wiring.h"
@@ -42,6 +49,7 @@ namespace {
 constexpr unsigned kNS = 4, kNC = 10, kNE = kNS * kNC, kNF = 4, kEW = 6;
 constexpr unsigned kAW = 63, kHW = 63, kPL = kAW + kHW;
 constexpr unsigned kMemOpLsb = 51;   // miu_mq's MOP
+constexpr unsigned kNL = 32, kNQ = 4, kLB = 7;   // the lane map
 
 /// miu_mq's views against the generated payload layout: HI is rob_tag down
 /// to issue_mask, A1 warp_id down to xfer_signed. A schema change that
@@ -85,6 +93,13 @@ struct Memop {
   Pay pay;
 };
 
+/// A2's write of one entry's lane map from address slot s.
+struct A2w {
+  unsigned slot = 0, entry = 0, form = 0;   // form 0 ordinary, 1 interleaved, 2 local
+  uint8_t c = 0;
+  std::array<uint8_t, kNL> sum{};
+};
+
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
   std::unique_ptr<Vmiu_mq> dut;
@@ -92,6 +107,12 @@ struct Bench {
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0;
   unsigned cov_full = 0, cov_owed = 0, cov_discard = 0, cov_noise = 0, cov_four_free = 0;
+  unsigned cov_ilv = 0, cov_loc = 0, cov_a2four = 0, cov_xslot = 0;
+  // A2's writes in flight (at 04, 05, 06), the entries scheduled, and the
+  // lane maps landed.
+  std::vector<A2w> a2_[3];
+  std::set<unsigned> a2_sched;
+  std::map<unsigned, std::array<uint8_t, kNL>> lmap;
   std::string control;
   // The model: each slot's free entries, held payloads, credits owed.
   std::set<unsigned> free_[kNS];
@@ -135,11 +156,26 @@ struct Bench {
     dut->rst_n = 0;
     dut->mv_cm00h = 0;
     dut->fv_cm00h = 0;
+    dut->av_cm04h = 0;
     for (unsigned i = 0; i < 4; ++i) edge();
     dut->rst_n = 1;
     edge();   // the flopped reset releases a cycle on (RST-1)
   }
   unsigned lowest(unsigned j) const { return free_[j].empty() ? j * kNC : *free_[j].begin(); }
+  /// The lane map the model wants (with its controls).
+  std::array<uint8_t, kNL> formed(const A2w &w) const {
+    std::array<uint8_t, kNL> m{};
+    for (unsigned l = 0; l != kNL; ++l) {
+      const uint8_t sv = w.sum[l];
+      if (w.form == 2)
+        m[l] = control == "local" ? uint8_t((w.c & 0x7C) | (l << 2) | (sv & 3)) : uint8_t(w.c | (l << 2));
+      else if (w.form == 1 && control != "ilv")
+        m[l] = uint8_t((l << 2) | (sv & 3));
+      else
+        m[l] = sv;
+    }
+    return m;
+  }
   void bad(const char *what, unsigned a, unsigned b) {
     if (++fails <= 20)
       std::fprintf(stderr, "mq: cycle %llu: %s %u, want %u\n", (unsigned long long)cyc, what, a, b);
@@ -148,8 +184,8 @@ struct Bench {
   /// One cycle: this cycle's memops (valid) and frees (valid and entry);
   /// the payload of last cycle's memops on the wires; then the edge and
   /// the checks of what the module holds.
-  void step(const std::vector<Memop> &now, const std::vector<unsigned> &frees, bool noise,
-            std::mt19937_64 &r) {
+  void step(const std::vector<Memop> &now, const std::vector<unsigned> &frees,
+            const std::vector<A2w> &a2now, bool noise, std::mt19937_64 &r) {
     // me now names the entry each of last cycle's memops takes.
     for (const Memop &m : prev_m) {
       if (m.pay.discard()) continue;
@@ -183,6 +219,35 @@ struct Bench {
       for (unsigned p = unsigned(frees.size()); p < kNF; ++p) fe |= unsigned(r() % 64) << (p * kEW);
     dut->fv_cm00h = fv;
     dut->fe_cm00h = fe;
+    // A2's write: av now for a2now, the entry for a2_[0], the lanes for a2_[1].
+    a2_[2] = a2_[1];
+    a2_[1] = a2_[0];
+    a2_[0] = a2now;
+    uint32_t av = 0;
+    for (const A2w &w : a2_[0]) av |= 1u << w.slot;
+    dut->av_cm04h = av;
+    uint32_t ae = noise ? uint32_t(r()) & 0xFFFFFF : dut->ae_cm05h;
+    for (const A2w &w : a2_[1]) ae = (ae & ~(0x3Fu << (w.slot * kEW))) | (w.entry << (w.slot * kEW));
+    dut->ae_cm05h = ae;
+    uint32_t ilv = noise ? uint32_t(r()) & 0xFFFF : dut->ilv_cm06h;
+    uint32_t loc = noise ? uint32_t(r()) & 0xFFFF : dut->loc_cm06h;
+    uint32_t cl = noise ? uint32_t(r()) & 0xFFFFFFF : dut->cl_cm06h;
+    if (noise)
+      for (unsigned i = 0; i != kNS * kNL; ++i) putBits(dut->lo_cm06h, i * kLB, kLB, r() & 0x7F);
+    if (a2_[2].size() == kNS) ++cov_a2four;
+    for (const A2w &w : a2_[2]) {
+      const uint32_t q = 0xFu << (w.slot * kNQ);
+      ilv = (ilv & ~q) | (w.form == 1 ? q : 0);
+      loc = (loc & ~q) | (w.form == 2 ? q : 0);
+      cl = (cl & ~(0x7Fu << (w.slot * kLB))) | (uint32_t(w.c) << (w.slot * kLB));
+      for (unsigned l = 0; l != kNL; ++l) putBits(dut->lo_cm06h, (w.slot * kNL + l) * kLB, kLB, w.sum[l]);
+      cov_ilv += w.form == 1;
+      cov_loc += w.form == 2;
+      cov_xslot += w.slot != w.entry / kNC;
+    }
+    dut->ilv_cm06h = ilv;
+    dut->loc_cm06h = loc;
+    dut->cl_cm06h = cl;
     // The model takes last cycle's memops and frees now.
     unsigned ret[kNS] = {};
     for (const Memop &m : prev_m) {
@@ -201,6 +266,8 @@ struct Bench {
       const unsigned j = e / kNC;
       free_[j].insert(e);
       held.erase(e);
+      lmap.erase(e);
+      a2_sched.erase(e);
       ++per_slot[j];
       ++ret[control == "slot" ? (j + 1) % kNS : j];
     }
@@ -215,6 +282,7 @@ struct Bench {
     edge();
     prev_m = now;
     prev_f = frees;
+    for (const A2w &w : a2_[2]) lmap[w.entry] = formed(w);
     // Visible now: the credits, and every held entry's views.
     for (unsigned j = 0; j < kNS; ++j) {
       ++checked;
@@ -226,6 +294,15 @@ struct Bench {
       const Pay got{getBits(dut->a1_cm02h, e * kAW, kAW), getBits(dut->hi_cm02h, e * kHW, kHW)};
       if (!(got == p)) bad("payload differs in entry", e, e);
     }
+    for (const auto &[e, m] : lmap)
+      for (unsigned l = 0; l != kNL; ++l) {
+        ++checked;
+        const unsigned got = unsigned(getBits(dut->lm_cm07h, (e * kNL + l) * kLB, kLB));
+        if (got != m[l]) {
+          if (fails < 20) std::fprintf(stderr, "mq: entry %u lane %u:\n", e, l);
+          bad("lane map", got, m[l]);
+        }
+      }
   }
 };
 
@@ -267,7 +344,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
     // Held, and not freed last cycle (the model takes that free now).
     const std::set<unsigned> pending(b.prev_f.begin(), b.prev_f.end());
     for (const auto &[e, p] : b.held)
-      if (!pending.count(e)) cand.push_back(e);
+      if (!pending.count(e) && b.lmap.count(e)) cand.push_back(e);
     const unsigned pf = scenario == "idle" ? 0 : scenario == "medium" ? 2 : rnd ? (fill ? 1 : 6) : 5;
     if (!rnd || !fill || below(4) == 0) {
       const unsigned hot = below(kNS);
@@ -275,13 +352,35 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
         if (frees.size() < kNF && below(10) < pf && (!rnd || fill || e / kNC == hot || below(3) == 0))
           frees.push_back(e);
     }
-    b.step(now, frees, rnd, r);
+    // A2's writes: held entries not yet written, at most one an address
+    // slot, any slot for any entry.
+    std::vector<A2w> a2;
+    const unsigned pa = scenario == "idle" ? 0 : scenario == "medium" ? 3 : 8;
+    unsigned used = 0;
+    for (const auto &[e, p] : b.held) {
+      if (b.a2_sched.count(e) || pending.count(e) || below(10) >= pa) continue;
+      const unsigned s = below(kNS);
+      if (used >> s & 1u) continue;
+      used |= 1u << s;
+      A2w w;
+      w.slot = s;
+      w.entry = e;
+      w.form = below(3);
+      w.c = uint8_t(r() & 0x7F);
+      for (auto &x : w.sum) x = uint8_t(r() & 0x7F);
+      b.a2_sched.insert(e);
+      a2.push_back(w);
+    }
+    b.step(now, frees, a2, rnd, r);
     for (unsigned j = 0; j < kNS; ++j)
       if ((b.dut->cr_cm02h >> j) & 1) ++cred[j];
   }
-  if (rnd && (!b.cov_full || !b.cov_owed || !b.cov_discard || !b.cov_noise || !b.cov_four_free)) {
-    std::fprintf(stderr, "mq: coverage: slot full %u, credits owed %u, discards %u, noise %u, 3+ frees a slot %u\n",
-                 b.cov_full, b.cov_owed, b.cov_discard, b.cov_noise, b.cov_four_free);
+  if (rnd && (!b.cov_full || !b.cov_owed || !b.cov_discard || !b.cov_noise || !b.cov_four_free ||
+              !b.cov_ilv || !b.cov_loc || !b.cov_a2four || !b.cov_xslot)) {
+    std::fprintf(stderr, "mq: coverage: slot full %u, credits owed %u, discards %u, noise %u, 3+ frees a slot %u, "
+                 "A2 interleaved %u, local %u, four slots %u, another slot's entry %u\n",
+                 b.cov_full, b.cov_owed, b.cov_discard, b.cov_noise, b.cov_four_free, b.cov_ilv, b.cov_loc,
+                 b.cov_a2four, b.cov_xslot);
     ++b.fails;
   }
   std::printf("mq%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
@@ -300,7 +399,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "slot" && ctl != "discard") {
+      if (ctl != "slot" && ctl != "discard" && ctl != "ilv" && ctl != "local") {
         std::fprintf(stderr, "mq: unknown control %s\n", ctl.c_str());
         return 2;
       }
