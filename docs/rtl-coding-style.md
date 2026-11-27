@@ -657,6 +657,17 @@ The writer may instead be the parent's own register, `"writer":
 port's stage, feeding the port directly as its only net, the other terms
 as above (`reference_otpp.sv` passes; `bad_tport3.sv`'s parent wire and
 unsigned declaration are refused).
+A register-free module (nothing beneath it holds a register or latch)
+has no clock to hold an assertion: its table's assertion is then looked
+up in every parent instantiating it, and must name the table, reading the
+net the parent connects to the port or the register that writes it,
+directly or through the parent's combinational nets (a check net, as
+`ooe_decrx`'s `chk_rdwr_cq02h`) (OI-230 (g), OA 514); a module with a register holds its own. A table so
+verified also excuses its port's back edge at the connection, within its
+`ahead`. Any `` `CCV_ASSERT* `` macro the assertion header defines carries
+the label, `_T` and `_AT` included, read at its NAME argument, here and
+in every declared form (OI-230 (f)). `reference_gtp.sv` passes;
+`bad_tport4.sv`'s three are refused.
 
 **Across a connection** (OA 481-483; TI-554..556; MI-35). A child's port
 tags are its own numbering, not its parent's: a parent may feed a child's

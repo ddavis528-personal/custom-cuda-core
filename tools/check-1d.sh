@@ -51,6 +51,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_conn8.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_tport3.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn9.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn10.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_tport4.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -176,7 +177,8 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_csh.sv rtl/lint/reference_otpp.sv rtl/lint/reference_otpr.sv \
          rtl/lint/reference_gp.sv rtl/lint/reference_gc.sv rtl/lint/reference_gg.sv \
          rtl/lint/reference_bkp.sv rtl/lint/reference_bkh.sv rtl/lint/reference_bkr.sv \
-         rtl/lint/reference_bnp.sv rtl/lint/reference_bnr.sv; do
+         rtl/lint/reference_bnp.sv rtl/lint/reference_bnr.sv \
+         rtl/lint/reference_gtp.sv rtl/lint/reference_gtr.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
@@ -190,7 +192,7 @@ for g in rtl/lint/reference_lkp.sv rtl/lint/reference_lh.sv; do
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (51 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (53 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -317,6 +319,11 @@ WANT
 # reference_tpp/tpr/tpw: a table read through an input port (OA-492 (3)),
 # rob_w and redir's shape, passes; bad_tport.sv's wrong ahead, port fed
 # through logic and missing assertion are refused.
+# reference_gtp/gtr: a register-free child's port table, its assertion a
+# `CCV_ASSERT_T in the parent naming the table, its connection's back edge
+# excused by the verified table (OI-230 (f) and (g), OA 514); bad_tport4.sv's
+# label in neither (a _T under another label), a registered reader's label
+# only in its parent, and a parent assertion naming no table net are refused.
 # reference_otpp/otpr: the port table's writer the parent's own register
 # (OI-226 (c)), passes; bad_tport3.sv's writer a parent wire, and its
 # declaration signed by OI, are refused.
@@ -382,6 +389,10 @@ a register a call's body reads left out|reference_fbnp.feedback.json: cross-modu
 a helper sum with a net past its output's stage|reference_lcsp's u_h (reference_csh): output y (its stage none, the parent's 03) depends on input a (its stage none, fed at 04) combinationally
 a reach through a grandchild with a register|reference_rgp.feedback.json: cross-module loop u_c.a_cy01h is refused: u_c's input a_cy01h does not reach its output y_cy02h
 a read-back with a closing path|reference_ckp.feedback.json: cross-module loop u_r.c_cy01h is refused: a closing path exists: u_r.c_cy01h reaches its output l
+a register-free reader's label in neither|table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_nqp, the parent of the register-free reference_nqr
+a registered reader's label only in its parent|reference_rqr.feedback.json: table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_rqr
+a parent assertion naming no table net|reference_xqr.feedback.json: table rd_cy04h (an input port) is refused: assertion 'hd_read_not_written' in reference_xqp does not name the table
+...and its connection's back edge kept|reference_xqp's u_r (reference_xqr): output o_cy03h (its stage none, the parent's 03) depends on input rd_cy04h (its stage none, fed at 04) combinationally
 WANT
 python3 tools/lint-rtl.py --conn-ratchet=rtl/lint/bad_conn_ratchet.json \
   --conn-baseline=rtl/lint/bad_conn_baseline.json rtl/lint/bad_conn.sv >"$TMP/cratchet.log" 2>&1

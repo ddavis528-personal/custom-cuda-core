@@ -413,7 +413,51 @@ def row_index(expr, ctx, loopv):
     return " ".join(sides) if sides else expr
 
 
-ASSERT_RE = re.compile(r"(?:`CCV_ASSERT(?:_AT)?|\bassert\s+property|\bassert)\s*\(")
+ASSERT_RE = re.compile(r"(?:`CCV_ASSERT\w*|\bassert\s+property|\bassert)\s*\(")
+_amacros = {}
+
+
+def assert_macros():
+    """{macro: index of its NAME argument}: every `CCV_ASSERT* macro the
+    repo's assertion header defines (CCV_ASSERT, _AT, _T, _KNOWN, ...;
+    OI-230 (f))."""
+    if not _amacros:
+        p = os.path.join(ROOT, "rtl", "include", "ccv_assert.svh")
+        txt = open(p).read() if os.path.exists(p) else ""
+        for m in re.finditer(r"`define\s+(CCV_ASSERT\w*)\s*\(([^)]*)\)", txt):
+            ps = [x.strip() for x in m.group(2).split(",")]
+            if "NAME" in ps:
+                _amacros.setdefault(m.group(1), ps.index("NAME"))
+        _amacros.setdefault("CCV_ASSERT", 0)
+        _amacros.setdefault("CCV_ASSERT_AT", 2)
+    return _amacros
+
+
+def assertion_args(label, text):
+    """The argument texts of every assertion labelled label in text, by
+    any `CCV_ASSERT* macro, the label read at its NAME position."""
+    out = []
+    mac = assert_macros()
+    for m in re.finditer(r"`(CCV_ASSERT\w*)\s*\(", text):
+        if m.group(1) not in mac:
+            continue
+        inner, _ = balanced(text, m.end() - 1)
+        args, depth, cur = [], 0, ""
+        for ch in inner:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+            if ch == "," and depth == 0:
+                args.append(cur)
+                cur = ""
+            else:
+                cur += ch
+        args.append(cur)
+        i = mac[m.group(1)]
+        if i < len(args) and args[i].strip() == str(label):
+            out.append(inner)
+    return out
 
 
 def array_decl(body, name):
@@ -2435,6 +2479,12 @@ def check_connections(src, rel, add, signers, fbdir):
                     # the output only through the table register.
                     if inst in table_regs and only_into(cbody, cports, i, table_regs[inst], read_outs):
                         continue
+                    # The child's own verified port table on this input (OA-492
+                    # (3)): the read of a later word is declared safe, within
+                    # its ahead (OI-230 (g): u_keep's rows in ooe_decrx).
+                    pta = port_table_ahead(child, crel, cbody, i)
+                    if pta is not None and deficit <= pta:
+                        continue
                     e = (parent, inst, i, None, pt[i][1], si[2], deficit,
                          "combinational" if comb else "register")
                     hit = [x for x in entries if x[:3] == e[:3] and x[3] is None]
@@ -2501,9 +2551,12 @@ def verify_port_table(n, port, d, body, graph, signers, path):
             parents.append((pn, pbody))
     if not parents:
         return "no module instantiates %s, so its writer cannot be traced" % n
+    pnets = []
     for pn, pbody in parents:
         insts = instances(pbody, {}, dict((k, (None,) + v) for k, v in cands.items()), fbdir)
         rd = [v for v in insts.values() if v[0] == n]
+        pnets.append((pn, pbody, set(x for _, _, _, cc in rd for x in conn_ids(cc.get(port, "")))
+                      | {wreg}))
         if own:
             # The parent's own register (OI-226 (c)): the port is its net
             # alone, the words arriving as the register holds them, at the
@@ -2545,10 +2598,35 @@ def verify_port_table(n, port, d, body, graph, signers, path):
                         % (pn, port, wi, wreg))
     labs = d.get("assert") or []
     labs = [labs] if isinstance(labs, str) else list(labs)
-    if not labs or any(not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(l)), body)
-                       for l in labs):
+    if not labs:
+        return "no assertion named in %s that the read never meets a write" % n
+    # A register-free module holds no assertion (no clock): its table's is
+    # its parent's, where the writer is, and must name that table, the nets
+    # the parent connects to the port or the register that writes it
+    # (OI-230 (g), OA 514). A module with a register holds its own.
+    mods = dict(cands)
+    if register_free(n, mods):
+        for pn, pbody, tnets in pnets:
+            for l in labs:
+                hits = assertion_args(l, pbody)
+                if not hits:
+                    return ("no assertion %r in %s, the parent of the register-free %s, that "
+                            "the read never meets a write" % (l, pn, n))
+                # Named directly, or through the parent's combinational nets
+                # its expression reads (a check net, as ooe_decrx's
+                # chk_rdwr_cq02h).
+                pdeps, pflops = dep_graph(pbody)
+                def names(h):
+                    ids = set(READ_RE.findall(h))
+                    nets, regs = cone(pdeps, pflops, ids)
+                    return (ids | nets | regs) & tnets
+                if not any(names(h) for h in hits):
+                    return ("assertion %r in %s does not name the table: it reads none of "
+                            "%s, directly or through its combinational nets"
+                            % (l, pn, ", ".join(sorted(tnets))))
+    elif any(not assertion_args(l, body) for l in labs):
         return ("no assertion %s in %s that the read never meets a write"
-                % (", ".join(map(repr, labs)) or "named", n))
+                % (", ".join(map(repr, labs)), n))
     ctls = d.get("control") or []
     ctls = [ctls] if isinstance(ctls, str) else list(ctls)
     blk = os.path.relpath(fbdir, ROOT).replace(os.sep, "/").split("/")
@@ -2558,6 +2636,25 @@ def verify_port_table(n, port, d, body, graph, signers, path):
         return "its control is missing or named nowhere in %s" % " or ".join(
             os.path.relpath(h, ROOT) for h in homes)
     return None
+
+
+_ptab = {}
+
+
+def port_table_ahead(child, crel, cbody, port):
+    """The ahead of child's declared table on input port, if it verifies in
+    this run, else None."""
+    cdir = os.path.join(ROOT, os.path.dirname(crel)) if crel else ROOT
+    key = (child, cdir, port)
+    if key not in _ptab:
+        _ptab[key] = None
+        _, _, _, tbl = feedback_decls(cdir, child)
+        d = tbl.get(port)
+        if isinstance(d, dict) and isinstance(d.get("ahead"), int):
+            if not verify_port_table(child, port, d, cbody, dep_graph(cbody),
+                                     feedback_signers(cdir), os.path.join(cdir, child + ".sv")):
+                _ptab[key] = d["ahead"]
+    return _ptab[key]
 
 
 def sibling_tables(pbody, local, idx, fbdir):
@@ -3200,7 +3297,7 @@ def verify_stale(d, pbody, insts, ri, fbdir):
     if not labs:
         return "it names no assertion: a declared loop proves its stale read safe (OA 481 (3))"
     for lab in labs:
-        if not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(lab)), pbody + rbody):
+        if not assertion_args(lab, pbody + rbody):
             return ("no assertion %r in the parent or %s: a declared loop proves its stale "
                     "read safe (OA 481 (3))" % (lab, insts[ri][0]))
     ctls = d.get("control") or []
