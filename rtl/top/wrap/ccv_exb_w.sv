@@ -90,7 +90,7 @@ module ccv_exb_w #(
 
   // ccv_mlc_exb_req, destination end, no-flop (params/links.json no_flop)
   if (RPT_MLC_EXB_REQ > 0) begin : g_rpt_mlc_exb_req
-    ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1090)) u_rpt_mlc_exb_req (
+    ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1092)) u_rpt_mlc_exb_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({mlc_exb_req_valid}), .src_payload({mlc_exb_req_payload}),
       .src_wake(mlc_exb_req_wake), .src_credit({mlc_exb_req_credit}), .src_stall({mlc_exb_req_stall}),
@@ -112,7 +112,7 @@ module ccv_exb_w #(
   end
   // ccv_exb_mlc_rsp, source end, no-flop (params/links.json no_flop)
   if (RPT_EXB_MLC_RSP > 0) begin : g_rpt_exb_mlc_rsp
-    ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_exb_mlc_rsp (
+    ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1084)) u_rpt_exb_mlc_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_exb_mlc_rsp_valid}), .src_payload({b_exb_mlc_rsp_payload}),
       .src_wake(b_exb_mlc_rsp_wake), .src_credit({b_exb_mlc_rsp_credit}), .src_stall({b_exb_mlc_rsp_stall}),
@@ -134,7 +134,7 @@ module ccv_exb_w #(
   end
   // ccv_exb_ext_out, source end, no-flop (params/links.json no_flop)
   if (RPT_EXB_EXT_OUT > 0) begin : g_rpt_exb_ext_out
-    ccv_common_rpt #(.STAGES(RPT_EXB_EXT_OUT), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1225)) u_rpt_exb_ext_out (
+    ccv_common_rpt #(.STAGES(RPT_EXB_EXT_OUT), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1229)) u_rpt_exb_ext_out (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_exb_ext_out_valid}), .src_payload({b_exb_ext_out_payload}),
       .src_wake(b_exb_ext_out_wake), .src_credit({b_exb_ext_out_credit}), .src_stall({b_exb_ext_out_stall}),
@@ -156,7 +156,7 @@ module ccv_exb_w #(
   end
   // ccv_ext_exb_in, destination end, no-flop (params/links.json no_flop)
   if (RPT_EXT_EXB_IN > 0) begin : g_rpt_ext_exb_in
-    ccv_common_rpt #(.STAGES(RPT_EXT_EXB_IN), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1176)) u_rpt_ext_exb_in (
+    ccv_common_rpt #(.STAGES(RPT_EXT_EXB_IN), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1180)) u_rpt_ext_exb_in (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ext_exb_in_valid}), .src_payload({ext_exb_in_payload}),
       .src_wake(ext_exb_in_wake), .src_credit({ext_exb_in_credit}), .src_stall({ext_exb_in_stall}),

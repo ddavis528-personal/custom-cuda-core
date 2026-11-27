@@ -756,6 +756,7 @@ private:
       put(m, dc, "resume_pc", x.resume_pc + (k_.brk == "resume-pc" ? 2u : 0u));
       put(m, dc, "arch_state_ready", x.refused ? 0 : 1);
       put(m, dc, "refused", x.refused);   // TI-25 (2)
+      put(m, dc, "pc_kept", x.pc_kept);   // AR 408
       held_.push_back({dc, m});
     }
     for (auto it = held_.begin(); it != held_.end();) {

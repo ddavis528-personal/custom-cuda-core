@@ -7,6 +7,32 @@
 #   miu_pair: test/miu/pair_tb.cpp, each address paired with its memop by
 #            arrival cycle and lead pipe, and its controls arrival (paired on
 #            the arrival slot) and lag (a cycle late), each of which must fail
+#   miu_mq: test/miu/mq_tb.cpp, the memop queue, controls slot and discard
+#   miu_agu8: test/miu/agu8_tb.cpp, one lane octet's A1 sums and F-ALIGN,
+#            O-83's decision (MI-25 (D)), controls xfer (O-80's size ignored),
+#            sext (disp unsigned), lane0 (lane d taken as 0) and noshift (b
+#            from the sum without rbase << 16); miu_agu8_lc the same at LC = 1,
+#            lane 0's line copied for miu_grp (MA rev 209), control lcl1 (lane
+#            1's line taken)
+#   miu_rcap: test/miu/rcap_tb.cpp, one ccv_dcu_miu_rsp slot's capture,
+#   miu_lead: test/miu/lead_tb.cpp, A1 leaders, set index and the every-bank
+#     gate (MI-27 (b)); controls used (a gate blind to last cycle's
+#     launches), scale (no index scale) and lowest (the lowest active lane,
+#     not the fixed leader),
+#   miu_tlb: test/miu/tlb_tb.cpp, each slot's L0 and the 32-entry TLB's
+#     refill (MA revs 199, 206-208), controls early (the L0 written a cycle
+#     early), norr (the grant to the lowest pending slot), tight (the
+#     refill bound one cycle short), l0dup (no second-miss filter), wvkeep
+#     (an invalidate leaves the last-write copy) and ivkeep (it leaves the
+#     refills in flight),
+#   miu_ids: test/miu/ids_tb.cpp, the DCU req_ids: quarter picks, releases
+#     and the id-to-entry table,
+#   miu_cred: test/miu/cred_tb.cpp, DCU bank credits and the A1 gate,
+#            controls early (a return counted as it lands) and norefund
+#   miu_form: test/miu/form_tb.cpp, the slot, local and private forms'
+#            state and H flops (MI-21, MI-23 (b)), controls lane0 (lane d
+#            taken as 0), nohi1 (R(ctx)'s hi + 1 not kept), noctx and cflat
+#            (O-69's C with b not rearranged)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/miu-rtl; mkdir -p "$B"
@@ -42,4 +68,43 @@ control miu_pair lag
 bench miu_mq test/miu/cg-build.sh miu_mq "$B/miu_mq" -- "$B/miu_mq/tb"
 control miu_mq slot
 control miu_mq discard
+bench miu_agu8 test/miu/cg-build.sh miu_agu8 "$B/miu_agu8" -- "$B/miu_agu8/tb"
+control miu_agu8 xfer
+control miu_agu8 sext
+control miu_agu8 lane0
+control miu_agu8 noshift
+bench miu_agu8_lc test/miu/cg-build.sh miu_agu8_lc "$B/miu_agu8_lc" -- "$B/miu_agu8_lc/tb"
+control miu_agu8_lc lcl1
+bench miu_cred test/miu/cg-build.sh miu_cred "$B/miu_cred" -- "$B/miu_cred/tb"
+control miu_cred early
+control miu_cred norefund
+bench miu_form test/miu/cg-build.sh miu_form "$B/miu_form" -- "$B/miu_form/tb"
+control miu_form lane0
+control miu_form nohi1
+control miu_form noctx
+control miu_form cflat
+bench miu_ids test/miu/cg-build.sh miu_ids "$B/miu_ids" -- "$B/miu_ids/tb"
+control miu_ids noskip
+control miu_ids relnow
+control miu_ids nodrop
+bench miu_rcap test/miu/cg-build.sh miu_rcap "$B/miu_rcap" -- "$B/miu_rcap/tb"
+control miu_rcap early
+bench miu_lead test/miu/cg-build.sh miu_lead "$B/miu_lead" -- "$B/miu_lead/tb"
+control miu_lead used
+control miu_lead scale
+control miu_lead lowest
+bench miu_tlb test/miu/cg-build.sh miu_tlb "$B/miu_tlb" -- "$B/miu_tlb/tb"
+control miu_tlb early
+control miu_tlb norr
+control miu_tlb tight
+control miu_tlb l0dup
+control miu_tlb wvkeep
+control miu_tlb ivkeep
+bench miu_a2 test/miu/cg-build.sh miu_a2 "$B/miu_a2" -- "$B/miu_a2/tb"
+control miu_a2 carry
+control miu_a2 bank
+control miu_a2 addr
+control miu_a2 line
+control miu_a2 split
+control miu_a2 fone
 exit $fail

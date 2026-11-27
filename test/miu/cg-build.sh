@@ -20,5 +20,23 @@ case "$unit" in
     vl miu_pair "" "" "$PWD/rtl/miu/miu_pair.sv" "$PWD/test/miu/pair_tb.cpp" ;;
   miu_mq)
     vl miu_mq "" "" "$PWD/rtl/miu/miu_mq.sv" "$PWD/test/miu/mq_tb.cpp" ;;
+  miu_agu8)
+    vl miu_agu8 "" "" "$PWD/rtl/miu/miu_agu8.sv" "$PWD/test/miu/agu8_tb.cpp" ;;
+  miu_agu8_lc)
+    vl miu_agu8 "-GLC=1" "-DCCV_AGU8_LC=1" "$PWD/rtl/miu/miu_agu8.sv" "$PWD/test/miu/agu8_tb.cpp" ;;
+  miu_cred)
+    vl miu_cred "" "" "$PWD/rtl/miu/miu_cred.sv" "$PWD/test/miu/cred_tb.cpp" ;;
+  miu_form)
+    vl miu_form "" "" "$PWD/rtl/miu/miu_form.sv" "$PWD/test/miu/form_tb.cpp" ;;
+  miu_ids)
+    vl miu_ids "" "" "$PWD/rtl/miu/miu_ids.sv" "$PWD/test/miu/ids_tb.cpp" ;;
+  miu_rcap)
+    vl miu_rcap "" "" "$PWD/rtl/miu/miu_rcap.sv" "$PWD/test/miu/rcap_tb.cpp" ;;
+  miu_lead)
+    vl miu_lead "" "" "$PWD/rtl/miu/miu_lead.sv" "$PWD/test/miu/lead_tb.cpp" ;;
+  miu_tlb)
+    vl miu_tlb "-DCCV_CHECK" "" "$PWD/rtl/miu/miu_tlb.sv" "$PWD/test/miu/tlb_tb.cpp" ;;
+  miu_a2)
+    vl miu_a2 "--trace-max-width 8192" "" "$PWD/rtl/miu/miu_grp.sv" "$PWD/rtl/miu/miu_a2.sv" "$PWD/test/miu/a2_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

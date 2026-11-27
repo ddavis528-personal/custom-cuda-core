@@ -772,6 +772,12 @@ struct Config {
   /// AR's rev 118's control: the fallback's report claims mlc_miss_seen for
   /// any outstanding head load, before the MLC trigger's threshold.
   bool inject_fallback_claims_mlc = false;
+  /// OA 475's control: the MLC trigger's split counts every completion as
+  /// a true miss, so a hit held past the threshold reads as one.
+  bool inject_mlc_split_all_miss = false;
+  /// OA 469's control pc-kept-lost: a retirement does not set rsa, so a
+  /// drained warp claims pc_kept with its PC moved on.
+  bool inject_pc_kept_lost = false;
   bool inject_park_layout_lost = false;
   /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
   bool inject_cta_slot_zero = false;
@@ -1072,6 +1078,7 @@ struct Drained {        ///< ccv_ooe_rau_drained
   unsigned warp = 0;
   uint64_t resume_pc = 0;
   bool refused = false;  ///< the warp's exit retired before the demote (TI-25)
+  bool pc_kept = false;  ///< nothing retired since the slot's allocation (AR 408)
 };
 struct RatMap {         ///< ccv_ooe_rcu_map
   unsigned warp = 0, direction = 0;
@@ -1555,6 +1562,7 @@ private:
     uint8_t owed_row[4] = {};
     unsigned stale_dones = 0;      ///< of those, issues a cancel voided
     bool rcu_done = false, miu_done = false, at_miu = false;
+    bool mlc_trig = false;         ///< OA 475: the MLC trigger fired on it at the head
     bool copy_pending = false;
     uint64_t copy_land = 0;        ///< the copy's scheduled landing
     uint64_t rcu_issue_at = 0;     ///< the latest issue to RCU
@@ -1688,6 +1696,11 @@ private:
     bool stalled_reported = false, miss_reported = false;
     uint32_t retired_since_restore = 0;
     uint64_t next_pc = 0;                     ///< after the last retirement
+    /// pc_kept (AR 406/408, OA 469/470): rsa is set by a retirement and
+    /// cleared at launch and restore-allocate; pc_kept = !rsa. first_pc is
+    /// the warp's first uop since its allocation, RAU's PC, for the check.
+    bool rsa = false, alloc_restore = false, first_pc_valid = false;
+    uint64_t first_pc = 0;
     bool map_sent = false;                    ///< demotion: map to RCU
     uint64_t notice_lands = 0;                ///< epoch notice in FET (A-74)
     bool notice_sent = false;
@@ -2445,13 +2458,14 @@ public:
   /// releases, the drained messages and the kill's ack. Then each slot as
   /// control left it (Core::slotState's codes) with its identity.
   struct SlotAlloc { unsigned slot, op, warp; uint32_t ctaid; unsigned wic, barc, cta; };
-  struct SlotDrained { unsigned warp; bool refused; };
+  struct SlotDrained { unsigned warp; bool refused; bool kept = false; };
   struct SlotLog {
     bool ran = false;
     std::vector<SlotAlloc> alloc;
     std::vector<unsigned> demote;          ///< new demotes, in order (held ones retry from the slot)
     bool kill = false; uint32_t kill_mask = 0; unsigned kill_epoch = 0;
     uint32_t held = 0, landed = 0, ath = 0, xr = 0;
+    uint32_t ret = 0;                      ///< slots that retired this cycle (after control: ooe_slot's ret)
     uint32_t ntc = 0, map = 0, release = 0;
     std::vector<SlotDrained> drained;
     int kill_ack = -1;

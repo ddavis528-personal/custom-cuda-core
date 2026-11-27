@@ -1,0 +1,95 @@
+{
+  "module": "miu_rcap",
+  "ports": {
+    "v_cm11h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_dcu_miu_rsp's the slot's valid on the abutted link: interface capture flops, MIU's ends stay at 0 NGD (A-61, RI-11; MIU tab rev 181, Port NGD budgets)"
+    },
+    "rid_cm12h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_dcu_miu_rsp's payload.req_id on the abutted link: interface capture flops, MIU's ends stay at 0 NGD (A-61, RI-11; MIU tab rev 181, Port NGD budgets)"
+    },
+    "rd_cm12h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_dcu_miu_rsp's payload.read_data on the abutted link: interface capture flops, MIU's ends stay at 0 NGD (A-61, RI-11; MIU tab rev 181, Port NGD budgets)"
+    },
+    "hit_cm12h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_dcu_miu_rsp's payload.hit on the abutted link: interface capture flops, MIU's ends stay at 0 NGD (A-61, RI-11; MIU tab rev 181, Port NGD budgets)"
+    },
+    "own_cm12h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_dcu_miu_rsp's payload.ownership_granted on the abutted link: interface capture flops, MIU's ends stay at 0 NGD (A-61, RI-11; MIU tab rev 181, Port NGD budgets)"
+    },
+    "mlc_cm12h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_dcu_miu_rsp's payload.mlc_miss on the abutted link: interface capture flops, MIU's ends stay at 0 NGD (A-61, RI-11; MIU tab rev 181, Port NGD budgets)"
+    },
+    "cb_cm12h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "ccv_dcu_miu_rsp's payload.check_bits on the abutted link: interface capture flops, MIU's ends stay at 0 NGD (A-61, RI-11; MIU tab rev 181, Port NGD budgets)"
+    },
+    "rv_cm12h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    },
+    "cv_cm13h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    },
+    "rid_cm13h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    },
+    "rd_cm13h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    },
+    "hit_cm13h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    },
+    "own_cm13h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    },
+    "mlc_cm13h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    },
+    "cb_cm13h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "straight from flops, rv from a (* keep *) copy of the valid flop (MIU tab rev 181, Port NGD budgets: miu_rcap outputs out 0); rid_cm13h is miu_ids's qid source (MI-28, MA rev 197)"
+    }
+  }
+}

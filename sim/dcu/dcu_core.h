@@ -138,7 +138,7 @@ struct Config {
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
-  unsigned ids = 1u << ccv::prov::kWReqDcuMlc;       ///< miss buffers: MLC req_ids
+  unsigned ids = ccv::kDcuMshrPerBank;   ///< miss buffers: MLC req_ids (one bank's 16 until MA-34's split)
   unsigned wb = 2;               ///< the writeback buffer's entries
   bool hash = false;             ///< CCV_DCU_BANK_HASH (MA-20), off
   bool no_cycle_conflict = false;///< refuse two lookups due in one bank in one cycle (MIU model: DI-25 (4))
@@ -362,6 +362,7 @@ private:
     std::vector<Req> relook; ///< merged requests that look up again after W
     unsigned kst = 0;        ///< stores merged into the fill buffer (part 3)
     bool pcancel = false;    ///< a probe took its unlaunched writeback (part 4, AR-409)
+    bool vnofree = false;    ///< its pick found no free way once (DI-43's bound then is not its)
   };
   static Miss newMiss(MK k, uint64_t line, std::vector<Req> reqs, const Line &wb) {
     Miss m;
@@ -395,6 +396,8 @@ private:
   unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
   std::deque<unsigned> wbsend_;        ///< writeback entries unsent, oldest first
   std::deque<unsigned> vpend_;         ///< fills whose victim is not chosen yet
+  std::vector<size_t> wnow_;           ///< ways a fill writes this cycle (W; DI-43's reservation)
+  void pickVictims();                  ///< the RTL's form: one snapshot a bank a cycle (DI-43)
   unsigned fill_release_ = 0;          ///< this cycle's freed fill buffers
   bool pickVictim(unsigned id);        ///< F+1: choose, reserve and touch; false if none
   void fillWrite(unsigned id);         ///< W
@@ -404,7 +407,7 @@ private:
   bool startMiss(const Req &r, uint64_t d2, unsigned port, const char **why = nullptr);
   /// A miss whose entry credit has gone home: merge or allocate now, or wait
   /// in its bank's queue (MissW), taking the credit back until it leaves.
-  void missOrWait(const Req &r, uint64_t d2);
+  void missOrWait(const Req &r, uint64_t d2, bool late = false);
   void retryWaits();                   ///< each bank's oldest waiting miss, one a cycle
   bool needsMlc(const Req &r) const;
   /// A dirty victim a fill has reserved (slice 2, part 2): its stores wait.
@@ -413,6 +416,17 @@ private:
   /// dcu-wb-refetch, the control, lets them miss and fetch it again.
   bool inWb(uint64_t line) const { return wb_lines_.count(line) && c_.brk != "dcu-wb-refetch"; }
   Way *stale_way_ = nullptr;   ///< dcu-fill-nostale: the way a stale lookup reads
+  /// DI-42: each set's last two cycles a fill's write changed its fold-table
+  /// entry (dcu_bctl's second writer); a lookup whose D0 read the row in one
+  /// of them, or a cycle after, takes the mispredict's re-read.
+  std::map<size_t, std::pair<uint64_t, uint64_t>> ftw_;
+  bool inMargin(uint64_t pa, uint64_t d0) const {
+    const auto it = ftw_.find(size_t((pa / kLineBytes) % c_.sets));
+    if (it == ftw_.end()) return false;
+    for (uint64_t e : {it->second.first, it->second.second})
+      if (e != ~0ull && (e == d0 || e + 1 == d0)) return true;
+    return false;
+  }
   void mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid, uint64_t d2);
   void onFill(const Fill &f);
   Way *install(uint64_t pa, const Line &l, bool owned, bool dirty);

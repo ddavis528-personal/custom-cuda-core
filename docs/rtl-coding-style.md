@@ -486,9 +486,12 @@ A declaration lives beside the module's RTL, in `<module>.feedback.json`:
 per reading net. The lint refuses it, and the stage skip stays reported,
 unless:
 
-- `by` is an architect (OA, AR or DA; MA for a module under `rtl/miu/` or
-  `rtl/dcu/` only, MA-32): a declaration is reviewed before it
-  is listed, and the list shrinks only by review;
+- `by` is the architect who owns the module's block, and no one else
+  (DA-135): MA for `rtl/miu/` and `rtl/dcu/`, OA for `rtl/ooe/`, RA for
+  `rtl/rcu/`, AR for every other directory. A cross-module loop whose
+  named instances lie in more than one block is signed by each of their
+  architects, `"by": ["OA", "MA"]`, exactly those. A declaration is
+  reviewed before it is listed, and the list shrinks only by review;
 - the reader reads it: a stale declaration is refused;
 - the reader and the read both carry stage tags, and the read's tag lies
   exactly `<stages ahead>` stages past the reader's, one or more (a read
@@ -696,7 +699,14 @@ every sibling output the cone reads must be so named (OA-498;
 `reference_kp.sv`, `bad_conn6.sv`). Or the cone may name the sibling's
 output directly, `"<inst>.<output>"`, its `ahead` from its net's tag, only
 where that sibling's tags are verified in the same run: it has a timing
-unit and is not on `rtl/stage-ratchet.json` (OA-499). And a hop may cross a child through one of
+unit and is not on `rtl/stage-ratchet.json` (OA-499). The two compose: a
+crossing of a register-free helper may read such a listed sibling output,
+its input tracing to listed registers and listed sibling outputs only (the
+leads' `u_go.lane_v_cq02h` through `u_ren1.lane_v_cq02h>l_v`, OA-501;
+`reference_lkp.sv` passes, `bad_conn7.sv`'s cone omitting the sibling
+output is refused). check-1d names a fixture's sibling a verified unit
+through `CCV_LINT_FIXTURE_UNITS`, which lint honours for `reference_*`
+modules only. And a hop may cross a child through one of
 its registers, `"<inst>.<input>><register>><output>"`, where the input
 reaches that register's next value or enable and the register reaches the
 output, each combinationally (`reference_rhp.sv`); `bad_conn4.sv` holds

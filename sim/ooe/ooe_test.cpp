@@ -2461,6 +2461,92 @@ bool mlcTrigger(bool control) {
   return ok;
 }
 
+/// OA 475: the MLC trigger's split. A head load out past the threshold
+/// fires the trigger; its completion's mlc_miss sorts it into a true miss or
+/// a false demotion (a hit held past the threshold). With l1_spec, the
+/// harness's L1 miss completes as an MLC hit; without, as an MLC miss. The
+/// control counts every completion a true miss.
+bool mlcSplit(bool mlc_hit, bool control) {
+  Config c = baseConfig();
+  c.l1_spec = mlc_hit;
+  c.demote_mlc_miss = 50;
+  c.inject_mlc_split_all_miss = control;
+  Env e(c);
+  e.miss_pct = 100;
+  e.miss_add = 80;               // every load out past the threshold
+  e.miss_extra = 20;
+  std::vector<Op> p;
+  Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
+  Op u; u.k = kLane; u.dst = 9; u.src[0] = 8; u.nsrc = 1; p.push_back(u);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 600; ++k) e.step();
+  auto &n = e.core.counters;
+  const uint64_t trig = n["demote_trigger.mlc_miss"], tm = n["demote_trigger.mlc_miss.true_miss"],
+                 fh = n["demote_trigger.mlc_miss.false_hit"];
+  const bool ok = trig == 1 && tm + fh == trig && (mlc_hit ? fh == 1 : tm == 1);
+  if (!control) {
+    g_test = mlc_hit ? "MLC trigger split: false demotion" : "MLC trigger split: true miss";
+    EXPECT(ok, "trigger %llu, true_miss %llu, false_hit %llu", (unsigned long long)trig,
+           (unsigned long long)tm, (unsigned long long)fh);
+  }
+  return ok;
+}
+
+void testMlcSplit() {
+  mlcSplit(false, false);
+  mlcSplit(true, false);
+  const bool held = mlcSplit(true, true);
+  std::printf("  %-24s %s\n", "control mlc-split-all-miss", held ? "MISSED" : "caught");
+  g_test = "MLC trigger split (control)";
+  EXPECT(!held, "a hit held past the threshold must count as a false demotion");
+}
+
+/// pc_kept (AR 408, OA 469/470): a warp demoted before anything of it
+/// retires drains with pc_kept, and the PC it would send is RAU's (its first
+/// uop's); one demoted after a retirement does not. The control
+/// (pc-kept-lost) loses the retirement's set of rsa, so the second drains
+/// with pc_kept and its PC moved on, which the drain's check catches.
+bool pcKept(bool retire_first, bool control) {
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.inject_pc_kept_lost = control;
+  Env e(c);
+  e.keep_log = true;
+  e.miss_add = 300;              // the load holds the head
+  std::vector<Op> p;
+  if (retire_first)
+    for (unsigned i = 0; i != 2; ++i) { Op a; a.k = kLane; a.dst = 4 + i; a.nsrc = 1; p.push_back(a); }
+  Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
+  Op u; u.k = kLane; u.dst = 9; u.src[0] = 8; u.nsrc = 1; p.push_back(u);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 60; ++k) e.step();
+  const size_t from = e.log.size();
+  e.core.demote(0);
+  for (unsigned k = 0; k != 60; ++k) e.step();
+  unsigned drained = 0, kept = 0;
+  for (size_t i = from; i != e.log.size(); ++i)
+    for (const Drained &d : e.log[i].drained) { ++drained; kept += d.pc_kept; }
+  const uint64_t bin = e.core.counters["drained.pc_kept_launch"];
+  const bool ok = drained == 1 && kept == (retire_first ? 0u : 1u) && bin == kept && e.errors.empty();
+  if (!control) {
+    g_test = retire_first ? "pc_kept: retired before the demote" : "pc_kept: nothing retired";
+    EXPECT(ok, "%u drained, %u with pc_kept, bin %llu, %zu errors%s%s", drained, kept, (unsigned long long)bin,
+           e.errors.size(), e.errors.empty() ? "" : ", first: ", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+  return ok;
+}
+
+void testPcKept() {
+  pcKept(false, false);
+  pcKept(true, false);
+  const bool held = pcKept(true, true);
+  std::printf("  %-24s %s\n", "control pc-kept-lost", held ? "MISSED" : "caught");
+  g_test = "pc_kept (control)";
+  EXPECT(!held, "a drain claiming pc_kept after a retirement should fail the PC check");
+}
+
 void testMlcTrigger() {
   mlcTrigger(false);
   const bool held = mlcTrigger(true);
@@ -6684,6 +6770,8 @@ int main(int argc, char **argv) {
   testCallLink();
   testWidthFromTable();
   testMlcTrigger();
+  testMlcSplit();
+  testPcKept();
   {
     // OI-90 (OA's rev 286): the hold, on the atom-early-wake storm.
     unsigned over[2];

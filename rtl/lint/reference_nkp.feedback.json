@@ -1,0 +1,30 @@
+{
+  "_comment": "bad_conn7.sv's reference_nkp: the cone omits the sibling output its helper crossing reads (OA-501).",
+  "reads": {
+    "u_c.v_cy01h": {
+      "from": {
+        "cone": [
+          "nm_cy04h",
+          "u_h.a>z"
+        ],
+        "ahead": {
+          "nm_cy04h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "nm_cy03h",
+        "nm_cy04h"
+      ],
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "the leads' shape: a sibling's verified output as the source, through a register-free helper's named crossing (OA-501)"
+    }
+  }
+}

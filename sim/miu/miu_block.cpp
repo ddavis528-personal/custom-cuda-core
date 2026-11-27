@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 #include "miu_res.h"
+#include "miu_ids.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -41,8 +42,20 @@ inline uint64_t indexLeadSet(uint64_t pa) {
 class MiuModel : public Stub {
 public:
   MiuModel(int inst, Kernel &k)
-      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {}
+      : Stub(inst, k), ids_(field(ch().miu_dcu, "req_id").width, kChans[ch().miu_dcu].rate, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {
+    ids_.borrow = envOn("CCV_MIU_IDS_BORROW");
+  }
   const char *kind() const override { return "miu"; }
+  ~MiuModel() override {
+    if (!pbins_) return;
+    std::fprintf(stderr, "MIUBINS");
+    for (const char *n : {"credit_hold_other_bank", "dcu_id_quarter_empty", "dcu_id_drop_held",
+                          "l0_lookup", "l0_miss", "l0_refill_wait"}) {
+      const auto it = pbin_.find(n);
+      std::fprintf(stderr, " %s=%llu", n, (unsigned long long)(it == pbin_.end() ? 0 : it->second));
+    }
+    std::fprintf(stderr, "\n");
+  }
 
 private:
   /// discarded: a bulk discard covered it before its address came, so the
@@ -299,7 +312,17 @@ private:
   std::list<Job> jobs_;
   uint64_t serial_ = 0;
   bool dropped_ = false;
-  IdPool ids_;
+  /// DCU's req_ids, as rtl/miu/miu_ids.sv: slot s takes from quarter s
+  /// (MI-28). Knobs for pricing: CCV_MIU_IDS_BORROW lets a slot borrow
+  /// another quarter's id; CCV_MIU_IDS_DROPFREE launches a drop with no id.
+  ccv_miu::MiuIds ids_;
+  const bool ids_dropfree_ = envOn("CCV_MIU_IDS_DROPFREE");
+  /// A take that slot s cannot make: MA's two bins (MI-28).
+  void idStall(unsigned s) {
+    if (!ids_.quarterEmpty(s)) return;
+    if (ids_.anyFree()) pbin("dcu_id_quarter_empty");
+    if (ids_.dropHeld(s)) pbin("dcu_id_drop_held");
+  }
   /// The job and line of each request to DCU, by req_id.
   std::map<unsigned, std::pair<uint64_t, uint64_t>> outstanding_;
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
@@ -380,13 +403,20 @@ private:
       at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
     }
-    // MA-25: DCU's per-bank credit returns, taken the cycle they land
-    // (ccv_dcu_miu_cred is fixed latency). Every set bit returns a credit
-    // MIU spent; one that would take a counter past its reset value is
-    // refused by name.
+    // MA-25: DCU's per-bank credit returns (ccv_dcu_miu_cred is fixed
+    // latency). MIU's end is no-flop: the payload is captured the cycle it
+    // lands and counted the cycle after, as miu_cred counts it (V+2), so a
+    // return taken now is counted next cycle (cred_pend_). Every set bit
+    // returns a credit MIU spent; one that would take a counter past its
+    // reset value is refused by name.
+    const uint64_t ent = cred_pend_ent_, std = cred_pend_std_;
+    cred_pend_ent_ = cred_pend_std_ = 0;
     while (has(c.dcu_cred, 0)) {
       const Bits m = take(c.dcu_cred, 0).payload;
-      const uint64_t ent = get(m, c.dcu_cred, "ent_ret"), std = get(m, c.dcu_cred, "std_ret");
+      cred_pend_ent_ |= get(m, c.dcu_cred, "ent_ret");
+      cred_pend_std_ |= get(m, c.dcu_cred, "std_ret");
+    }
+    {
       for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
         if (ent >> b & 1u) {
           if (bent_[b] >= int(bqdepth_))
@@ -756,7 +786,9 @@ private:
     drain(to_ooe_, c.miu_ooe);
     drain(to_dcu_, c.miu_dcu);
     drain(to_rau_, c.miu_ready);
+    if (!l0_.empty()) l0Refill();
     a1GateFlop();
+    ids_.tick();
   }
 
   /// Whether rob_tag lies in a bulk discard's circular range (branch, tail]
@@ -872,6 +904,9 @@ private:
   void sendCmpl(unsigned slot, const Bits &m, uint64_t tid) {
     const Ch &c = ch();
     send(c.miu_ooe, slot, withLead(m), tid);
+    if (ltrace_)
+      std::fprintf(stderr, "LTRACE %llu cmpl tag %u\n", (unsigned long long)now_,
+                   unsigned(get(m, c.miu_ooe, "rob_tag")));
     if (!entries_[slot]) {
       k_.fail("miu: a last completion on slot %u, which holds no memop entry", slot);
       return;
@@ -1154,13 +1189,22 @@ private:
         k_.hit("credit_hold");
         return false;
       }
+      // One lookup a bank a cycle (MA-27; DCU's CHECK): the fill yields to
+      // a bank this cycle's first passes or an earlier fill took, and
+      // advance() keeps later passes off the fill's (wf_banks_; TI-544).
+      if ((firstPassBanks() | wf_banks_) >> bankOf(line) & 1u) {
+        k_.hit("window_fill_bank_wait");
+        return false;
+      }
       const uint32_t owned = firstPassSlots();
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
-        if ((owned >> s & 1u) || !free(c.miu_dcu, s) || !ids_.any()) continue;
+        if ((owned >> s & 1u) || !free(c.miu_dcu, s)) continue;
+        if (!ids_.any(s)) { idStall(s); continue; }
         bankTake(bankOf(line), false);
+        wf_banks_ |= 1u << bankOf(line);
         if (fill_held_.erase(tag)) k_.hit("credit_hold_then_sent");
         Bits r = msgOf(c.miu_dcu);
-        const unsigned id = ids_.take();
+        const unsigned id = ids_.take(s);
         put(r, c.miu_dcu, "req_id", id);
         put(r, c.miu_dcu, "phys_addr", line);
         putIndexLead(r, line);
@@ -1554,6 +1598,9 @@ private:
       j.inelig = true;
     } else if (j.global && j.active) {
       const char *why = eligibility(j, mo);
+      if (ltrace_)
+        std::fprintf(stderr, "LTRACE %llu a2 tag %u issue %llu %s\n", (unsigned long long)now_, tag,
+                     (unsigned long long)mo.at, why ? why : "elig");
       if (why) dropAll(why);
       // Lanes over two pages leave the hit path (MIU tab, translation).
       // two-page-hit: such a load keeps its contract.
@@ -1596,6 +1643,7 @@ private:
         if (!have) {
           have = true;
           lead = line;
+          if (lead_pos_ && l != g * per && !why) why = "drop_lead_pos";
           if (std::find(leads.begin(), leads.end(), line) == leads.end()) leads.push_back(line);
         } else if (line != lead && !why) {
           why = "drop_line";
@@ -1606,6 +1654,30 @@ private:
       for (size_t b = a + 1; b != leads.size(); ++b)
         if ((leads[a] / kLine) % ccv::kDcuBanks == (leads[b] / kLine) % ccv::kDcuBanks && !why)
           why = "drop_bank";
+    // MI-30 pricing (MA rev 198): CCV_MIU_L0=n, an n-entry L0 TLB per lookup
+    // slot at A2, the 32-entry TLB behind it at A3. A leader's page missing
+    // from its slot's L0 drops the first pass (drop_l0); A3 fills the L0.
+    if (!l0_.empty() && !why) {
+      unsigned slot_bits = pipes ? pipes : 1u;
+      for (unsigned g = 0; g != f; ++g) {
+        const unsigned slot = unsigned(__builtin_ctz(slot_bits));
+        slot_bits &= slot_bits - 1;
+        const uint32_t grp = uint32_t((uint64_t(1) << per) - 1) << (g * per);
+        if (!(j.active & grp)) continue;
+        pbin("l0_lookup");
+        if (!l0_[slot].lookup(page)) {
+          pbin("l0_miss");
+          // The refill, as rtl/miu/miu_tlb.sv: pending from A2's flop, granted
+          // two cycles on through CCV_MIU_TLB_PORTS read ports (default 4)
+          // shared by the slots, the L0 entry readable three cycles after.
+          bool queued = false;
+          for (const L0Fill &q : l0_q_) queued = queued || (q.slot == slot && q.page == page);
+          for (const L0Fill &q : l0_w_) queued = queued || (q.slot == slot && q.page == page);
+          if (!queued) l0_q_.push_back({now_ + 2, slot, page});
+          if (!why) why = "drop_l0";
+        }
+      }
+    }
     if (!why) return nullptr;
     j.inelig = true;
     j.hit = false;
@@ -1856,6 +1928,15 @@ private:
     noHit(j.issue_at, j.memop_slot, j.tag, j.rs_idx, j.tid);
   }
 
+  /// The banks this cycle's first passes look up (drops look up none).
+  uint32_t firstPassBanks() const {
+    uint32_t m = 0;
+    for (const Job &j : jobs_)
+      if (j.first && j.h + 1 == now_)
+        for (const auto &e : j.fp) m |= 1u << bankOf(j.lines[e.second].line);
+    return m;
+  }
+  uint32_t wf_banks_ = 0;   ///< banks this cycle's window fills took, cleared in advance()
   /// The slots this cycle's first passes own: none of them is idle.
   uint32_t firstPassSlots() const {
     uint32_t m = 0;
@@ -2010,9 +2091,12 @@ private:
     // atomics' passes, the oldest job's first, one lookup a bank a cycle.
     bool want = false;
     for (const Job &j : jobs_) want = want || j.next != j.lines.size();
-    if (want && !ids_.any()) k_.hit("dcu_id_wait");
+    if (want && !ids_.anyFree()) k_.hit("dcu_id_wait");
     uint32_t used = 0;
     std::set<unsigned> banks;
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
+      if (wf_banks_ >> b & 1u) banks.insert(b);
+    wf_banks_ = 0;
     auto request = [&](Job &job_, unsigned idx, unsigned s) {
       LineReq &lr = job_.lines[idx];
       lr.sent = true;
@@ -2020,7 +2104,7 @@ private:
       used |= 1u << s;
       banks.insert(bankOf(lr.line));
       Bits r = msgOf(c.miu_dcu);
-      const unsigned id = ids_.take();
+      const unsigned id = ids_.take(s);
       put(r, c.miu_dcu, "req_id", id);
       put(r, c.miu_dcu, "phys_addr", lr.line);
       putIndexLead(r, lr.line);
@@ -2037,6 +2121,9 @@ private:
       const uint64_t tid =
           makeUid(IdClass::kTxn, uidSeq(job_.tid), lr.sub, /*owned=*/true);
       send(c.miu_dcu, s, r, tid);
+      if (ltrace_)
+        std::fprintf(stderr, "LTRACE %llu req tag %u slot %u line %llx\n", (unsigned long long)now_,
+                     job_.tag, s, (unsigned long long)lr.line);
       outstanding_[id] = {job_.serial, lr.line};
       k_.hit("dcu_lookups");
       if (job_.frame) k_.hit("frame_lookups");
@@ -2077,12 +2164,23 @@ private:
           !bankCan(fb, false) || !can(c.miu_dcu, s) || (used >> s & 1u)) {
         return;   // held at A1: nothing launches
       }
+      // The launch takes slot s's id (miu_lead's launch flop, the take) and
+      // the drop gives it back three cycles on (MI-28); held at A1 if the
+      // quarter holds none.
+      unsigned rid = 0;
+      if (!ids_dropfree_) {
+        if (!ids_.any(s)) {
+          idStall(s);
+          return;
+        }
+        rid = ids_.take(s, /*drop=*/true);
+      }
       a1_used_now_ |= 1u << fb;
       bankTake(fb, false);
       a1_refund_.push_back(fb);
       used |= 1u << s;
       Bits r = msgOf(c.miu_dcu);
-      put(r, c.miu_dcu, "req_id", 0);
+      put(r, c.miu_dcu, "req_id", rid);
       put(r, c.miu_dcu, "phys_addr", d.line);
       putIndexLead(r, d.line);
       put(r, c.miu_dcu, "size", kSizeLine);
@@ -2107,10 +2205,20 @@ private:
       if (older_held_lines.count(fl) || older_held_banks.count(fb) || !a1Gate(fb) || !bankCan(fb, false)) {
         bank_held_.insert({j.serial, idx});
         k_.hit("credit_hold");
+        // MI-27 (1)'s price: held only because another bank is short, the
+        // leader's own gate (and everything else) sufficient.
+        if (gate_all_ && !older_held_lines.count(fl) && !older_held_banks.count(fb) &&
+            leaderGate(fb) && bankCan(fb, false))
+          pbin("credit_hold_other_bank");
         loseFirstPass(j, "l1_first_held");
         continue;
       }
-      if (!can(c.miu_dcu, s) || !ids_.any()) { loseFirstPass(j, "l1_first_held"); continue; }
+      if (!can(c.miu_dcu, s)) { loseFirstPass(j, "l1_first_held"); continue; }
+      if (!ids_.any(s)) {
+        idStall(s);
+        loseFirstPass(j, "l1_first_held");
+        continue;
+      }
       // A2 (H+1): the valid launched from A1 and spent its bank's credit;
       // a bank-conflict loser is dropped (MA-27, AR 400) and miu_cred
       // refunds the credit from A2's flopped drop a cycle on (a1_refund_).
@@ -2131,7 +2239,11 @@ private:
     std::set<uint64_t> held_lines;
     std::set<unsigned> held_store_banks;
     for (Job &j : jobs_) {
-      if (j.first || j.next == j.lines.size()) continue;
+      // No pass leaves before A2's flops (h + 1), where a first pass leaves:
+      // a load that lost its contract at A2 (drop_l0, drop_split, ...)
+      // sends its lines from the same flops, never a cycle ahead of the
+      // first pass it lost (MI-31 trace; MA rev 199 (3)).
+      if (j.first || j.next == j.lines.size() || now_ < j.h + 1) continue;
       for (unsigned idx = 0; idx != j.lines.size(); ++idx) {
         if (j.lines[idx].sent || banks.count(bankOf(j.lines[idx].line))) continue;
         const uint64_t ln = j.lines[idx].line;
@@ -2143,9 +2255,15 @@ private:
           k_.hit("credit_hold");
           continue;   // its other lines, to other lines and banks, may go
         }
-        unsigned s = 0;
-        while (s != rate && ((used >> s & 1u) || !can(c.miu_dcu, s))) ++s;
-        if (s == rate || !ids_.any()) break;
+        unsigned s = 0, open = rate;
+        while (s != rate && ((used >> s & 1u) || !can(c.miu_dcu, s) || !ids_.any(s))) {
+          if (open == rate && !(used >> s & 1u) && can(c.miu_dcu, s)) open = s;
+          ++s;
+        }
+        if (s == rate) {
+          if (open != rate) idStall(open);
+          break;
+        }
         request(j, idx, s);
       }
     }
@@ -2343,6 +2461,7 @@ private:
   static unsigned bankOf(uint64_t line) { return unsigned((line / kLine) % ccv::kDcuBanks); }
   const unsigned bqdepth_ = bankEnv("CCV_DCU_BANK_QDEPTH", ccv::prov::kDcuBankQdepth),
                  bstdata_ = bankEnv("CCV_DCU_BANK_STDATA", ccv::prov::kDcuBankStdata);
+  uint64_t cred_pend_ent_ = 0, cred_pend_std_ = 0;   // returns captured, counted next cycle
   std::vector<int> bent_ = std::vector<int>(ccv::kDcuBanks, int(bqdepth_)),
                    bstd_ = std::vector<int>(ccv::kDcuBanks, int(bstdata_));
   /// Requests held for a credit, by (job serial, line index); a window fill
@@ -2391,9 +2510,73 @@ private:
   }();
   std::vector<unsigned> a1_refund_;                // dropped first passes' banks, refunded next cycle
   bool a1Gate(unsigned b) const {
+    if (gate_all_) {   // MI-27 (1): every bank's gate, whatever the leader's
+      for (unsigned x = 0; x != ccv::kDcuBanks; ++x)
+        if (!((a1_used_prev_ >> x & 1u) ? ge2_b_[x] : ge1_b_[x])) return false;
+      return true;
+    }
+    return leaderGate(b);
+  }
+  bool leaderGate(unsigned b) const {
     const bool used = a1_used_prev_ >> b & 1u;
     return used ? ge2_b_[b] : ge1_b_[b];
   }
+  /// MI-27 pricing aids (model-only knobs, default off). CCV_MIU_GATE_ALL=1:
+  /// A1's credit gate holds a first pass when any bank is short, not only
+  /// its leader's. CCV_MIU_LEAD_POS=1: a group's leader is its first lane by
+  /// position; a group with active lanes whose first lane is inactive loses
+  /// the contract at A2 (drop_lead_pos).
+  static bool envOn(const char *n) {
+    const char *v = std::getenv(n);
+    return v && std::strtoul(v, nullptr, 0) != 0;
+  }
+  const bool gate_all_ = envOn("CCV_MIU_GATE_ALL");
+  const bool lead_pos_ = envOn("CCV_MIU_LEAD_POS");
+  /// Pricing bins outside the kernel's COVER list (model-only): counted
+  /// here as well, and printed as one MIUBINS line at the end of the run
+  /// under CCV_MIU_PBINS=1.
+  std::map<std::string, uint64_t> pbin_;
+  void pbin(const char *n) {
+    k_.hit(n);
+    ++pbin_[n];
+  }
+  const bool pbins_ = envOn("CCV_MIU_PBINS");
+  /// CCV_MIU_LTRACE=1 (model-only): each load's A2 eligibility and each completion, to stderr.
+  const bool ltrace_ = envOn("CCV_MIU_LTRACE");
+  /// MI-30 pricing aid (model-only, default off): CCV_MIU_L0=n gives each
+  /// lookup slot an n-entry round-robin L0 TLB in front of the leaders (eligibility).
+  struct L0Fill { uint64_t at; unsigned slot; uint64_t page; };
+  std::deque<L0Fill> l0_q_, l0_w_;   // pending a grant; granted, awaiting the L0 write
+  const bool l0_bcast_ = envOn("CCV_MIU_L0_BCAST");
+  const unsigned tlb_ports_ = [] {
+    const char *v = std::getenv("CCV_MIU_TLB_PORTS");
+    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 4u;
+  }();
+  /// A3: up to tlb_ports_ refills a cycle, oldest first.
+  void l0Refill() {
+    while (!l0_w_.empty() && l0_w_.front().at <= now_) {
+      if (l0_bcast_)   // CCV_MIU_L0_BCAST=1: a refill writes every slot's L0
+        for (miu::Tlb &t : l0_) t.fill(l0_w_.front().page);
+      else
+        l0_[l0_w_.front().slot].fill(l0_w_.front().page);
+      l0_w_.pop_front();
+    }
+    unsigned n = 0;
+    for (auto it = l0_q_.begin(); it != l0_q_.end() && it->at <= now_;) {
+      if (n == tlb_ports_) { pbin("l0_refill_wait"); ++it; continue; }
+      l0_w_.push_back({now_ + 3, it->slot, it->page});
+      ++n;
+      it = l0_q_.erase(it);
+    }
+  }
+  /// CCV_MIU_L0_LRU=1 (pricing aid, MA rev 203 (3)): the L0 replaces its
+  /// least recently used entry, a hit refreshing it; else round robin.
+  std::vector<miu::Tlb> l0_ = [] {
+    const char *v = std::getenv("CCV_MIU_L0");
+    const unsigned n = v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
+    return n ? std::vector<miu::Tlb>(ccv::prov::kDcacheLookups, miu::Tlb(n, !envOn("CCV_MIU_L0_LRU")))
+             : std::vector<miu::Tlb>();
+  }();
   void a1GateFlop() {
     ge1_b_ = ge1_a_;
     ge2_b_ = ge2_a_;
@@ -2405,7 +2588,7 @@ private:
     a1_used_now_ = 0;
   }
   bool busy() const override {
-    return !jobs_.empty() || !drops_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return cred_pend_ent_ || cred_pend_std_ || !jobs_.empty() || !drops_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() || !ue_first_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||

@@ -1,0 +1,59 @@
+{
+  "module": "miu_cred",
+  "ports": {
+    "a1v_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "from miu_pair's, miu_lead's or miu_a2's output flops, each straight from a flop (out budget 0), so the counts and gate flops take the whole 25 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "sv_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "from miu_pair's, miu_lead's or miu_a2's output flops, each straight from a flop (out budget 0), so the counts and gate flops take the whole 25 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "sb_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "from miu_pair's, miu_lead's or miu_a2's output flops, each straight from a flop (out budget 0), so the counts and gate flops take the whole 25 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "ss_cm06h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "from miu_pair's, miu_lead's or miu_a2's output flops, each straight from a flop (out budget 0), so the counts and gate flops take the whole 25 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "rv_cm07h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "from miu_pair's, miu_lead's or miu_a2's output flops, each straight from a flop (out budget 0), so the counts and gate flops take the whole 25 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "rb_cm07h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "from miu_pair's, miu_lead's or miu_a2's output flops, each straight from a flop (out budget 0), so the counts and gate flops take the whole 25 (MIU tab rev 163, Port NGD budgets)"
+    },
+    "cv_cm04h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "ccv_dcu_miu_cred's capture: interface flops, MIU's end stays at 0 NGD (MIU tab rev 163, Port NGD budgets; A-61, RI-11)"
+    },
+    "er_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "ccv_dcu_miu_cred's capture: interface flops, MIU's end stays at 0 NGD (MIU tab rev 163, Port NGD budgets; A-61, RI-11)"
+    },
+    "dr_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-21",
+      "why": "ccv_dcu_miu_cred's capture: interface flops, MIU's end stays at 0 NGD (MIU tab rev 163, Port NGD budgets; A-61, RI-11)"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "_comment": "CCV-L23's two-writer declared table (OA-479 (b)) for dcu_bctl's fold table: the write port's read-modify-write of a row at cc02h and the fill's cc04h grant flops (DI-42, DI-46, DI-47).",
+  "table": {
+    "ft_q_cc03h": {
+      "readers": [
+        "ftn_cc02h"
+      ],
+      "writers": [
+        {
+          "name": "port",
+          "stage": 2,
+          "loop": true,
+          "enable": [
+            "pw_cc02h"
+          ]
+        },
+        {
+          "name": "fill",
+          "stage": 4,
+          "enable": [
+            "gfa_q_cc04h",
+            "wfc_q_cc04h"
+          ],
+          "from": [
+            "wfs_q_cc04h",
+            "wfw_q_cc04h",
+            "wff_q_cc04h"
+          ]
+        }
+      ],
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "the fold table's one port, shared by the write port's queue head (loop, cc02h) and a fill's granted write (cc04h); the fill yields once to the port, the port's head waits for the fill (DI-46, MA rev 193)"
+    }
+  }
+}

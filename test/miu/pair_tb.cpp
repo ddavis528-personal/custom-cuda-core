@@ -40,6 +40,16 @@ constexpr unsigned kNS = 4, kLAG = 3, kNE = 40, kEW = 6, kFW = 63;
 int g_argc;
 char **g_argv;
 
+// The transfer's decode of an A1 view (miu_pair's a1x): {b2, b4, sh2, sh1}.
+// Fields LSB first: xfer_signed 0, xfer_size 1-2, ..., scale_en 15, ...,
+// chwidth 49-50 (mq_tb's static_asserts hold the payload's layout).
+unsigned xferOf(uint64_t f) {
+  const unsigned xs = unsigned(f >> 1) & 3u, cw = unsigned(f >> 49) & 3u, se = unsigned(f >> 15) & 1u;
+  const unsigned nb = xs == 1 ? 1u : xs == 2 ? 2u : cw == 0 ? 4u : cw == 1 ? 2u : 1u;
+  const unsigned b4 = nb == 4, b2 = nb == 2;
+  return b2 << 3 | b4 << 2 | (se & b4) << 1 | (se & b2);
+}
+
 /// What miu_mq holds in entry e's A1 view: kFW bits, a hash of e.
 uint64_t fieldsOf(unsigned e) {
   uint64_t x = 0x9e3779b97f4a7c15ull * (e + 1);
@@ -73,6 +83,7 @@ struct Bench {
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0;
   unsigned cov_quad = 0, cov_off_lead = 0, cov_bulk = 0, cov_b2b = 0, cov_noise = 0;
+  unsigned cov_x = 0;   // the transfer decodes seen, a bit each (5 can occur)
   std::string control;
   // Memops by the cycle of their valid, the newest at the back.
   std::deque<std::vector<Memop>> hist;
@@ -159,7 +170,19 @@ struct Bench {
       cov_b2b += prev_a1[k];
       ++checked;
       const unsigned e = (dut->a1e_cm05h >> (k * kEW)) & ((1u << kEW) - 1);
-      const bool ok = e == m->entry && getBits(dut->a1f_cm05h, k * kFW) == fieldsOf(m->entry);
+      const uint64_t f = fieldsOf(m->entry);
+      const unsigned x = unsigned(dut->a1x_cm05h >> (k * 4)) & 0xfu;
+      // miu_lead's copies, one per lane quarter (MA rev 203): {sh2, sh1, disp[15:0]}, disp
+      // at bit 16 of the view.
+      bool qok = true;
+      for (unsigned q = 0; q < 4; ++q) {
+        const unsigned o = (k * 4 + q) * 18;
+        unsigned v = 0;
+        for (unsigned b = 0; b < 18; ++b) v |= ((dut->a1q_cm05h[(o + b) / 32] >> ((o + b) % 32)) & 1u) << b;
+        qok = qok && v == ((x & 3u) << 16 | unsigned(f >> 16) & 0xffffu);
+      }
+      const bool ok = e == m->entry && getBits(dut->a1f_cm05h, k * kFW) == f && x == xferOf(f) && qok;
+      cov_x |= 1u << x;
       if (!ok && ++fails <= 20)
         std::fprintf(stderr, "pair: cycle %llu: slot %u's A1 entry %u, want %u%s\n",
                      (unsigned long long)cyc, k, e, m->entry, e == m->entry ? " (fields differ)" : "");
@@ -239,6 +262,10 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
     b.cov_quad += leads == 4;
     b.step(now, mp, me);
     prev = now;
+  }
+  if (rnd && b.cov_x != 0x0351u) {
+    std::fprintf(stderr, "pair: coverage: transfer decodes %04x, want 0351\n", b.cov_x);
+    ++b.fails;
   }
   if (rnd && (!b.cov_quad || !b.cov_off_lead || !b.cov_bulk || !b.cov_b2b || !b.cov_noise)) {
     std::fprintf(stderr, "pair: coverage: four memops %u, off their lead %u, bulk %u, back to back %u, noise %u\n",

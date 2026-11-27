@@ -91,12 +91,6 @@
       "date": "2026-11-22",
       "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
     },
-    "pvs_cc04h": {
-      "arrival": 0.0,
-      "by": "MA (MA rev 157, DI-26)",
-      "date": "2026-11-22",
-      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
-    },
     "sa_cc04h": {
       "required": 9.0,
       "by": "MA (MA rev 157, DI-26)",
@@ -152,12 +146,6 @@
       "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
     },
     "ent_ret_cc04h": {
-      "required": 0.0,
-      "by": "MA (MA rev 157, DI-26)",
-      "date": "2026-11-22",
-      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
-    },
-    "pvw_cc05h": {
       "required": 0.0,
       "by": "MA (MA rev 157, DI-26)",
       "date": "2026-11-22",
@@ -270,6 +258,48 @@
       "by": "MA (DCU tab rev 104's rule; the ports of DI-36, tab rev 112)",
       "date": "2026-11-23",
       "why": "Required 0: straight from flops (the tab's rule; dcu_mshr reads them at arrival 0)."
+    },
+    "flv_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 180, DI-40; renamed DI-41)",
+      "date": "2026-11-23",
+      "why": "From a neighbour's flops (the DCU tab's rev 104 rule): the fill's lead and line from dcu_mshr's flops, the buffer index from dcu_fill's (DI-39); the senders' required-0 entries hold the other end."
+    },
+    "fbk_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 180, DI-40; renamed DI-41)",
+      "date": "2026-11-23",
+      "why": "From a neighbour's flops (the DCU tab's rev 104 rule): the fill's lead and line from dcu_mshr's flops, the buffer index from dcu_fill's (DI-39); the senders' required-0 entries hold the other end."
+    },
+    "fwset_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 180, DI-40; renamed DI-41)",
+      "date": "2026-11-23",
+      "why": "From a neighbour's flops (the DCU tab's rev 104 rule): the fill's lead and line from dcu_mshr's flops, the buffer index from dcu_fill's (DI-39); the senders' required-0 entries hold the other end."
+    },
+    "fwfold_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 180, DI-40; renamed DI-41)",
+      "date": "2026-11-23",
+      "why": "From a neighbour's flops (the DCU tab's rev 104 rule): the fill's lead and line from dcu_mshr's flops, the buffer index from dcu_fill's (DI-39); the senders' required-0 entries hold the other end."
+    },
+    "fwb_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 180, DI-40; renamed DI-41)",
+      "date": "2026-11-23",
+      "why": "From a neighbour's flops (the DCU tab's rev 104 rule): the fill's lead and line from dcu_mshr's flops, the buffer index from dcu_fill's (DI-39); the senders' required-0 entries hold the other end."
+    },
+    "wdv_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
+    },
+    "wdb_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
     }
   }
 }

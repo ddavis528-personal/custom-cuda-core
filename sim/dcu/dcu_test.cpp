@@ -359,6 +359,61 @@ int main(int argc, char **argv) {
     EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
   });
 
+  // DI-43 (the RTL's form, victim at F+2): fills to one set land a cycle
+  // apart, so each snapshot waits for the fold table's margin of the one
+  // before's write, oldest first, one a bank a cycle, within 3 * (NFW - 1)
+  // + 2. Then nine lines more of the set fill a full set: no pick takes a
+  // way written that cycle. dcu-fill-nomargin snapshots inside the margin
+  // (no lookup sees it; the wait bin stays 0), dcu-fill-rsv-grant releases
+  // the written way's reservation at its write, refused.
+  for (const char *ctl : {(const char *)nullptr, "dcu-fill-nomargin", "dcu-fill-rsv-grant"})
+    test(ctl ? (std::string(ctl) + "-control").c_str() : "fill-snap-margin", [&] {
+      bool caught = false;
+      uint64_t late = 0, wmax = 0;
+      for (unsigned wp : {5u, 0u})
+        for (unsigned gap = 1; gap != 4; ++gap) {
+          Config c = cfg(wp ? 8 : 9);
+          c.victim_at = 2;
+          if (ctl) c.brk = ctl;
+          Bench b(c);
+          b.fill_credits = true;
+          for (unsigned k = 0; k != 24; ++k)
+            b.reqs[uint64_t(k) * gap] = {rd(0, k, 0x10000 + uint64_t(k) * c.sets * kLineBytes)};
+          b.run(600);
+          late += b.h.bins["dcu_fill_snap_late"];
+          wmax = std::max(wmax, b.h.peaks["dcu_fill_snap_wait_max"]);
+          if (refused(b, "writes this cycle")) caught = true;
+          else if (!ctl || std::string(ctl) != "dcu-fill-rsv-grant")
+            EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+          if (!ctl || std::string(ctl) != "dcu-fill-rsv-grant")
+            EXPECT(b.rsp(23) != nullptr, "the last read answered (wp %u, gap %u)", wp, gap);
+        }
+      // One way a set, no fold table (so no margin): the second fill waits
+      // for a free way; the first's write frees it, but the second may take
+      // it only a cycle on, once the snapshot can see the write.
+      {
+        Config c = cfg(9);
+        c.victim_at = 2;
+        c.ways = 1;
+        if (ctl) c.brk = ctl;
+        Bench b(c);
+        b.fill_credits = true;
+        b.reqs[0] = {rd(0, 1, 0x10000)};
+        b.reqs[1] = {rd(0, 2, 0x10000 + uint64_t(c.sets) * kLineBytes)};
+        b.run(300);
+        if (refused(b, "writes this cycle")) caught = true;
+        else if (!ctl || std::string(ctl) != "dcu-fill-rsv-grant") {
+          EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+          EXPECT(b.rsp(2) != nullptr, "the second read answered");
+        }
+      }
+      if (g_verbose) std::fprintf(stderr, "  late %llu, wait max %llu\n", (unsigned long long)late, (unsigned long long)wmax);
+      if (!ctl) EXPECT(late >= 1 && wmax >= 1 && !caught, "snapshots waited (late %llu, max %llu)",
+                       (unsigned long long)late, (unsigned long long)wmax);
+      else if (std::string(ctl) == "dcu-fill-nomargin") EXPECT(wmax == 0 && !caught, "no wait without the margin");
+      else EXPECT(caught, "the control is refused");
+    });
+
   // Replacement is tree-PLRU (MA-30), not true LRU. Ways 0-7 of one set fill
   // in order (the lowest invalid way first) and are read in order; then way
   // 0 is read again. PLRU's victim is way 4 (line 4); true LRU's would be
@@ -700,8 +755,8 @@ int main(int argc, char **argv) {
   // A bank loser that misses (DI-48): its tag result is known at its D2,
   // so its miss goes to the MSHR then, on its slot's port, and its slot's
   // next miss (another bank, a cycle or more later) has the port to itself.
-  // dcu-loser-miss-late decides the loser's miss at its access, where it
-  // meets the slot's next miss on one port with one id (the id CHECK).
+  // dcu-loser-miss-late decides the loser's miss at its access, a late
+  // miss that retries on port 0 (MA-33), so it leaves after the winner's.
   for (bool ctl : {false, true})
     test(ctl ? "dcu-loser-miss-late-control" : "loser-miss-at-d2", [&] {
       unsigned caught = 0, early = 0;
@@ -727,7 +782,8 @@ int main(int argc, char **argv) {
         }
       }
       if (ctl) {
-        EXPECT(caught >= 1, "the control is refused at some spacing");
+        EXPECT(early != 4 && caught == 0, "the control's miss leaves late (%u of 4 early), no id reused (%u)",
+               early, caught);
         return;
       }
       EXPECT(early == 4, "the loser's miss leaves with the winner's (its D2): %u of 4", early);
@@ -787,6 +843,46 @@ int main(int argc, char **argv) {
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 
+  // A late lookup's miss (MA-33): tag-stale's relook misses at its access,
+  // cycles past its D, so it waits and retries on port 0, and its slot's
+  // next miss (another bank) has the slot's port and its id to itself.
+  // dcu-late-miss-port places the late miss on its slot's port, where the
+  // two meet with one id at some spacing (the id CHECK in startMiss).
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-late-miss-port-control" : "late-miss-retry", [&] {
+      unsigned caught = 0, retried = 0;
+      for (unsigned d = 0; d != 8; ++d) {
+        Config c = cfg(9);
+        c.ways = 1;
+        if (ctl) c.brk = "dcu-late-miss-port";
+        Bench b(c);
+        const uint64_t v = bank0(1), n = v + uint64_t(c.sets) * kLineBytes, o = bank0(2);
+        const uint64_t x = bank0(3) + kLineBytes;   // bank 1, its own set
+        warm(b, v, 60);
+        warm(b, o, 61);
+        const uint64_t P = b.t;
+        b.reqs[P] = {rd(0, 1, n)};
+        b.run(P + 3);
+        const uint64_t F = b.mlc.back().first + b.mlc_lat;
+        b.reqs[F + 1] = {rd(0, 2, o), rd(1, 3, v)};
+        b.reqs[F + 1 + d].push_back(rd(1, 4, x));
+        b.run(F + 120);
+        if (refused(b, "offered while in use")) ++caught;
+        retried += b.h.bins["dcu_late_miss_retry"] != 0;
+        if (!ctl) {
+          EXPECT(b.h.fails.empty(), "d %u: %s", d, b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+          EXPECT(b.rsp(2) && b.rsp(3) && b.rsp(4), "d %u: every read answered", d);
+          const Rsp *r = b.rsp(3);
+          EXPECT(r && !r->hit && r->line[0] == pat(v, 0), "d %u: the relook misses, refilled", d);
+        }
+      }
+      if (ctl) {
+        EXPECT(caught >= 1, "the control is refused at some spacing");
+        return;
+      }
+      EXPECT(retried == 8, "the late miss retries on port 0: %u of 8", retried);
+    });
+
   // Part 2's controls on one dirty eviction: one way a set, a store makes
   // the line dirty, a read of another line of its set evicts it.
   struct Evict {
@@ -812,6 +908,29 @@ int main(int argc, char **argv) {
       return false;
     }
   };
+  // DI-42: a read of a line just filled, its D0 in the fill's fold write
+  // cycle or the next, takes the re-read (late, answered); dcu-ft-margin
+  // answers it from the margin's read, refused. Swept over the read's issue.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-ft-margin-control" : "ft-margin-reread", [&] {
+      unsigned hits = 0, refusals = 0;
+      for (uint64_t t = 1; t < 80; ++t) {
+        Config c = cfg(8);   // pipe C: the fold table
+        if (ctl) c.brk = "dcu-ft-margin";
+        Bench b(c);
+        b.reqs[0] = {rd(0, 1, 0x6000)};
+        b.reqs[t] = {rd(1, 2, 0x6000)};
+        b.run(t + 120);
+        if (b.h.bins["dcu_ft_margin_reread"]) {
+          ++hits;
+          EXPECT(b.rsp(2), "the re-read answers (issue %llu)", (unsigned long long)t);
+        }
+        if (refused(b, "write margin")) ++refusals;
+        else if (!ctl) EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+      }
+      if (ctl) EXPECT(refusals >= 1, "the control is refused");
+      else EXPECT(hits >= 1 && refusals == 0, "a read in the margin re-read (%u)", hits);
+    });
   for (bool ctl : {false, true})
     test(ctl ? "dcu-wb-drop-control" : "wb-sent", [&] {
       Evict e(ctl ? "dcu-wb-drop" : nullptr);

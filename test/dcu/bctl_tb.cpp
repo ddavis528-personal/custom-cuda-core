@@ -35,14 +35,28 @@
 // cycle, mispredicts. --cg <idle|medium|high> <vcd> runs one clock-gating
 // scenario (tools/check-cg.py). --control flat (the model puts the new
 // lookup ahead of the re-read), --control nofree (a dropped access keeps
-// its cycle) and --control order (a miss presented past the bank's waiter)
-// must fail.
+// its cycle), --control order (a miss presented past the bank's waiter) and
+// --control unheld (the model never holds a fill's write, DI-37) and
+// --control nomargin (the model answers a lookup whose fold row was read in a
+// fill's write cycle or the next at its hit slot, DI-42) must fail.
+//
+// Slice 2 part 1's fills (DI-39): the bench plays dcu_mshr and dcu_fill, a
+// fill's lead (flv, the bank one hot) and a cycle on its payload (the set,
+// fold and buffer) for a line the set does not hold. The model picks the
+// victim at the payload's cycle (the lowest invalid way, else the PLRU
+// victim, else the lowest way not reserved), reserves it, touches it in the
+// PLRU two cycles on (seen three on), and grants the write as the RTL's order has it: a held
+// write (its access at F+8 or later, K = 4) after the mispredict re-read,
+// an unheld one only when nothing else takes the cycle. At W the SRAM's
+// address, we, wdv and wdb are checked, and the way takes the line (the
+// bench's tags and the fold table).
 //===----------------------------------------------------------------------===//
 #include "Vdcu_bctl.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 #include "../../sim/generated/ccv_params.h"   // CCV_DCU_WAYPRED_BITS, the fold width
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -56,7 +70,7 @@
 
 namespace {
 
-constexpr unsigned kSlots = 4, kNB = 3, kWS = 9, kWays = 8, kWI = 6, kWF = ccv::prov::kDcuWaypredBits, kWR = kWS - kNB;
+constexpr unsigned kSlots = 4, kNB = 3, kWS = 9, kWays = 8, kWI = ccv::prov::kWReqMiuDcu, kWF = ccv::prov::kDcuWaypredBits, kWR = kWS - kNB;
 constexpr unsigned kSets = 1u << kWR, kQD = 16, kAge = 16, kBank = 0, kWWY = 3, kLines = 24;
 
 uint64_t g_seed = 0x5eed;
@@ -92,12 +106,22 @@ struct Look {
   bool dvx = false;             // what the check expects (--control order: dvp, waiters ignored)
 };
 
-enum class GK { None, New, Wait, RR, Fix };
+enum class GK { None, New, Wait, RR, Fix, Fill };
 struct Grant {
   GK k = GK::None;
   unsigned addr = 0, rid = 0, slot = 0;
   bool w = false;
+  int line = -1;   // a fill's
+  bool chg = false; // a fill's: its fold-table write gates the row whatever it holds
 };
+/// A fill's write slot, from its victim pick.
+struct FSlot {
+  unsigned set = 0, way = 0, buf = 0, line = 0;
+  uint64_t pick = 0, gone = ~uint64_t(0);   // pick: its payload's cycle (F+2)
+  uint64_t wayAt = ~uint64_t(0);            // the cycle its way is known (its snapshot's + 1)
+  bool yd = false;                          // held, it yielded to the port once (DI-46)
+};
+constexpr unsigned kNfw = 4, kKh = ccv::prov::kDcuFillAge;   // CCV_DCU_FILL_AGE (DI-37)
 struct Ent {
   unsigned addr = 0, rid = 0, slot = 0;
   uint64_t d2 = 0;
@@ -109,7 +133,21 @@ struct Bench {
   std::unique_ptr<VerilatedVcdC> vcd;
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0;
-  bool flat = false, nofree = false, order = false;
+  bool flat = false, nofree = false, order = false, unheld = false, nomargin = false;
+  bool sameSet = false;   // the random run's: fills biased to the sets others hold
+  // The fold table's port (DI-46): the driver's credits, its entries (the
+  // cycle each is in the RTL's queue, the entries ahead then), the payload
+  // to drive next cycle, and the write a credit's return answers.
+  static constexpr unsigned kPc = 4;   // the port's credits (its queue holds kPc - 2)
+  unsigned pcr = kPc;
+  bool flood = false;   // --flood: a lead whenever a credit allows
+  struct PEnt { unsigned set = 0, way = 0; uint64_t at = 0; unsigned ahead = 0; };
+  std::deque<PEnt> pq;
+  bool pPay = false;
+  PEnt pNext;
+  uint64_t pWrote = ~uint64_t(0);
+  unsigned pwMax = 0, phMax = 0, hwMax = 0, pqMax = 0;
+  std::map<unsigned, uint64_t> heldAt;   // a slot's buf -> when it was held (DI-37's wait)
   std::map<std::string, unsigned> cov;
 
   // Slice 2: the miss-wait FIFO (oldest first), the head's stamp, the
@@ -145,8 +183,17 @@ struct Bench {
   struct Ans { bool v = false; unsigned rid = 0, slot = 0; bool late = false; };
   std::map<uint64_t, Ans> wantAv;
   std::array<std::array<uint8_t, kWays - 1>, kSets> pl{};
-  std::map<uint64_t, std::pair<unsigned, unsigned>> plTouch;   // visible-from cycle -> set, way
-  std::map<uint64_t, unsigned> wantPv;
+  std::multimap<uint64_t, std::pair<unsigned, unsigned>> plTouch;   // visible-from cycle -> set, way (in order)
+  std::multimap<uint64_t, std::pair<unsigned, unsigned>> plFill;    // a fill's touch: after the hits' that cycle
+  // Fills: the write slots, the lead sent last cycle (its payload now).
+  std::vector<FSlot> FS;
+  bool fLead = false;
+  FSlot fNext;
+  uint32_t lastFset = 0, lastFfold = 0, lastFbuf = 0;
+  // The fill's fold writes per set (the last two cycles that changed its
+  // entry): a granted lookup whose D0 is one of them or a cycle after takes
+  // the re-read (DI-42's margin).
+  std::map<unsigned, std::pair<int64_t, int64_t>> ftw;
 
   // The credit loop and dcu_fix.
   unsigned out = 0;      // lookups in the bank (credits spent)
@@ -186,12 +233,17 @@ struct Bench {
     eval();
     ++cyc;
   }
+  void chkPort(bool got, bool want) {
+    ++checked;
+    if (got != want) fail(std::string("fwcr: got ") + (got ? "1" : "0") + " want " + (want ? "1" : "0"));
+  }
   void fail(const std::string &what) {
     if (++fails <= 20) std::fprintf(stderr, "bctl: cycle %llu: %s\n", (unsigned long long)cyc, what.c_str());
   }
   void quiet() {
     dut->rv_cc01h = 0;
     dut->fwe_cc00h = 0;
+    dut->flv_cc03h = 0;
     dut->fxv_cc03h = 0;
     dut->ov_cc04h = 0;
     dut->owait_cc04h = 0;
@@ -237,9 +289,22 @@ struct Bench {
   }
 
   /// One cycle: lead (D0 next cycle) and fix decided by the caller.
-  void step(Gen &g, bool lead, unsigned rnd, bool hitBias) {
+  void step(Gen &g, bool lead, unsigned rnd, bool hitBias, bool flead) {
     const uint64_t c = cyc;
     if (L.size() < c + 3) L.resize(c + 3);
+    // W: the fill's way takes its line (the fold table's write lands at the
+    // end of this cycle, so the next D0 sees it).
+    if (G.k == GK::Fill) {
+      const unsigned fs = G.addr >> kWWY, fw = G.addr & (kWays - 1);
+      const int old = tags[fs][fw];
+      // (the RTL decides a cycle ahead: a grant in the cycle the slot takes its
+      // payload or its way counts as a change, its fields on the bypass)
+      if (G.chg || old < 0 || foldOf(unsigned(old), fs) != foldOf(unsigned(G.line), fs)) {
+        auto &e = ftw.try_emplace(fs, std::make_pair(int64_t(-9), int64_t(-9))).first->second;
+        e = {int64_t(c), e.first};
+      }
+      tags[fs][fw] = G.line;
+    }
     // The lead on the wires now names this bank at D0 = c + 1.
     unsigned rv = 0;
     uint32_t lsbw = 0;
@@ -297,7 +362,7 @@ struct Bench {
     lastLsi = lsi;
     uint32_t rid = 0, fold = 0, drop = 0;
     for (unsigned s = 0; s < kSlots; ++s) {
-      uint32_t r = rnd ? g.below(64) : lastRid >> (s * kWI) & 63,
+      uint32_t r = rnd ? g.below(1u << kWI) : lastRid >> (s * kWI) & ((1u << kWI) - 1),
                f = rnd ? g.below(1u << kWF) : lastFold >> (s * kWF) & ((1u << kWF) - 1), d = rnd ? g.below(2) : 0;
       if (l0.valid && l0.slot == s) { r = l0.rid; f = l0.fold; d = l0.drop; }
       rid |= r << (s * kWI);
@@ -369,12 +434,98 @@ struct Bench {
     dut->fxv_cc03h = fxs == 1;
     dut->fxw_cc04h = fxs == 2 ? fxw : rnd ? g.below(2) : 0;
     dut->fxa_cc04h = fxs == 2 ? fxa : rnd ? g.below(512) : 0;
-    const unsigned pvs = rnd ? g.below(kSets) : 0;
-    dut->pvs_cc04h = pvs;
+    // dcu_mshr's and dcu_fill's fill: the payload of last cycle's lead, and
+    // a new lead (this bank's, when a slot and a line are free; another
+    // bank's as noise).
+    const bool fPay = fLead;
+    if (fPay) {
+      dut->fwset_cc03h = fNext.set;
+      dut->fwfold_cc03h = foldOf(fNext.line, fNext.set);
+      dut->fwb_cc03h = fNext.buf;
+    } else {
+      dut->fwset_cc03h = rnd ? g.below(kSets) : lastFset;
+      dut->fwfold_cc03h = rnd ? g.below(1u << kWF) : lastFfold;
+      dut->fwb_cc03h = rnd ? g.below(kNfw) : lastFbuf;
+    }
+    lastFset = dut->fwset_cc03h;
+    lastFfold = dut->fwfold_cc03h;
+    lastFbuf = dut->fwb_cc03h;
+    fLead = false;
+    FSlot fNew;
+    unsigned pend = fPay, busyBuf = fPay ? 1u << fNext.buf : 0;
+    for (const FSlot &f : FS)
+      if (f.gone > c) ++pend, busyBuf |= 1u << f.buf;
+    dut->flv_cc03h = 0;
+    dut->fbk_cc03h = rnd ? g.below(256) & ~1u : 0;
+    if (flead && pend < kNfw) {
+      fNew.set = g.below(kSets);
+      // In the random run, half the time a set another fill holds (the
+      // reservations, DI-43); the clock-gating scenarios keep their stimulus.
+      if (sameSet && !FS.empty() && g.below(2) == 0) fNew.set = FS[g.below(unsigned(FS.size()))].set;
+      std::vector<unsigned> free;
+      for (unsigned l = 0; l < kLines; ++l) {
+        bool used = false;
+        for (unsigned w = 0; w < kWays; ++w) used |= tags[fNew.set][w] == int(l);
+        for (const FSlot &f : FS) used |= f.gone > c && f.set == fNew.set && f.line == l;
+        if (fPay) used |= fNext.set == fNew.set && fNext.line == l;
+        if (!used) free.push_back(l);
+      }
+      bool portSet = pPay && pNext.set == fNew.set;
+      for (const PEnt &e : pq) portSet |= e.set == fNew.set;
+      if (portSet) free.clear();   // the port's write would restore the way's old fold
+      if (!free.empty()) {
+        fNew.line = free[g.below(unsigned(free.size()))];
+        while (busyBuf >> fNew.buf & 1) ++fNew.buf;
+        fLead = true;
+        dut->flv_cc03h = 1;
+        dut->fbk_cc03h = 1u << kBank;
+      }
+    } else if (rnd && g.below(4) == 0) {
+      dut->flv_cc03h = 1;   // another bank's
+    }
+    // The write port's other user (part 4's invalidations; DI-45): in the
+    // random run, now and then a write of a valid way's own fold, in a set
+    // no fill holds or is about to, so it changes nothing but takes the
+    // port: its lead now, its payload next cycle, the write the cycle after.
     dut->fwe_cc00h = 0;
+    if (pPay) {
+      dut->fws_cc01h = pNext.set;
+      dut->fwy_cc01h = pNext.way;
+      dut->fwf_cc01h = foldOf(unsigned(tags[pNext.set][pNext.way]), pNext.set);
+      pq.push_back(pNext);
+      pqMax = std::max(pqMax, unsigned(pq.size()));
+      pPay = false;
+    }
+    if (sameSet && pcr && (flood || g.below(16) == 0)) {
+      const unsigned s = g.below(kSets), w = g.below(kWays);
+      bool held = tags[s][w] < 0 || (fPay && fNext.set == s) || (fLead && fNew.set == s);
+      for (const FSlot &f : FS) held |= f.set == s;
+      if (!held) {
+        pNext = PEnt{s, w, c + 2, unsigned(pq.size())};
+        pPay = true;
+        --pcr;
+        dut->fwe_cc00h = 1;
+        ++cov["port_write"];
+      }
+    }
     dut->eval();
 
     // ---- the model, this cycle ----
+    // The port: the credit returned for last cycle's write; the head writes
+    // now unless the fill does (W), and the entry's wait is checked.
+    chkPort(dut->fwcr_cc03h, pWrote + 1 == c);
+    if (dut->fwcr_cc03h) ++pcr;
+    if (!pq.empty() && pq.front().at <= c && G.k != GK::Fill) {
+      const PEnt &e = pq.front();
+      const unsigned w = unsigned(c - e.at);
+      pwMax = std::max(pwMax, w);
+      if (w) ++cov["port_wait"];
+      if (w > 4 + 2 * e.ahead)
+        fail("model: a port write waited " + std::to_string(w) + " cycles, " + std::to_string(e.ahead) + " ahead");
+      pq.pop_front();
+      pWrote = c;
+    }
+    const bool pwn = !pq.empty() && pq.front().at <= c + 1;
     const bool l1v = c >= 1 && l1.valid, l2v = c >= 2 && l2.valid;
     unsigned wsa = 0;
     if (G.k == GK::New) wsa = l1.set << kWWY | (l1.anym ? l1.pway : 0);
@@ -389,7 +540,9 @@ struct Bench {
     const bool busy = nofree ? G.k != GK::None : realAcc;
     if (realAcc) chk("sa", dut->sa_cc04h, wsa);
     chk("fxg", dut->fxg_cc04h, G.k == GK::Fix);
-    chk("we", dut->we_cc04h, G.k == GK::Fix && G.w);
+    chk("we", dut->we_cc04h, (G.k == GK::Fix && G.w) || G.k == GK::Fill);
+    chk("wdv", dut->wdv_cc04h, G.k == GK::Fill);
+    if (G.k == GK::Fill) chk("wdb", dut->wdb_cc04h, G.slot);
     {
       auto it = wantEr.find(c);
       chk("ent_ret", dut->ent_ret_cc04h, it != wantEr.end() && it->second);
@@ -424,21 +577,28 @@ struct Bench {
         chk("rsti", dut->rsti_cc04h, 0);
       }
       rovPrev = dut->rov_cc04h;
-      auto ip = wantPv.find(c);
-      if (ip != wantPv.end()) {
-        chk("pvw", dut->pvw_cc05h, ip->second);
-        wantPv.erase(ip);
-      }
     }
     // PLRU: updates visible from this cycle, then the victim read now.
     for (auto it = plTouch.begin(); it != plTouch.end() && it->first <= c;) {
       plTouchRef(pl[it->second.first], it->second.second);
       it = plTouch.erase(it);
     }
-    wantPv[c + 1] = plVictimRef(pl[pvs]);
+    for (auto it = plFill.begin(); it != plFill.end() && it->first <= c;) {
+      plTouchRef(pl[it->second.first], it->second.second);
+      it = plFill.erase(it);
+    }
 
     const bool wn2 = l2v && l2.won && !l2.drop, lq2 = l2v && !l2.won && !l2.drop;
-    const bool mp = wn2 && l2.hit && l2.way != l2.pway;
+    // DI-42: its D0 (c - 2) in the margin of a fill's fold write to its set.
+    bool mg2 = false;
+    if (l2v && !nomargin) {
+      auto it = ftw.find(l2.set);
+      if (it != ftw.end())
+        for (int64_t e : {it->second.first, it->second.second})
+          mg2 = mg2 || e == int64_t(c) - 2 || e == int64_t(c) - 3;
+    }
+    const bool mp = wn2 && l2.hit && (mg2 || l2.way != l2.pway);
+    if (wn2 && l2.hit && mg2) ++cov["margin_reread"];
     const bool aged = !Q.empty() && c - Q.front().d2 >= kAge - 2;
     std::deque<Ent> cand = Q;
     const bool l2wait = lq2 && l2.hit;
@@ -447,9 +607,48 @@ struct Bench {
     bool popped = false;
     const bool l0v = l0.valid;
     if (!busy) {
+      // The fills' writes waiting now: the oldest held, else the oldest.
+      int fh = -1, fa = -1;
+      for (size_t k = 0; k != FS.size(); ++k) {
+        const FSlot &f = FS[k];
+        if (f.pick >= c || f.gone <= c) continue;
+        if (fa < 0 || f.pick < FS[size_t(fa)].pick) fa = int(k);
+        if (!unheld && c - f.pick >= kKh + 1 && (fh < 0 || f.pick < FS[size_t(fh)].pick)) fh = int(k);
+      }
+      // The head (the oldest) is a waiter once it has its way (DI-43).
+      if (fa >= 0 && FS[size_t(fa)].wayAt > c) fa = -1, fh = -1;
+      // The port holds an entry next cycle: an unheld fill yields to it, a
+      // held one once (DI-46), leaving the cycle idle (the others wait behind
+      // it); a mispredict's re-read goes first all the same.
+      if (pwn && !(mp && !flat)) {
+        if (fh >= 0 && !FS[size_t(fh)].yd) {
+          FS[size_t(fh)].yd = true;
+          fh = -2;
+          ++cov["fill_yield"];
+        } else if (fh < 0 && fa >= 0) {
+          fa = -1;
+          ++cov["fill_yield_unheld"];
+        } else if (fh >= 0) {
+          ++cov["fill_wins_port"];
+        }
+      }
+      auto fillGrant = [&](int k, const char *bin) {
+        FSlot &f = FS[size_t(k)];
+        n = Grant{GK::Fill, f.set << kWWY | f.way, 0, f.buf, true, int(f.line),
+                  c == f.pick + 1 || c == f.wayAt};
+        f.gone = c + 1;
+        if (c >= f.pick + kKh + 1) hwMax = std::max(hwMax, unsigned(c - (f.pick + kKh + 1)));
+        ++cov[bin];
+        if (c - f.pick > kKh + 2) ++cov["fill_late"];
+      };
       if (mp && !flat) {
         n = Grant{GK::RR, l2.set << kWWY | l2.way, l2.rid, l2.slot, false};
         ++cov["reread"];
+        if (fh >= 0) ++cov["fill_held_reread"];
+      } else if (fh == -2) {
+      } else if (fh >= 0) {
+        if (l0v || aged || fxs == 3 || !cand.empty()) ++cov["fill_held_block"];
+        fillGrant(fh, "fill_held");
       } else if (aged) {
         n = Grant{GK::Wait, Q.front().addr, Q.front().rid, Q.front().slot, false};
         Q.pop_front();
@@ -468,6 +667,8 @@ struct Bench {
         if (!Q.empty()) Q.pop_front();
         else popped = true, ++cov["bypass"];
         ++cov["waiter"];
+      } else if (fa >= 0) {
+        fillGrant(fa, "fill_unheld");
       }
     } else if (l0v && G.k == GK::New && l1.drop) ++cov["drop_busy"];
     if (G.k == GK::New && !realAcc && (n.k != GK::None)) ++cov[l1.drop ? "drop_freed" : "nomatch_freed"];
@@ -556,7 +757,67 @@ struct Bench {
     // Answers and misses.
     if (wn2 && l2.hit && !mp) wantAv[c + 1] = Ans{true, l2.rid, l2.slot, false};
     if (G.k == GK::Wait || G.k == GK::RR) wantAv[c + 2] = Ans{true, G.rid, G.slot, true};
-    if ((wn2 || lq2) && l2.hit) plTouch[c + 2] = {l2.set, l2.way};
+    if ((wn2 || lq2) && l2.hit) plTouch.emplace(c + 2, std::make_pair(l2.set, l2.way));
+    // The victim's snapshot (DI-43, MA rev 184): one a cycle, of a set outside
+    // the fold table's margin: the oldest slot still without a way, else the
+    // new payload (F+2), which otherwise waits without a way. Reserved: the
+    // ways of the slots that have them, and of the write at W (held until the
+    // snapshot sees it).
+    auto inMargin = [&](unsigned set) {
+      auto it = ftw.find(set);
+      if (it == ftw.end()) return false;
+      for (int64_t e : {it->second.first, it->second.second})
+        if (e == int64_t(c) || e + 1 == int64_t(c)) return true;
+      return false;
+    };
+    {
+      int pk = -1;
+      for (size_t k = 0; k != FS.size(); ++k) {
+        const FSlot &x = FS[k];
+        if (x.gone > c && x.pick < c && x.wayAt == ~uint64_t(0) && !inMargin(x.set) &&
+            (pk < 0 || x.pick < FS[size_t(pk)].pick))
+          pk = int(k);
+      }
+      if (fPay) {
+        FSlot f = fNext;
+        f.pick = c;
+        FS.push_back(f);
+        if (pk >= 0 || inMargin(f.set)) ++cov["fill_resnap"];
+        if (pk < 0 && !inMargin(f.set)) pk = int(FS.size() - 1);
+      }
+      if (pk >= 0) {
+        FSlot &f = FS[size_t(pk)];
+        unsigned rsv = 0;
+        for (const FSlot &x : FS)
+          if (&x != &f && x.set == f.set && x.gone >= c && x.wayAt <= c) {
+            rsv |= 1u << x.way;
+            if (x.gone <= c + 1) ++cov[x.gone == c ? "victim_rsv_at_w" : "victim_rsv_at_grant"];
+          }
+        int vw = -1;
+        for (unsigned w = 0; w < kWays && vw < 0; ++w)
+          if (tags[f.set][w] < 0 && !(rsv >> w & 1)) vw = int(w);
+        if (vw >= 0) ++cov["victim_invalid"];
+        else {
+          const unsigned pv = plVictimRef(pl[f.set]);
+          if (!(rsv >> pv & 1)) vw = int(pv), ++cov["victim_plru"];
+          else {
+            ++cov["victim_skip"];
+            for (unsigned w = 0; w < kWays && vw < 0; ++w)
+              if (!(rsv >> w & 1)) vw = int(w);
+          }
+        }
+        if (rsv) ++cov["victim_rsv_set"];
+        f.way = unsigned(vw);
+        f.wayAt = c + 1;
+        const uint64_t wt = c - f.pick;
+        ++cov["snap_wait_" + std::to_string(wt)];
+        if (wt > 3 * (kNfw - 1) + 2) fail("model: a fill waited past its snapshot bound");
+        plFill.emplace(c + 3, std::make_pair(f.set, f.way));
+      }
+      if (fPay) ++cov["fill"];
+    }
+    FS.erase(std::remove_if(FS.begin(), FS.end(), [&](const FSlot &x) { return x.gone <= c; }), FS.end());
+    if (fLead) fNext = fNew;
     // dcu_fix sees its access and lets go.
     if (G.k == GK::Fix) {
       fxs = 0;
@@ -567,14 +828,23 @@ struct Bench {
   }
 };
 
-int run(const std::string &scenario, const char *vcd, bool flat, bool nofree, bool order) {
+int run(const std::string &scenario, const char *vcd, bool flat, bool nofree, bool order, bool unheld,
+        bool nomargin, bool flood, bool creditPlus) {
   Bench b(vcd);
+  b.flood = flood;
+  if (creditPlus) b.pcr = Bench::kPc + 1;   // the control: a credit the port has no entry for
   b.flat = flat;
   b.nofree = nofree;
   b.order = order;
+  b.unheld = unheld;
+  b.nomargin = nomargin;
+  // A control proves the bench's own comparison catches its fault: the RTL's
+  // assertions, which a diverged stimulus can trip first, are off for it.
+  if (flat || nofree || order || unheld || nomargin) Verilated::assertOn(false);
   Gen g(g_seed);
   b.reset();
   const bool rnd = scenario.empty();
+  b.sameSet = rnd;
   // Preload: each set's ways, a few left invalid, lines sharing folds.
   if (scenario != "idle") {
     for (unsigned s = 0; s < kSets; ++s) {
@@ -599,22 +869,42 @@ int run(const std::string &scenario, const char *vcd, bool flat, bool nofree, bo
     else if (scenario == "high") lead = g.below(10) < 9;
     else lead = phase == 0 ? g.below(10) < 9 : phase == 1 ? g.below(3) == 0
                : phase == 2 ? true : g.below(2) == 0;
-    b.step(g, lead, rnd, !rnd);
+    // Fills: a few in medium, more in high and random (a burst now and then,
+    // so a set's ways are reserved together and writes wait for the bank).
+    bool flead;
+    if (scenario == "idle") flead = false;
+    else if (scenario == "medium") flead = g.below(16) == 0;
+    else if (scenario == "high") flead = g.below(6) == 0;
+    else flead = phase == 2 ? g.below(6) == 0 : g.below(30) == 0;
+    b.step(g, lead, rnd, !rnd, flead);
+    // --control unheld: its model's slots part from the RTL's, and the bench
+    // would then drive past the RTL's contract: stop at the first mismatch.
+    if (unheld && b.fails) break;
   }
   if (rnd) {
     for (const char *k : {"reread", "aged", "fix", "new", "waiter", "bypass", "queue_deep",
                           "drop_freed", "nomatch_freed", "mispredict", "fold_match_miss",
                           "no_match_miss", "two_credits", "placed", "wait_mshr", "wait_order",
-                          "wait_held", "retry_grant", "retry_placed", "retry_again", "waiters_deep"})
+                          "wait_held", "retry_grant", "retry_placed", "retry_again", "waiters_deep",
+                          "fill", "victim_invalid", "victim_plru", "victim_skip", "victim_rsv_set",
+                          "fill_held", "fill_unheld", "fill_held_block", "fill_held_reread",
+                          "margin_reread", "fill_resnap", "victim_rsv_at_grant", "victim_rsv_at_w",
+                          "port_write", "fill_yield", "fill_yield_unheld", "fill_wins_port", "port_wait"})
       if (!b.cov[k]) {
         std::fprintf(stderr, "bctl: coverage: %s never happened\n", k);
         ++b.fails;
       }
     std::fprintf(stderr, "bctl: coverage:");
     for (auto &kv : b.cov) std::fprintf(stderr, " %s=%u", kv.first.c_str(), kv.second);
-    std::fprintf(stderr, " queue_max=%u waiters_max=%u\n", b.qmax, b.wmax);
+    std::fprintf(stderr, " queue_max=%u waiters_max=%u port_wait_max=%u held_wait_max=%u port_queue_max=%u\n",
+                 b.qmax, b.wmax, b.pwMax, b.hwMax, b.pqMax);
   }
-  const char *ctl = flat ? " control flat:" : nofree ? " control nofree:" : order ? " control order:" : ":";
+  const char *ctl = flat     ? " control flat:"
+                    : nofree ? " control nofree:"
+                    : order  ? " control order:"
+                    : unheld ? " control unheld:"
+                    : nomargin ? " control nomargin:"
+                             : ":";
   std::printf("bctl%s %s: %llu cycles, %u values checked, %u mismatches: %s\n", ctl,
               rnd ? "random" : scenario.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
               b.fails ? "FAIL" : "PASS");
@@ -628,12 +918,18 @@ int main(int argc, char **argv) {
   g_argv = argv;
   std::string scenario;
   const char *vcd = nullptr;
-  bool flat = false, nofree = false, order = false;
+  bool flat = false, nofree = false, order = false, unheld = false, nomargin = false;
+  bool flood = false, creditPlus = false;
+  for (int i = 1; i < argc; ++i)
+    if (!std::strcmp(argv[i], "--flood")) flood = true;
   for (int i = 1; i + 1 < argc; ++i) {
     if (!std::strcmp(argv[i], "--control")) {
       if (!std::strcmp(argv[i + 1], "flat")) flat = true;
       else if (!std::strcmp(argv[i + 1], "nofree")) nofree = true;
       else if (!std::strcmp(argv[i + 1], "order")) order = true;
+      else if (!std::strcmp(argv[i + 1], "unheld")) unheld = true;
+      else if (!std::strcmp(argv[i + 1], "nomargin")) nomargin = true;
+      else if (!std::strcmp(argv[i + 1], "credit_plus")) creditPlus = true;
       else {
         std::fprintf(stderr, "bctl: unknown control %s\n", argv[i + 1]);
         return 2;
@@ -650,5 +946,5 @@ int main(int argc, char **argv) {
         return 2;
       }
     }
-  return run(scenario, vcd, flat, nofree, order);
+  return run(scenario, vcd, flat, nofree, order, unheld, nomargin, flood, creditPlus);
 }

@@ -38,7 +38,7 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). See the file. Last row TI-578 (rev 580). Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-580 (rev 582). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -81,15 +81,17 @@ background `while pgrep` wait.
   Gate restarted with CCV_RESUME=1 after a disk-full stop; job log
   /root/ccv-logs/job-gate-push-20261124-094150-3345.log. On landing: row to OI, OA.
   Never edit ti-pt while it gates.
-- ti-hop (worktree /home/user/ti-hop, gate-scratch/TI-hop @ b434b5fb, on
-  b3834897): orphan feedback.json check (MI-44), helper hops (OI-213), named
-  crossings (OA-494), cone + registered hop (OA-495), OA-496, writer-input
-  exemption (OI-217/OA-497) with unread outputs (OI-219), OA-498/499 cone
-  sources, OA-500 write-pipeline fixed point; OI's ooe_go pl at cq02h,
-  sa-late, rendep u_map table (cherry-picked); NGD-3 pl rename; u_map's ten
-  conn-ratchet entries removed. check-1d 67 PASS, tree lint 0. Gate-push
-  right after ti-pt lands (merge its landed tip first); ring OI, OA, MI, MA.
-  TI-578 told OA, OI of OA-500.
+- ti-hop (worktree /home/user/ti-hop, gate-scratch/TI-hop @ 02dbf5c4, on
+  b3834897): orphan check (MI-44), helper hops (OI-213), named crossings
+  (OA-494), cone + registered hop (OA-495), OA-496, writer-input exemption
+  (OI-217/OA-497/OI-219), OA-498/499 cone sources, OA-500 write-pipeline
+  fixed point (u_map's ten off), OA-501 helper crossing over a sibling-output
+  source (CCV_LINT_FIXTURE_UNITS for check-1d), OI's u_gfree declarations
+  (cherry-picked cf3ce683, 9ffba2bd, ade5d5a1, f05fad61: u_gfree ratchet
+  empty, 24 entries left). check-1d 68 PASS, tree lint 0. Gate-push right
+  after ti-pt lands (merge its landed tip first); ring OI, OA, MI, MA.
+- 11-24 daily sweep: register half done (TI-580). Repo half (daily-sweep.sh)
+  waits: run it after ti-pt and ti-hop land, never beside a gate.
 - Disk: landed worktrees' build/ dirs were cleared (ti-tw, ti-conn, ti-drop,
   ti-l23, ti-fold). 12G free.
 - Then: OA signatures on u_gfree's child-to-child entries (rt_v/row wait on

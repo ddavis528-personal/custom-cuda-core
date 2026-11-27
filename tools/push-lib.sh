@@ -69,7 +69,7 @@ push_all() {
 regen_commit() {
   ./tools/regen.sh >"$LOGDIR/regen-$STAMP.log" 2>&1 ||
     die "tools/regen.sh failed (log: $LOGDIR/regen-$STAMP.log)"
-  local gen="sim/generated rtl/generated rtl/top docs/payload-spec.md docs/trust-report.md docs/walkthrough.md"
+  local gen="sim/generated rtl/generated rtl/top test/top docs/payload-spec.md docs/trust-report.md docs/walkthrough.md"
   local changed
   changed=$(git status --porcelain -- $gen | cut -c4-)
   if [ -n "$changed" ]; then

@@ -307,7 +307,7 @@ if out=$("$dir/slot_tb" "$seeds" 2>&1); then
 else
   say "slot == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-ath no-xr no-held lnd-early no-kill-lead no-ev-lead no-free; do
+for c in no-ath no-xr no-held lnd-early no-kill-lead no-ev-lead no-free rsa-no-clear-restore; do
   if SLOT_CONTROL=$c "$dir/slot_tb" 3 >/dev/null 2>&1; then
     say "  control $c (slot)" "MISSED"; fail=1
   else

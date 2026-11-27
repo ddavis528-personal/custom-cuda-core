@@ -1,0 +1,17 @@
+{
+  "module": "dcu_fill",
+  "ports": {
+    "wb_cc06h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
+    },
+    "wown_cc06h": {
+      "required": 0.0,
+      "by": "MA (MA rev 180, DI-40)",
+      "date": "2026-11-23",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
+    }
+  }
+}
