@@ -73,6 +73,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-504 FIX RUN QUEUED (OI 22:23Z): rh-oi504fix = 57ca7d30 + 669cfdde (MA's OI-225 fix; local merge 6e034acc, never push), MA kernels copied.
+  rh-jobs/oi504/prepfix.sh (prep) then chainfix.sh (after chains23): (a) oi504f.sh/oi504fr.sh model+p1 seed 1 all arms; (b) stub gtw32 m35. Logs ~/ccv-logs/oi504fix.
+  Report one table (arm × class Δ vs 50) + req_id/credit CHECKs, 75/100 mismatches, hang lines.
 - OI OA-504 MODEL+P1 MIX ABANDONED (OI 19:05Z: not clean; chk at every arm). Seed-1 model+p1 tables sent 19:05Z; logs kept in ~/ccv-logs/oi504 (aborted s2 in aborted-s2/).
   Cycle-stamped CHECK head sent to OI for MI/DI: ~/ccv-logs/oi504/rh-cyc.s1.m50.coremark32priv.head (build/skel-rh in rh-oi504 is an experiment binary; source reverted).
   NOW: STUB-MIU mix (CCV_MIU_IMPL unset, DCU p1), logs ~/ccv-logs/oi504stub. Step 1 gate50.sh CLEAN 19:21Z (73/73, 0 chk; sent). Step 2 seed 1 DONE+SENT 21:10Z (all clean except gtw32 m35 HANG: 'rau: warp 30 drained, PCA has no free place', the same in model+p1, so it is the arm, not the mix).
