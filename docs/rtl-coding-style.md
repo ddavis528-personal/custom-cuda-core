@@ -651,6 +651,12 @@ too, or a writer whose table does not verify, keeps its back edge
 `reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
 `bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
 assertion are refused.
+The writer may instead be the parent's own register, `"writer":
+"<register>"` (OI-226: `ooe_rob_w`'s held redirect words read by the
+`ooe_redir` it instantiates, OA-487): a register of every parent, at the
+port's stage, feeding the port directly as its only net, the other terms
+as above (`reference_otpp.sv` passes; `bad_tport3.sv`'s parent wire and
+unsigned declaration are refused).
 
 **Across a connection** (OA 481-483; TI-554..556; MI-35). A child's port
 tags are its own numbering, not its parent's: a parent may feed a child's
@@ -674,7 +680,20 @@ channels cross repeaters by `params/links.json` and are held there.
 Through a register-free helper, a deficit of 1 is exempt only when the
 helper's input reads one parent register and its output feeds, through
 the parent's combinational nets, that register's next value or enable and
-nothing else (OA-488 (1)).
+nothing else (OA-488 (1)). The input may combine that register R with
+other nets (OI-226: `ooe_rename`'s carry-save sums of a remainder with its
+frees and take): its combinational cone's sources are R and nets tagged at
+or before the helper output's own stage, nothing later and nothing
+untagged; an output whose nets nothing reads reaches nothing (OI-219)
+(`reference_csp.sv` passes; `bad_conn8.sv`'s `reference_lcsp`, with a net
+past that stage, is refused).
+
+A function call is logic, not a net (OI-226): every graph these checks
+trace reads a call's arguments and, for a function of the module, the
+module nets its body reads, never its name, and a function or task ends
+the always block before it (`reference_fnp.sv` passes; `bad_conn8.sv`'s
+cones leaving out a call's register argument, or the register its body
+reads, are refused).
 
 A loop closed by the parent's own registers (OI-207, OA-489) is declared
 with `"from"` naming the parent register the child input reads, and

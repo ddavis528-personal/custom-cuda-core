@@ -317,6 +317,11 @@ def signed(by, signers):
 
 
 IDENT_RE = re.compile(r"\b[a-z]\w*\b")
+# The names an expression reads as nets: IDENT_RE less a call's name (a
+# function, declared in the module or a package, called as name(...)): the
+# call is logic, not a net or a register; its arguments still count (OI-226
+# (a)).
+READ_RE = re.compile(r"(?<![$`'])\b[a-z]\w*\b(?!\s*\()")
 
 
 def feedback_decls(dirpath, module):
@@ -449,16 +454,80 @@ def index_reads(text, name):
     return idx, bare
 
 
+_funcs = {}
+FUNC_RE = re.compile(r"\b(function|task)\b(.*?)\bend(?:function|task)\b", re.S)
+LOCAL_RE = re.compile(r"\b(?:input|output|inout|ref|logic|bit|int|integer|reg|byte|shortint|"
+                      r"longint|automatic|static|signed|unsigned|genvar)\b"
+                      r"(?:\s+(?:logic|bit|signed|unsigned|int))*\s*(?:\[[^\]]*\]\s*)*"
+                      r"([a-z]\w*)")
+
+
+def module_funcs(src):
+    """{name: the names its body reads from the module's scope}: each
+    function or task declared in src, less its own name, arguments and
+    locals, its calls of the others expanded (OI-226 (a)). A call reads its
+    arguments and these: a function reading a module net directly is logic
+    over that net."""
+    key = hash(src)
+    if key in _funcs:
+        return _funcs[key]
+    raw = {}
+    for m in FUNC_RE.finditer(src):
+        txt = m.group(2)
+        k = re.search(r"(?<![$\w`'])([a-z]\w*)\s*(?=\(|;)", txt)
+        if not k:
+            continue
+        name = txt[k.start(1):k.end(1)]
+        body = txt[k.end(1):]
+        local = {name} | set(re.findall(r"\bfor\s*\(\s*(?:int|integer|genvar)?\s*([a-z]\w*)\s*=", body))
+        # Its arguments and locals: each declaration's names, to its ; or ).
+        for d in LOCAL_RE.finditer(body):
+            j = d.start(1)
+            e = min([x for x in (body.find(";", j), body.find(")", j)) if x >= 0] or [len(body)])
+            decl = re.sub(r"\[[^\]]*\]|=[^,]*", " ", body[j:e])
+            for part in decl.split(","):
+                w = re.findall(r"[a-z]\w*", part)
+                if w:
+                    local.add(w[-1])
+            local.add(d.group(1))
+        calls = set(re.findall(r"(?<![$`'])\b([a-z]\w*)\s*\(", body))
+        kw = SV_KEYWORDS | {"automatic", "static", "integer", "ref", "void", "unique0",
+                            "shortint", "longint", "genvar", "type"}
+        raw[name] = (set(READ_RE.findall(body)) - local - kw, calls - {name})
+    out = {}
+    for f in raw:
+        seen, todo, got = set(), [f], set()
+        while todo:
+            g = todo.pop()
+            if g in seen or g not in raw:
+                continue
+            seen.add(g)
+            got |= raw[g][0]
+            todo.extend(raw[g][1])
+        out[f] = got
+    _funcs[key] = out
+    return out
+
+
+def reads(expr, funcs):
+    """The names an expression reads: READ_RE's, and for each call of a
+    function of the module, the module names its body reads."""
+    out = set(READ_RE.findall(expr))
+    for f in re.findall(r"(?<![$`'])\b([a-z]\w*)\s*\(", expr):
+        out |= funcs.get(f, set())
+    return out
+
+
 def data_graph(src):
     """deps[net]: the names its assignments' right-hand sides read, and no
     condition: the data a register is loaded with, apart from its enable."""
-    deps = {}
+    deps, fn = {}, module_funcs(src)
     for kind, clk, body, ln, pos in always_blocks(src):
         for _, lhs, _, rhs in assignments(body):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+            deps.setdefault(lhs, set()).update(reads(rhs, fn))
     for m in re.finditer(r"\bassign\s+[^;]+;", src):
         for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+            deps.setdefault(lhs, set()).update(reads(rhs, fn))
     return deps
 
 
@@ -488,21 +557,21 @@ def dep_graph(src):
     assignments read, conditions included (an if's or a case's selector
     steers the value as much as its right-hand side does); flops are the
     names an always_ff assigns."""
-    deps, flops = {}, set()
+    deps, flops, fn = {}, set(), module_funcs(src)
     def conds(body):
         out = set()
         for m in re.finditer(r"\b(?:if|case|casez|casex)\s*\(", body):
-            out |= set(IDENT_RE.findall(balanced(body, m.end() - 1)[0]))
+            out |= reads(balanced(body, m.end() - 1)[0], fn)
         return out
     for kind, clk, body, ln, pos in always_blocks(src):
         c = conds(body)
         for _, lhs, _, rhs in assignments(body):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs), c)
+            deps.setdefault(lhs, set()).update(reads(rhs, fn), c)
             if kind == "ff":
                 flops.add(lhs)
     for m in re.finditer(r"\bassign\s+[^;]+;", src):
         for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+            deps.setdefault(lhs, set()).update(reads(rhs, fn))
     return deps, flops
 
 
@@ -585,8 +654,11 @@ def always_blocks(src):
         em = re.match(r"\s*@\s*\(\s*(pos|neg)edge\s+([\w.]+)", rest)
         if em:
             clk = (em.group(2), em.group(1))
-        nxt = re.search(r"\balways(_ff|_comb|_latch)?\b|\bassign\b|\bendmodule\b",
-                        rest)
+        # A function or task declared after the block ends it too: its body
+        # is no always block's, and its name, assigned there, no register
+        # (OI-226 (a)).
+        nxt = re.search(r"\balways(_ff|_comb|_latch)?\b|\bassign\b|\bendmodule\b|"
+                        r"\bfunction\b|\btask\b", rest)
         body = rest[:nxt.start()] if nxt else rest
         out.append((kind, clk, body, line_of(src, m.start()), m.start()))
     return out
@@ -2291,7 +2363,8 @@ def check_connections(src, rel, add, signers, fbdir):
                     # feeds only the next value or enable of the register its
                     # input reads, and nothing else.
                     if deficit == 1 and not cseq and \
-                            helper_self_loop(pbody, pt[i][2], pt[o][2], inst):
+                            helper_self_loop(pbody, pt[i][2], pt[o][2], inst, pports,
+                                             pt[o][0]):
                         continue
                     key = "%s.%s" % (inst, i)
                     if key in xdecl:
@@ -2333,8 +2406,10 @@ def verify_port_table(n, port, d, body, graph, signers, path):
     "assert", "control", "by", ...}}} (OA-492 (3)): by an architect; the
     reader reads the port; ahead is the port's stage less the reader's own;
     in the parent, the port is fed directly by instance <inst>'s output that
-    is its register <reg>; an assertion with that label in this module, that
-    the read never meets a write; and a bench control that breaks it."""
+    is its register <reg>, or with "writer": "<reg>" by the parent's own
+    register <reg>, at the port's stage (OI-226 (c)); an assertion with that
+    label in this module, that the read never meets a write; and a bench
+    control that breaks it."""
     if not signed(d.get("by"), signers):
         return "not an architect's (by %r; it needs %s)" % (d.get("by"), " and ".join(signers))
     reader = d.get("reader")
@@ -2348,9 +2423,11 @@ def verify_port_table(n, port, d, body, graph, signers, path):
         return "ahead is %r, but %s lies %d stage(s) past its reader's (%02d)" % (
             d.get("ahead"), port, sp[2] - at, at)
     w = str(d.get("writer", ""))
-    if "." not in w:
-        return "\"writer\" names no <instance>.<register>"
-    wi, wreg = w.split(".", 1)
+    if not re.fullmatch(r"(?:[a-z]\w*\.)?[a-z]\w*", w):
+        return ("\"writer\" names no <instance>.<register>, nor <register> of the "
+                "parent's own")
+    own = "." not in w
+    wi, wreg = (None, w) if own else w.split(".", 1)
     fbdir = os.path.dirname(path)
     # The parent: a module, in the tree or beside this file, instantiating n.
     cands = dict((k, v[1:]) for k, v in module_index().items())
@@ -2367,6 +2444,20 @@ def verify_port_table(n, port, d, body, graph, signers, path):
     for pn, pbody in parents:
         insts = instances(pbody, {}, dict((k, (None,) + v) for k, v in cands.items()), fbdir)
         rd = [v for v in insts.values() if v[0] == n]
+        if own:
+            # The parent's own register (OI-226 (c)): the port is its net
+            # alone, the words arriving as the register holds them, at the
+            # port's own stage.
+            if wreg not in dep_graph(pbody)[1]:
+                return "%s is not a register of %s" % (wreg, pn)
+            sw = stage_of(wreg)
+            if not sw or sw[2] != sp[2]:
+                return ("%s's register %s is not at %s's stage (%02d)"
+                        % (pn, wreg, port, sp[2]))
+            for _, _, _, conns in rd:
+                if conn_ids(conns.get(port, "")) != [wreg]:
+                    return "in %s, %s is not fed directly by its register %s" % (pn, port, wreg)
+            continue
         if wi not in insts:
             return "%s has no instance %s" % (pn, wi)
         wchild, wports, wbody, wconns = insts[wi]
@@ -2492,15 +2583,34 @@ def only_into(body, ports, i, regs, read=None):
     rr, outs = reach(i)
     return (not outs) and bool(rr) and rr <= good
 
-def helper_self_loop(pbody, inets, onets, inst):
+def helper_self_loop(pbody, inets, onets, inst, pports=None, ostage=None):
     """Whether the helper's input reads one parent register R and its
     output's nets feed, through the parent's combinational nets, R's next
     value or enable and nothing else: no other register, no output port, no
-    other instance."""
+    other instance (OA-488 (1)). The input may concatenate R with other
+    nets (OI-226 (b)): its combinational cone's sources are R and nets
+    tagged at or before the output's own stage (ostage), nothing later and
+    nothing untagged. An output whose nets nothing reads reaches nothing
+    (OI-219), so it passes too."""
     deps, flops = dep_graph(pbody)
-    if len(inets) != 1 or inets[0] not in flops:
-        return False
-    reg = inets[0]
+    if len(inets) == 1 and inets[0] in flops:
+        reg = inets[0]
+    else:
+        if ostage is None:
+            return False
+        loopv = loop_vars(pbody)
+        nets, regs = cone(deps, flops, inets)
+        srcs = set(regs) | {n for n in nets if not deps.get(n) and n not in loopv}
+        late = set()
+        for n in srcs:
+            st = stage_of(n)
+            if not st or st[1] == "r":
+                return False
+            if st[2] > ostage:
+                late.add(n)
+        if len(late) != 1 or not late <= flops:
+            return False
+        reg = late.pop()
     users = {}
     for n, ds in deps.items():
         for x in ds:
@@ -2517,7 +2627,9 @@ def helper_self_loop(pbody, inets, onets, inst):
                 sinks.add(u)
             else:
                 todo.append(u)
-    if sinks != {reg}:
+    if not sinks <= {reg}:
+        return False
+    if pports and any(pports.get(n) == "output" for n in seen):
         return False
     # Read anywhere else (another instance's port, an output port's
     # assignment outside an always): not a self-loop.

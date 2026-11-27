@@ -96,62 +96,6 @@
   },
   {
    "parent": "ooe_rename",
-   "instance": "u_cg",
-   "port": "op",
-   "net": null,
-   "net_stage": 4,
-   "port_stage": null,
-   "deficit": 1,
-   "kind": "combinational",
-   "outputs": [
-    "pair",
-    "sum"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
-   "instance": "u_cp",
-   "port": "op",
-   "net": null,
-   "net_stage": 4,
-   "port_stage": null,
-   "deficit": 1,
-   "kind": "combinational",
-   "outputs": [
-    "pair",
-    "sum"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
-   "instance": "u_fg",
-   "port": "op",
-   "net": null,
-   "net_stage": 4,
-   "port_stage": null,
-   "deficit": 1,
-   "kind": "combinational",
-   "outputs": [
-    "pair",
-    "sum"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
-   "instance": "u_fp",
-   "port": "op",
-   "net": null,
-   "net_stage": 4,
-   "port_stage": null,
-   "deficit": 1,
-   "kind": "combinational",
-   "outputs": [
-    "pair",
-    "sum"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
    "instance": "u_go",
    "port": "pool_en_cq01h",
    "net": null,
@@ -359,16 +303,29 @@
    ]
   },
   {
-   "parent": "ooe_sched",
-   "instance": "u_select",
-   "port": "gnt_cq03h",
+   "parent": "ooe_rename",
+   "instance": "u_ren1nr",
+   "port": "pn_gname_cq01h",
    "net": null,
    "net_stage": 4,
    "port_stage": null,
    "deficit": 1,
    "kind": "combinational",
    "outputs": [
-    "cand_cq03h"
+    "n_g"
+   ]
+  },
+  {
+   "parent": "ooe_rename",
+   "instance": "u_ren1nr",
+   "port": "pn_pname_cq01h",
+   "net": null,
+   "net_stage": 4,
+   "port_stage": null,
+   "deficit": 1,
+   "kind": "combinational",
+   "outputs": [
+    "n_p"
    ]
   },
   {
@@ -382,19 +339,6 @@
    "kind": "combinational",
    "outputs": [
     "grant_cq03h"
-   ]
-  },
-  {
-   "parent": "ooe_sched",
-   "instance": "u_select",
-   "port": "rhold_cq03h",
-   "net": null,
-   "net_stage": 4,
-   "port_stage": null,
-   "deficit": 1,
-   "kind": "combinational",
-   "outputs": [
-    "cand_cq03h"
    ]
   }
  ]
