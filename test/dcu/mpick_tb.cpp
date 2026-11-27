@@ -1,6 +1,7 @@
-//===-- mpick_tb.cpp - dcu_mpick bench: the retry grant and the MLC pick ----===//
+//===-- mpick_tb.cpp - dcu_fill's picks bench: the retry grant, the MLC pick -===//
 //
-// Drives dcu_mpick as the 8 banks and MLC do: each bank's dcu_bctl offers
+// Drives dcu_fill's cross-bank picks (g_mpick: dcu_mpick folded in, DI-67;
+// the fill buffers kept quiet, fill_tb's) as the 8 banks and MLC do: each bank's dcu_bctl offers
 // its oldest miss-wait waiter (a valid and a 10-bit stamp; a bank still
 // offers the cycle after its grant, as it learns of it a cycle late) and
 // holds its payload in flops; each bank's dcu_mshr offers its oldest unsent
@@ -22,7 +23,7 @@
 // (DI-65); --control credit gates on a count that ignores last cycle's send
 // (DI-34 update 2); each must fail.
 //===----------------------------------------------------------------------===//
-#include "Vdcu_mpick.h"
+#include "Vdcu_fill.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 #include "../../sim/generated/ccv_params.h"   // the req_id widths
@@ -68,7 +69,7 @@ template <typename T> void setInt(T &w, unsigned lsb, unsigned width, uint64_t v
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
-  std::unique_ptr<Vdcu_mpick> dut;
+  std::unique_ptr<Vdcu_fill> dut;
   std::unique_ptr<VerilatedVcdC> vcd;
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0;
@@ -77,7 +78,7 @@ struct Bench {
     ctx = std::make_unique<VerilatedContext>();
     ctx->commandArgs(g_argc, g_argv);
     if (vcd_path) ctx->traceEverOn(true);
-    dut = std::make_unique<Vdcu_mpick>(ctx.get());
+    dut = std::make_unique<Vdcu_fill>(ctx.get());
     if (vcd_path) {
       vcd = std::make_unique<VerilatedVcdC>();
       dut->trace(vcd.get(), 99);
@@ -103,6 +104,8 @@ struct Bench {
   void quiet() {
     dut->rov_cc02h = 0;
     dut->hv_cc05h = 0;
+    dut->fv_cc03h = 0;     // the fill buffers stay idle
+    dut->wdv_cc05h = 0;
     dut->mcr_cc04h = 0;
   }
   void reset() {
@@ -155,7 +158,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   uint64_t maxAge = 0;
 
   for (uint64_t c = 0; c < n; ++c) {
-    Vdcu_mpick &d = *b.dut;
+    Vdcu_fill &d = *b.dut;
     b.quiet();
     const bool on = scenario == "idle"     ? false
                     : scenario == "medium" ? c % 3 == 0

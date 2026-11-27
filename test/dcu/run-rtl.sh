@@ -19,7 +19,8 @@
 #            (dcu-miss-reorder) and early (a miss offered at its own D2, not
 #            a cycle on: DI-66), which must fail, and twolook (two live lookups to
 #            the bank, MIU's pass-wins-bank), which must fail mshr_one_lookup
-#   dcu_mpick: test/dcu/mpick_tb.cpp, the cross-bank picks (the retry grant
+#   dcu_fill_mpick: test/dcu/mpick_tb.cpp, dcu_fill's cross-bank picks
+#            (g_mpick, folded in from dcu_mpick: DI-67) (the retry grant
 #            and its D2 port, the MLC send, its credits and payload), and its
 #            controls retry (the lowest offering bank granted), age (the
 #            lowest bank's head sent), pass (last cycle's bank not passed
@@ -103,12 +104,12 @@ control dcu_mshr order
 control dcu_mshr early
 asserts twolook dcu_mshr mshr_one_lookup --control twolook
 for seed in 1 2 3; do
-  bench "dcu_mpick seed $seed" test/dcu/cg-build.sh dcu_mpick "$B/dcu_mpick" -- "$B/dcu_mpick/tb" --seed $seed
+  bench "dcu_fill_mpick seed $seed" test/dcu/cg-build.sh dcu_fill_mpick "$B/dcu_fill_mpick" -- "$B/dcu_fill_mpick/tb" --seed $seed
 done
-control dcu_mpick retry
-control dcu_mpick age
-control dcu_mpick pass
-control dcu_mpick credit
+control dcu_fill_mpick retry
+control dcu_fill_mpick age
+control dcu_fill_mpick pass
+control dcu_fill_mpick credit
 for seed in 1 2 3; do
   bench "dcu_fill seed $seed" test/dcu/cg-build.sh dcu_fill "$B/dcu_fill" -- "$B/dcu_fill/tb" --seed $seed
 done
