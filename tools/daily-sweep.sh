@@ -74,7 +74,9 @@ merge_one() {
   # sweep's merge brings nothing the tip lacks once its other parent is in
   # it), and an -s ours merge records the ancestry, so the next sweep finds
   # the branch merged. A pick's conflict in generated files takes ours; any
-  # other is left for the caller, as a merge's would be.
+  # other is left for the caller, as a merge's would be. A pick that brings
+  # nothing (already in the tip, or only generated files the tip's own
+  # regen supersedes) is skipped: an empty pick is not a conflict (11-27).
   git reset -q --hard "$head"
   say "resolve refused $rb ($(git merge-base --all HEAD "$rb" | wc -l) merge bases); picking its own commits"
   for c in $(git rev-list --reverse --no-merges --cherry-pick --right-only "HEAD...$rb"); do
@@ -82,6 +84,9 @@ merge_one() {
     [ -z "$(git diff --name-only --diff-filter=U | grep -Ev "$GENERATED")" ] || return 1
     git diff --name-only --diff-filter=U | xargs -r git checkout --ours --
     git diff --name-only --diff-filter=U | xargs -r git add --
+    if git diff --cached --quiet; then
+      git cherry-pick --skip >/dev/null 2>&1 || return 1; continue
+    fi
     GIT_EDITOR=true git cherry-pick --continue >/dev/null 2>&1 || return 1
   done
   git merge -q --no-ff --no-edit -s ours -m "$msg (its own commits picked; resolve refused)" "$rb"

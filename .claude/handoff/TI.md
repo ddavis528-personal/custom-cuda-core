@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-24. Keep this current at every task's end; it is what
+Updated 2026-11-27. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -31,14 +31,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 ## Daily sweep (scheduled task trig_01A8r3ENUjnLyTaNUcc23ZbF, 02:11 PT)
 Register section 4 from the bookmarks; then the repo half (daily-sweep.sh,
 detached; wait with gate-wait). Exit 3 = a real conflict to resolve.
-Since 7b0bbe2a (ti-oo, not yet landed) the sweep merges fewest merge bases
-first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
-`-s resolve`. Until it lands: a merge hung for minutes = kill the sweep,
-`git merge -s resolve` that branch by hand, rerun the sweep (11-20: OA's
-4-base branch hung 25 min; resolve took 0.15 s).
+The sweep merges fewest bases first, retries a merge past 300 s with
+`-s resolve`, and past 8 bases picks the branch's own commits then records an
+`-s ours` merge; an empty pick is skipped (be7c37b7). /home/user/ti-ret is
+gone: run the sweep from /home/user/ti-rp.
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-24: see the file. Last row TI-552. Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-592 (rev 594). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -51,45 +50,26 @@ Never run skeleton measurements beside a gate: on 11-23 a coremark run
 bg-run dies with its 30-min wrapper; a measurement runs `setsid nohup` with a
 background `while pgrep` wait.
 
-## State (2026-11-23)
-- Landed ba085cda (SCOPED PASS 28/28) on both branches: DI's slice 2
-  (a6b8a4eb) + DI-33 (a)(b) lines (04a0f58d); ti-pk (parked check masks by
-  ccv-sim width, control parked-full-width; pc_kept on ccv_ooe_rau_drained per
-  AR 406/408, RAU stub keeps/derives resume_pc, bins pc_kept_launch/restore,
-  control rau-pc-from-drained whitelist-only); ti-mi20 (stub MIU takes a UE
-  line's two answers, bin ue_second_answer, control ue-close-first
-  whitelist-only). TI-529 to OI, DI, MI.
-- 11-23 sweep landed b4930c18 (full clean gate; release d6bbd90e, tag
-  refused, local only). It skipped ccr-80102643-4n8bv4 and
-  ccr-9eb50716-lecnjf (they moved mid-merge): next sweep takes them.
-- Task 59 closed: transp4 restore hang gone (2,000-run scan); narrowadd R2
-  was TI's checker (fixed above); early-demote resume_pc 0 became pc_kept.
-- DI-23 answered (TI-522): localsp mru doubling is the stub MIU's MA-14
-  head-of-line block behind a pred-store RMW through the cacheless MLC stub.
-- Gate times: a scoped gate touching params now takes ~7 h (cg 3.4 h, ngd
-  3.7 h, mostly heavy-unit serialisation); plan pushes around it.
-- Disk: scratchpad priv/ and ~/.cache/ccache untouched: ask Daniel before
-  clearing. Worktrees ti-ecc72, ti-drop are landed and clean (ti-fold holds ba085cda):
-  their build/ dirs may go.
+## State (2026-11-27)
+- Landed be7c37b7 on both branches (SCOPED PASS): the sweep's empty-pick skip,
+  on the 11-27 sweep db54eeb6 (release 73edf5d5; tag refused, local only).
+  Before it c0883a36: MA-34 (B) + AR 417 EXB 8, gate-scope ALWAYS_READERS
+  (lint-rtl.py, check-1d.sh name rtl/rcu/ but run in s1d). MI-47's 8566e6ff in.
+- TI-591 (RI-64): miu_form OOM is MI's clang++ fix 104678de, on MI's
+  ccr-58815650-0ch1hh at 208e4c46, pushed after the 11-27 fetch. Task 90: when
+  a landed tip has it, drop miu_form from tools/heavy-units.json.
+- TI-592 (AR 422 (1)): colwalk-p1k control dropped. That kernel stalls at
+  latency >=300 and has a stale-operand CHECK (seq 131 C_FADD R12 0x5d80):
+  trace it to its owner (stub MIU/DCU or OOE) when no gate runs.
+- Disk: scratchpad priv/ and ~/.cache/ccache untouched: ask Daniel first.
 - Known: MIU-model rows on bank bounds are stub-MIU only (slotform,
-  coremark128). AR 405 leaves MA to state the mispredict path; a DCU
-  response field for it would be a new TI row.
+  coremark128).
 
-## In flight (11-24)
-- LANDED b780f324 on both branches (RESUMED SCOPED PASS 28/28): AR-410, testbench
-  20+-5 seeded, swap class vadd6, MLC_HIT_MAX 28, re-pins, MA-32, dcu-wb-refetch
-  unit-held (DI-49). TI-552 told DI (merge b9aeadc7), MI, MA. Cycles old (4e3dda64)
-  vs new table being measured (run-tabulate, worktrees ti-cyc-old/new): then a
-  row to AR (re-baseline, AR 411 (4)).
-- ti-tw (worktree /home/user/ti-tw, gate-scratch/TI-tw, on b780f324): OA-479 (b)
-  two-writer table lint (Daniel approved 11-24; TI-548), row-register tables
-  (DI-51, TI-549), a row's own RMW compare from its write enable (DI-53,
-  TI-550). OA accepted (OA-480). check-1d 45 lines. Gate-push next, after
-  the cycles measurement (one heavy job at a time). DI retries its fold-table
-  declaration on 8ac04d40; MA signs it.
-- Then: DI-38 re-pins on DI's b9aeadc7 tip (task 72); MI 29603c02 held-wait
-  re-pin when MI rings (task 80; MI-33/34, TI-551); OI-204 pc_kept at:11
-  lines (task 66); AR 417 (task 79); task 76 credit modules.
+## In flight
+- Nothing running. Next: task 90 after the next sweep; colwalk-p1k stall
+  trace; then the open work below, plus DI-38 (1) (task 72, needs DI's spec),
+  MI 29603c02 held-wait re-pin (task 80), AR 417 swap-class control (task 79),
+  task 76 credit modules.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
