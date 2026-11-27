@@ -1,0 +1,273 @@
+{
+  "_note": "OI drafts for OA to sign (OA 509). Not part of any gated tree: by/date are OA's to fill.",
+  "ooe_rename.feedback.json": {
+    "u_ren1.c_gk_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "p_v_cq03h",
+          "p_gkm_cq03h"
+        ],
+        "ahead": {
+          "p_v_cq03h": 2,
+          "p_gkm_cq03h": 2
+        }
+      },
+      "via": [
+        "u_rd.pw_v_cq01h>h_gk_cq01h",
+        "u_rd.pw_gkm_cq01h>h_gk_cq01h"
+      ],
+      "assert": [
+        "pw_seen"
+      ],
+      "control": [
+        "pw-drop"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "Rename 1's head read of the pending group (#35): a later group's lanes read the earlier group's pending-writer masks, registered at 03, two cycles on; no path from the reader's outputs closes back into the cone (OA 513 (2), OA 515). pw_seen checks every pending writer is seen; pw-drop drops the pending valid."
+    },
+    "u_ren1.c_pk_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "p_v_cq03h",
+          "p_pkm_cq03h"
+        ],
+        "ahead": {
+          "p_v_cq03h": 2,
+          "p_pkm_cq03h": 2
+        }
+      },
+      "via": [
+        "u_rd.pw_v_cq01h>h_pk_cq01h",
+        "u_rd.pw_pkm_cq01h>h_pk_cq01h"
+      ],
+      "assert": [
+        "pw_seen"
+      ],
+      "control": [
+        "pw-drop"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "Rename 1's head read of the pending group (#35): a later group's lanes read the earlier group's pending-writer masks, registered at 03, two cycles on; no path from the reader's outputs closes back into the cone (OA 513 (2), OA 515). pw_seen checks every pending writer is seen; pw-drop drops the pending valid."
+    },
+    "u_ren1nr.pn_gname_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "m_gname_cq04h"
+        ],
+        "ahead": {
+          "m_gname_cq04h": 3
+        }
+      },
+      "via": [],
+      "assert": [
+        "pn_bound"
+      ],
+      "control": [
+        "pn-late"
+      ],
+      "by": "(OA to sign)",
+      "date": "(OA)",
+      "why": "Rename 2's pending names (m_gname_cq04h), a register read back three cycles on through a port with no closing path (OA 514, OA 515). pn_bound (pw_seen's Rename 2 half) holds that a read with a pending writer finds Rename 2's register holding the group just ahead of its own, and that the port it names writes the class it reads; pn-late (Rename 2's register skips every other group) breaks it."
+    },
+    "u_ren1nr.pn_pname_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "m_pname_cq04h"
+        ],
+        "ahead": {
+          "m_pname_cq04h": 3
+        }
+      },
+      "via": [],
+      "assert": [
+        "pn_bound"
+      ],
+      "control": [
+        "pn-late"
+      ],
+      "by": "(OA to sign)",
+      "date": "(OA)",
+      "why": "Rename 2's pending names (m_pname_cq04h), a register read back three cycles on through a port with no closing path (OA 514, OA 515). pn_bound (pw_seen's Rename 2 half) holds that a read with a pending writer finds Rename 2's register holding the group just ahead of its own, and that the port it names writes the class it reads; pn-late (Rename 2's register skips every other group) breaks it."
+    }
+  },
+  "ooe_sched.feedback.json": {
+    "u_select.gnt_cq03h": {
+      "from": {
+        "cone": [
+          "gnt_cq04h"
+        ],
+        "ahead": {
+          "gnt_cq04h": 1
+        }
+      },
+      "loop": [
+        "u_select.grant_cq03h",
+        "gnt_cq04h"
+      ],
+      "assert": [
+        "no_regrant"
+      ],
+      "control": [
+        "regrant"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "select's mask of last cycle's grants (OA 509 (3a)): the grant register gnt_cq04h, read back at 03 a cycle on, keeps an entry granted then from being granted again before its issued bit lands. A missing mask regrants (no_regrant; control regrant)."
+    },
+    "u_select.hold_cq03h": {
+      "from": {
+        "cone": [
+          "gnt_cq04h",
+          "rtq_cq04h"
+        ],
+        "ahead": {
+          "gnt_cq04h": 1,
+          "rtq_cq04h": 1
+        }
+      },
+      "loop": [
+        "u_select.grant_cq03h",
+        "gnt_cq04h"
+      ],
+      "assert": [
+        "ret_holds"
+      ],
+      "control": [
+        "no-hold"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "the ret hold (OA rev 293, OA 509 (3a)): a ret granted last cycle (gnt_cq04h over rtq_cq04h) holds this cycle's branch and call grants. ret_holds (OA 510): no branch or call is granted the cycle after a ret's grant; control no-hold removes select's ret hold under CCV_CHECK_SCHED."
+    },
+    "u_select.rhold_cq03h": {
+      "from": {
+        "cone": [
+          "fcp_cq04h"
+        ],
+        "ahead": {
+          "fcp_cq04h": 1
+        }
+      },
+      "loop": [
+        "u_select.grant_cq03h",
+        "gnt_cq04h",
+        "fcp_cq04h"
+      ],
+      "assert": [
+        "idle_r"
+      ],
+      "control": [
+        "no-force"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "RA-17's idle-R force, closed through the grant register (OA 512, OI-230): u_select's grant at 03 is held in gnt_cq04h; R granted last cycle (gnt over rrq) extends the run rnx, and the force copies fcp_cq04h take it with the migration a cycle ahead; select reads fcp as rhold at 03 and holds R's footprints off. A force that comes a cycle late lets an idle R run past idle_r_k (idle_r; control no-force)."
+    }
+  },
+  "ooe_decrx_keep.feedback.json (tables; form per TI (c))": {
+    "sv_cq02h": {
+      "reader": "hit_cq01h",
+      "ahead": 1,
+      "writer": "sv_cq02h",
+      "assert": [
+        "keep_row_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "sw_cq02h": {
+      "reader": "hit_cq01h",
+      "ahead": 1,
+      "writer": "swi_cq02h",
+      "assert": [
+        "keep_row_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "se_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "sei_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "sn_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "sni_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "s2_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "s2i_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "wq_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "wq_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "wep_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "wep_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    }
+  }
+}
