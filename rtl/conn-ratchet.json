@@ -331,7 +331,33 @@
   {
    "parent": "ooe_sched",
    "instance": "u_select",
+   "port": "gnt_cq03h",
+   "net": null,
+   "net_stage": 4,
+   "port_stage": null,
+   "deficit": 1,
+   "kind": "combinational",
+   "outputs": [
+    "grant_cq03h"
+   ]
+  },
+  {
+   "parent": "ooe_sched",
+   "instance": "u_select",
    "port": "hold_cq03h",
+   "net": null,
+   "net_stage": 4,
+   "port_stage": null,
+   "deficit": 1,
+   "kind": "combinational",
+   "outputs": [
+    "grant_cq03h"
+   ]
+  },
+  {
+   "parent": "ooe_sched",
+   "instance": "u_select",
+   "port": "rhold_cq03h",
    "net": null,
    "net_stage": 4,
    "port_stage": null,

@@ -671,7 +671,11 @@ other deficit is fixed or declared. A child with no register of its own
 (an inner helper) is its parent's logic: its ports carry no stage and a
 path through it counts zero. A connection whose port or net carries no
 tag is a finding, except a block top's own boundary ports, which carry the
-schema's channel names. Out of scope, by name: children with a register
+schema's channel names. A child's own reach from input to output traces
+its register-free children, recursively, as its own logic, and stops at a
+child with any register (OI-227 (e): `ooe_select`'s gnt and rhold reach
+grant through `ooe_pick`; `reference_gp.sv` passes, `bad_conn9.sv`'s
+registered grandchild is refused). Out of scope, by name: children with a register
 under `rtl/common`, `rtl/ctech`, `rtl/macro` and `rtl/clk` (library
 modules); a register-free one there is a helper like any other (OA 485).
 And the generated design (`rtl/top`, `rtl/generated`), whose

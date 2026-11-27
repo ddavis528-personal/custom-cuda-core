@@ -2233,11 +2233,70 @@ def conn_ids(expr):
             if not UNSTAGED_RE.search(w) and w not in ("rst_n",)]
 
 
-def port_paths(body, ports):
+_mods = {"extra": {}, "dirs": set(), "inl": {}}
+
+
+def known_modules(fbdir=None, local=None):
+    """{module: (ports, body)}: the tree's (module_index), the lint fixtures'
+    beside fbdir, and a file's own, for port_paths to inline children by
+    name. Registered as check_connections reads each file."""
+    if local:
+        for k, v in local.items():
+            _mods["extra"].setdefault(k, v)
+    if fbdir and fbdir not in _mods["dirs"] and os.path.isdir(fbdir):
+        _mods["dirs"].add(fbdir)
+        for fn in sorted(os.listdir(fbdir)):
+            if fn.endswith(".sv"):
+                for k, v in module_headers(strip_comments(
+                        open(os.path.join(fbdir, fn)).read())).items():
+                    _mods["extra"].setdefault(k, v)
+    out = dict((k, v[1:]) for k, v in module_index().items())
+    out.update(_mods["extra"])
+    return out
+
+
+def register_free(name, mods, depth=0):
+    """Whether module name, and every child it instantiates, has no register
+    or latch: its parent's combinational logic (OA 485)."""
+    if name not in mods or depth > 16:
+        return False
+    body = mods[name][1]
+    if dep_graph(body)[1] or re.search(r"\balways_latch\b", body):
+        return False
+    return all(register_free(c, mods, depth + 1)
+               for c, _, _, _ in instances(body, mods, {}).values())
+
+
+def inline_deps(body, depth=0):
+    """dep_graph(body), with each register-free child (recursively) inlined
+    as the module's combinational logic: each output's net reads the nets
+    of the inputs it reaches (OI-227 (e), as verify_regloop does for a
+    parent, OA 485). A child with a register is not inlined: its reach
+    stops there."""
+    key = hash(body)
+    if key in _mods["inl"]:
+        return _mods["inl"][key]
+    deps, flops = dep_graph(body)
+    mods = known_modules()
+    if depth <= 16:
+        deps = {k: set(v) for k, v in deps.items()}
+        for iname, (child, cports, cbody, conns) in instances(body, mods, {}).items():
+            if not register_free(child, mods):
+                continue
+            for o, reach in port_paths(cbody, cports, depth + 1).items():
+                for on in conn_ids(conns.get(o, "")):
+                    for i in reach:
+                        deps.setdefault(on, set()).update(conn_ids(conns.get(i, "")))
+    _mods["inl"][key] = (deps, flops)
+    return deps, flops
+
+
+def port_paths(body, ports, depth=0):
     """({output: {input: comb}}): for each output, the inputs it depends on,
     through the module's nets and registers, and whether some path is
-    combinational (no register on it)."""
-    deps, flops = dep_graph(body)
+    combinational (no register on it). A register-free child is traced as
+    the module's own logic (OI-227 (e))."""
+    deps, flops = inline_deps(body, depth)
     ins = {p for p, d in ports.items() if d == "input"}
     out = {}
     for o, d in ports.items():
@@ -2264,6 +2323,7 @@ def check_connections(src, rel, add, signers, fbdir):
     """CCV-L23 across each instance connection of the file's modules."""
     local = module_headers(src)
     idx = module_index()
+    known_modules(fbdir, local)
     entries = {conn_key(e) for e in conn_ratchet()}
     for parent, (pports, pbody) in local.items():
         _conn["seen"].add(parent)

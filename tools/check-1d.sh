@@ -49,6 +49,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_conn6.sv >>"$TMP/bad.log" 2>&1
 CCV_LINT_FIXTURE_UNITS=reference_xc python3 tools/lint-rtl.py rtl/lint/bad_conn7.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn8.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_tport3.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn9.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -171,7 +172,8 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_ttp.sv rtl/lint/reference_ttr.sv rtl/lint/reference_ttw.sv \
          rtl/lint/reference_pttp.sv rtl/lint/reference_pttr.sv rtl/lint/reference_pttw.sv \
          rtl/lint/reference_kp.sv rtl/lint/reference_fnp.sv rtl/lint/reference_csp.sv \
-         rtl/lint/reference_csh.sv rtl/lint/reference_otpp.sv rtl/lint/reference_otpr.sv; do
+         rtl/lint/reference_csh.sv rtl/lint/reference_otpp.sv rtl/lint/reference_otpr.sv \
+         rtl/lint/reference_gp.sv rtl/lint/reference_gc.sv rtl/lint/reference_gg.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
@@ -185,7 +187,7 @@ for g in rtl/lint/reference_lkp.sv rtl/lint/reference_lh.sv; do
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (43 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (46 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -322,6 +324,10 @@ WANT
 # reference_csp.sv: a helper sum of a register with nets at the helper
 # output's stage, feeding only that register (OI-226 (b), ooe_rename's
 # u_fg), exempt; bad_conn8.sv's sum with a net past that stage is reported.
+# reference_gp.sv: a child's input reaching its output only through the
+# child's own register-free child, traced as the child's logic (OI-227
+# (e)), declared and verified; bad_conn9.sv's same shape with a register in
+# the grandchild is refused.
 # reference_pp.sv: a loop closed by two parent registers, declared hop by
 # hop (OI-207, OA-489), and a register-free helper in a same-stage self-loop,
 # exempt (OA-488 (1)); bad_conn2.sv's untraced hop and helper feeding a
@@ -365,6 +371,7 @@ a parent-register port table unsigned|reference_utpr.feedback.json: table rd_cy0
 a call's register argument left out|reference_fanp.feedback.json: cross-module loop u_c.v_cy01h is refused: register(s) fk_cy04h reach u_c.v_cy01h through the cone but are not listed
 a register a call's body reads left out|reference_fbnp.feedback.json: cross-module loop u_c.v_cy01h is refused: register(s) gk_cy04h reach u_c.v_cy01h through the cone but are not listed
 a helper sum with a net past its output's stage|reference_lcsp's u_h (reference_csh): output y (its stage none, the parent's 03) depends on input a (its stage none, fed at 04) combinationally
+a reach through a grandchild with a register|reference_rgp.feedback.json: cross-module loop u_c.a_cy01h is refused: u_c's input a_cy01h does not reach its output y_cy02h
 WANT
 python3 tools/lint-rtl.py --conn-ratchet=rtl/lint/bad_conn_ratchet.json \
   --conn-baseline=rtl/lint/bad_conn_baseline.json rtl/lint/bad_conn.sv >"$TMP/cratchet.log" 2>&1
