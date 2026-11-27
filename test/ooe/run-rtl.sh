@@ -778,7 +778,7 @@ for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-
   dir=build/ooe-rtl/$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        --trace -DCCV_CHECK_RENAME -DCCV_CHECK_RAT ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
+        --trace -DCCV_CHECK_RENAME -DCCV_CHECK_RAT -DCCV_CHECK_GO ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
         -CFLAGS "-std=c++17 -O2 ${rename_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" \
