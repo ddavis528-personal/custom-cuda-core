@@ -46,6 +46,16 @@ public:
     ids_.borrow = envOn("CCV_MIU_IDS_BORROW");
   }
   const char *kind() const override { return "miu"; }
+  ~MiuModel() override {
+    if (!pbins_) return;
+    std::fprintf(stderr, "MIUBINS");
+    for (const char *n : {"credit_hold_other_bank", "dcu_id_quarter_empty", "dcu_id_drop_held",
+                          "l0_lookup", "l0_miss"}) {
+      const auto it = pbin_.find(n);
+      std::fprintf(stderr, " %s=%llu", n, (unsigned long long)(it == pbin_.end() ? 0 : it->second));
+    }
+    std::fprintf(stderr, "\n");
+  }
 
 private:
   /// discarded: a bulk discard covered it before its address came, so the
@@ -310,8 +320,8 @@ private:
   /// A take that slot s cannot make: MA's two bins (MI-28).
   void idStall(unsigned s) {
     if (!ids_.quarterEmpty(s)) return;
-    if (ids_.anyFree()) k_.hit("dcu_id_quarter_empty");
-    if (ids_.dropHeld(s)) k_.hit("dcu_id_drop_held");
+    if (ids_.anyFree()) pbin("dcu_id_quarter_empty");
+    if (ids_.dropHeld(s)) pbin("dcu_id_drop_held");
   }
   /// The job and line of each request to DCU, by req_id.
   std::map<unsigned, std::pair<uint64_t, uint64_t>> outstanding_;
@@ -1647,9 +1657,9 @@ private:
         slot_bits &= slot_bits - 1;
         const uint32_t grp = uint32_t((uint64_t(1) << per) - 1) << (g * per);
         if (!(j.active & grp)) continue;
-        k_.hit("l0_lookup");
+        pbin("l0_lookup");
         if (!l0_[slot].lookup(page)) {
-          k_.hit("l0_miss");
+          pbin("l0_miss");
           l0_[slot].fill(page);
           if (!why) why = "drop_l0";
         }
@@ -2183,7 +2193,7 @@ private:
         // leader's own gate (and everything else) sufficient.
         if (gate_all_ && !older_held_lines.count(fl) && !older_held_banks.count(fb) &&
             leaderGate(fb) && bankCan(fb, false))
-          k_.hit("credit_hold_other_bank");
+          pbin("credit_hold_other_bank");
         loseFirstPass(j, "l1_first_held");
         continue;
       }
@@ -2502,6 +2512,15 @@ private:
   }
   const bool gate_all_ = envOn("CCV_MIU_GATE_ALL");
   const bool lead_pos_ = envOn("CCV_MIU_LEAD_POS");
+  /// Pricing bins outside the kernel's COVER list (model-only): counted
+  /// here as well, and printed as one MIUBINS line at the end of the run
+  /// under CCV_MIU_PBINS=1.
+  std::map<std::string, uint64_t> pbin_;
+  void pbin(const char *n) {
+    k_.hit(n);
+    ++pbin_[n];
+  }
+  const bool pbins_ = envOn("CCV_MIU_PBINS");
   /// MI-30 pricing aid (model-only, default off): CCV_MIU_L0=n gives each
   /// lookup slot an n-entry LRU L0 TLB in front of the leaders (eligibility).
   std::vector<miu::Tlb> l0_ = [] {
