@@ -73,7 +73,11 @@ merge() {
   done < <(printf '%s\n' "$out" | tail -n +2)
   if [ -n "$unsettled" ]; then printf '%s' "$unsettled"; return 1; fi
   tree=$(GIT_INDEX_FILE=$idx git write-tree) || return 2
-  new=$(git commit-tree "$tree" -p HEAD -p "$theirs" -m "$msg") || return 2
+  # commit-tree ignores commit.gpgsign: sign as `git commit` would (AR 430),
+  # or GitHub shows the sweep's merge Unverified.
+  local sign=()
+  [ "$(git config --bool commit.gpgsign 2>/dev/null)" = true ] && sign=(-S)
+  new=$(git commit-tree "${sign[@]}" "$tree" -p HEAD -p "$theirs" -m "$msg") || return 2
   git merge -q --ff-only "$new" >/dev/null || return 2
 }
 
@@ -82,7 +86,7 @@ selftest() {
   ok()  { if eval "$2"; then echo "  ok: $1"; else echo "  FAIL: $1"; fails=$((fails+1)); fi; }
   # Each commit a second apart, so "newest base" is defined for the
   # single-base comparison below.
-  ( cd "$d" && git init -q -b main && git config user.email t@t && git config user.name t
+  ( cd "$d" && git init -q -b main && git config user.email t@t && git config user.name t && git config commit.gpgsign false
     n=0; tick() { n=$((n+1)); export GIT_AUTHOR_DATE="@$((1700000000+n)) +0000" GIT_COMMITTER_DATE="@$((1700000000+n)) +0000"; }
     git() { case "$1" in commit|merge) tick ;; esac; command git "$@"; }
     mkdir -p rtl/top
@@ -116,6 +120,17 @@ selftest() {
   ok "generated file keeps ours" '[ "$(cat rtl/top/g)" = g-x ]'
   ok "clean one-sided change taken" '[ "$(cat c)" = c-y ]'
   ok "two parents" '[ "$(git rev-list --parents -1 HEAD | wc -w)" = 3 ]'
+  ok "unsigned when commit.gpgsign is off" '! git cat-file -p HEAD | grep -q "^gpgsig "'
+  # Signed when commit.gpgsign is on (AR 430), through a stand-in signer:
+  # the merge carries a gpgsig header.
+  printf '#!/bin/sh\ncat >/dev/null\necho "[GNUPG:] SIG_CREATED D 1 8 00 0 X" >&2\nprintf -- "-----BEGIN PGP SIGNATURE-----\\nselftest\\n-----END PGP SIGNATURE-----\\n"\n' >"$d/.signer"
+  chmod +x "$d/.signer"
+  git -c advice.detachedHead=false checkout -q --detach HEAD~1
+  git config gpg.format openpgp; git config gpg.program "$d/.signer"; git config user.signingkey X
+  git config commit.gpgsign true
+  "$me" y "m" >/dev/null 2>&1; st=$?
+  ok "signed when commit.gpgsign is on" '[ $st = 0 ] && git cat-file -p HEAD | grep -q "^gpgsig "'
+  git config commit.gpgsign false
   # Negative control: c changed on both sides with neither in the other's
   # history; nothing may change and c is named.
   git checkout -q x-bad; local pre; pre=$(git rev-parse HEAD)
