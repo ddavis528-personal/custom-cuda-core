@@ -25,6 +25,8 @@
 // allocating its own entry (dcu-mshr-nomerge), --control order a new miss
 // passing a waiting one (dcu-miss-reorder), and --control straight a miss
 // offered straight while an older entry is unsent (DI-64); each must fail.
+// --control twolook sends two live lookups to the bank in one cycle (MIU's
+// pass-wins-bank, DI-65): assertion mshr_one_lookup must fail.
 //===----------------------------------------------------------------------===//
 #include "Vdcu_mshr.h"
 #include "verilated.h"
@@ -384,6 +386,9 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
           if (!fl.empty()) l.q.pa = fl[g.below(unsigned(fl.size()))];
         }
         l.mine = true;
+      } else if (ctl == "twolook" && mineSlot >= 0 && c > 100) {
+        l.q = g.req();   // a second live lookup to this bank (MIU's pass-wins-bank)
+        l.mine = true;
       } else if (rnd && g.below(8) == 0) {
         l.q = g.req();
         l.mine = true;
@@ -619,7 +624,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i) {
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "nomerge" && ctl != "order" && ctl != "straight") {
+      if (ctl != "nomerge" && ctl != "order" && ctl != "straight" && ctl != "twolook") {
         std::fprintf(stderr, "mshr: unknown control %s\n", ctl.c_str());
         return 2;
       }

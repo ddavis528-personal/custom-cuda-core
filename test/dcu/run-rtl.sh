@@ -17,7 +17,8 @@
 #            entry read, other banks' fills and frees), built at banks 0 and
 #            5 (MA-34), and its controls nomerge (dcu-mshr-nomerge), order
 #            (dcu-miss-reorder) and straight (a miss sent straight past an
-#            older one), which must fail
+#            older one), which must fail, and twolook (two live lookups to
+#            the bank, MIU's pass-wins-bank), which must fail mshr_one_lookup
 #   dcu_mpick: test/dcu/mpick_tb.cpp, the cross-bank picks (the retry grant
 #            and its D2 port, the MLC send, its credits and payload), and its
 #            controls retry (the lowest offering bank granted), age (the
@@ -76,9 +77,9 @@ asserts() {   # name, unit, assertion, bench options...
   if test/dcu/cg-build.sh "$u" "$B/$u" >"$B/$u.build.log" 2>&1 &&
      ! "$B/$u/tb" "$@" >"$B/$u.$n.log" 2>&1 &&
      grep -q "$a failed" "$B/$u.$n.log"; then
-    say "dcu_bctl control $n" "caught"
+    say "$u control $n" "caught"
   else
-    say "dcu_bctl control $n" "NOT CAUGHT ($B/$u.$n.log)"; fail=1
+    say "$u control $n" "NOT CAUGHT ($B/$u.$n.log)"; fail=1
   fi
 }
 # The reservation held through W (DI-43): released at the grant instead, two
@@ -100,6 +101,7 @@ done
 control dcu_mshr nomerge
 control dcu_mshr order
 control dcu_mshr straight
+asserts twolook dcu_mshr mshr_one_lookup --control twolook
 for seed in 1 2 3; do
   bench "dcu_mpick seed $seed" test/dcu/cg-build.sh dcu_mpick "$B/dcu_mpick" -- "$B/dcu_mpick/tb" --seed $seed
 done
