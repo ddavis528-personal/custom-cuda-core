@@ -32,12 +32,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 Register section 4 from the bookmarks; then the repo half (daily-sweep.sh,
 detached; wait with gate-wait). Exit 3 = a real conflict to resolve.
 The sweep merges fewest bases first; a merge past 300 s falls back to
-tools/sweep-merge.sh (AR 425: newest single base, conflicts settled only by
+tools/sweep-merge.sh (AR 425: virtual base (RI-65), conflicts settled only by
 exact-blob history, else exit 3 naming the files). /home/user/ti-ret is
 gone: run the sweep from /home/user/ti-rp.
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-595 (rev 597). Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-598 (rev 600). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 

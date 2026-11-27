@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# One branch merged on a single merge base, its conflicts settled only by
-# history (AR 425, TI-595): the sweep's merge for a branch whose criss-cross
+# One branch merged over one merge base (a virtual one when there are
+# several), its conflicts settled only by history (AR 425, RI-65, TI-599):
+# the sweep's merge for a branch whose criss-cross
 # history makes git's own merge too slow (11-27: ten merge bases, recursive
 # ran 5.5 h on one branch; resolve refuses past 8). Every agent's sweep runs
 # this one procedure (tools/daily-sweep.sh calls it).
@@ -8,26 +9,46 @@
 #   tools/sweep-merge.sh <theirs> <message>   merge into HEAD; exit 0
 #   tools/sweep-merge.sh --selftest           its cases and controls
 #
-# (1) The base is the newest of `git merge-base --all HEAD theirs`, by commit
-#     time. (2) `git merge-tree --write-tree` merges on it. (3) Each
+# (1) The base is the one merge base, or with several a virtual base: the
+#     bases merged flat over their octopus base (RI-65). (2) `git
+#     merge-tree --write-tree` merges on it. (3) Each
 #     conflicted file is settled by its history alone: theirs where HEAD's
 #     exact blob appears in theirs' history of that file (theirs grew from
 #     ours), ours where theirs' blob appears in ours'; a generated file takes
 #     ours (regen rewrites it). Anything else is unsettled: nothing changes,
 #     the files are printed one per line, exit 1. (4) A merge commit with
 #     parents HEAD and theirs; HEAD moves to it (the tree must be clean).
-# One base's cost: a change one side made and later reverted can come back
-# from the other; the full gate after the sweep is there to catch it.
+# The virtual base holds every base's changes, so a change one side made
+# and later reverted does not come back from the other (a single newest
+# base's cost, 450d4814's first form).
 set -uo pipefail
 GENERATED=${CCV_GENERATED_RE:-'^(sim/generated/|rtl/generated/|rtl/top/|docs/payload-spec\.md$|docs/trust-report\.md$|docs/walkthrough\.md$)'}
 
 # Every blob the file has had in rev's history (--full-history: across merges).
 blobs_of() { git log --raw --no-abbrev --format= --full-history "$1" -- "$2" | awk '{print $3; print $4}'; }
 
+# The merge base: the one base, or with several the virtual base V (RI-65):
+# the bases merged flat, each onto V over their octopus base, every step a
+# tree wrapped as a commit (a conflict's markers stay in V, as git's own
+# recursive merge leaves them). Prints V's commit.
+vbase() {
+  local bases n v b ob t
+  bases=$(git merge-base --all "$1" "$2"); n=$(printf '%s\n' "$bases" | grep -c .)
+  [ "$n" -le 1 ] && { printf '%s\n' "$bases"; return 0; }
+  # shellcheck disable=SC2086
+  ob=$(git merge-base --octopus $bases) || return 1
+  v=$(printf '%s\n' "$bases" | head -1)
+  for b in $(printf '%s\n' "$bases" | tail -n +2); do
+    t=$(git merge-tree --write-tree --no-messages --merge-base="$ob" "$v" "$b" | head -1)
+    [ -n "$t" ] || return 1
+    v=$(git commit-tree "$t" -p "$v" -p "$b" -m "sweep-merge virtual base") || return 1
+  done
+  printf '%s\n' "$v"
+}
+
 merge() {
   local theirs=$1 msg=$2 base out tree f o t idx new unsettled=""
-  base=$(git merge-base --all HEAD "$theirs" | while read -r c; do
-    echo "$(git log -1 --format=%ct "$c") $c"; done | sort -rn | head -1 | cut -d' ' -f2)
+  base=$(vbase HEAD "$theirs") || return 2
   [ -n "$base" ] || { echo "sweep-merge: no merge base with $theirs" >&2; return 2; }
   out=$(git merge-tree --write-tree --name-only --no-messages --merge-base="$base" HEAD "$theirs")
   tree=$(printf '%s\n' "$out" | head -1)
@@ -59,31 +80,39 @@ merge() {
 selftest() {
   local d fails=0 me; me=$(readlink -f "$0"); d=$(mktemp -d); trap 'rm -rf "$d"' RETURN
   ok()  { if eval "$2"; then echo "  ok: $1"; else echo "  FAIL: $1"; fails=$((fails+1)); fi; }
+  # Each commit a second apart, so "newest base" is defined for the
+  # single-base comparison below.
   ( cd "$d" && git init -q -b main && git config user.email t@t && git config user.name t
+    n=0; tick() { n=$((n+1)); export GIT_AUTHOR_DATE="@$((1700000000+n)) +0000" GIT_COMMITTER_DATE="@$((1700000000+n)) +0000"; }
+    git() { case "$1" in commit|merge) tick ;; esac; command git "$@"; }
     mkdir -p rtl/top
-    printf 'a1\n' >a; printf 'b1\n' >b; printf 'g1\n' >rtl/top/g; printf 'c1\n' >c
+    for f in a b c e r; do printf '%s1\n' $f >$f; done; printf 'g1\n' >rtl/top/g
     git add . && git commit -qm base
     # Criss-cross: x and y each merge the other's first change, giving two bases.
-    git checkout -qb x; printf 'a1\nx\n' >a; git commit -qam x1
+    git checkout -qb x; printf 'a1\nx\n' >a; printf 'r1\nx\n' >r; git commit -qam x1
     git checkout -q main; git checkout -qb y; printf 'b1\ny\n' >b; git commit -qam y1
     git checkout -q x; git merge -q --no-edit y; git checkout -q y; git merge -q --no-edit x~1
-    # Then: y grows a from x's text (a's blob on x is in y's history),
-    # both sides change a generated file, and c differs only on y.
-    git checkout -q x; printf 'g-x\n' >rtl/top/g; git commit -qam x2
-    git checkout -q y; printf 'a1\nx\ny2\n' >a; printf 'g-y\n' >rtl/top/g; printf 'c-y\n' >c; git commit -qam y2
-    git checkout -q x; printf 'a1\nx\n' >a; git commit -qam x-noop --allow-empty
-    git branch -q x-ok
+    # Then x reverts r and changes e; y copies x's e (a cherry-pick) and
+    # grows it; both change a generated file; c differs only on y.
+    git checkout -q x; printf 'g-x\n' >rtl/top/g; printf 'r1\n' >r; printf 'e1\nx\n' >e; git commit -qam x2
+    git checkout -q y; printf 'g-y\n' >rtl/top/g; printf 'c-y\n' >c; printf 'e1\nx\n' >e; git commit -qam y2
+    printf 'e1\nx\ny3\n' >e; git commit -qam y3
+    git checkout -q x; git branch -q x-ok
     # A true conflict: both sides change c's one line differently.
     git checkout -qb x-bad; printf 'c-x\n' >c; git commit -qam x-bad
     git checkout -q x-ok ) >/dev/null 2>&1
   cd "$d" || return 1
   ok "two merge bases" '[ "$(git merge-base --all x-ok y | wc -l)" -ge 2 ]'
-  local nb; nb=$(for c in $(git merge-base --all x-ok y); do echo "$(git log -1 --format=%ct "$c") $c"; done | sort -rn | head -1 | cut -d" " -f2)
-  ok "a and the generated file conflict on one base" \
-    '[ "$(git merge-tree --write-tree --name-only --no-messages --merge-base=$nb x-ok y | tail -n +2 | sort | tr "\n" " ")" = "a rtl/top/g " ]'
+  local nb vb; nb=$(for c in $(git merge-base --all x-ok y); do echo "$(git log -1 --format=%ct "$c") $c"; done | sort -rn | head -1 | cut -d" " -f2)
+  vb=$(vbase x-ok y)
+  ok "virtual base: e and the generated file conflict" \
+    '[ "$(git merge-tree --write-tree --name-only --no-messages --merge-base=$vb x-ok y | tail -n +2 | sort | tr "\n" " ")" = "e rtl/top/g " ]'
+  ok "control: the newest base alone brings x's reverted r back" \
+    '[ "$(git cat-file -p "$(git merge-tree --write-tree --no-messages --merge-base=$nb x-ok y | head -1):r")" = "$(printf "r1\nx")" ]'
   git checkout -q x-ok; "$me" y "m" >/dev/null 2>&1; local st=$?
   ok "settled by history: exit 0" '[ $st = 0 ]'
-  ok "theirs where ours is in their history" '[ "$(cat a)" = "$(printf "a1\nx\ny2")" ]'
+  ok "theirs where ours is in their history" '[ "$(cat e)" = "$(printf "e1\nx\ny3")" ]'
+  ok "the revert stays reverted" '[ "$(cat r)" = r1 ]'
   ok "generated file keeps ours" '[ "$(cat rtl/top/g)" = g-x ]'
   ok "clean one-sided change taken" '[ "$(cat c)" = c-y ]'
   ok "two parents" '[ "$(git rev-list --parents -1 HEAD | wc -w)" = 3 ]'

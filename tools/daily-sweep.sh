@@ -54,8 +54,8 @@ order=$(for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/or
   echo "$(git merge-base --all HEAD "$rb" 2>/dev/null | wc -l) $rb"
 done | sort -k1,1n -k2,2 | awk '{print $2}')
 # One merge, at most CCV_SWEEP_MERGE_TIMEOUT seconds with the default
-# strategy; past it, tools/sweep-merge.sh: one merge base, conflicts settled
-# by history only (AR 425, TI-595; 11-27's ten-base branch in 10 s, where
+# strategy; past it, tools/sweep-merge.sh: one (virtual) merge base, conflicts settled
+# by history only (AR 425, RI-65, TI-599; 11-27's ten-base branch in 10 s, where
 # recursive ran hours and resolve refused). A file it cannot settle is left
 # in UNSETTLED for the caller, HEAD at the tip. The tree was clean before it
 # (clean_tree), so a timed-out attempt is discarded with a hard reset.
