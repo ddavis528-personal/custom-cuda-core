@@ -99,7 +99,12 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    - MI-30 (MI rev 55, MA rung): A2 measured with scratch prototype scratchpad/a2p/{a2p,a2q,a2m,tlb}.sv
      (meas.py): bare TLB 16.5 (vs 12); (i) 33.2, third option 33.0, (ii) 26.5; split at match vector:
      (i) 26.5 (lo fanout), (ii) 21.7. Proposed (i) + split + lo copies. miu_tlb/miu_a2 wait on MA's ruling.
-     TODO: add cm128 base/gate/borrow/dropfree to MI-30 (edit the row, no new notice) when price28b ends.
+   - MA rev 198: split NOT adopted (adds L1-hit cycle); measure L0 TLB 4/8 per slot. Every-bank gate, id pool,
+     disp copies (1 per 4 lanes) ADOPTED. MI-31 (MI rev 56, MA rung): L0x4 (ii) 23.7 fits, (i) 30.1; L0x8
+     (ii) 25.9, (i) 32.1 (scratchpad/a2p/a2l.sv). Model knobs CCV_MIU_L0=n, CCV_MIU_PBINS=1 (MIUBINS line:
+     bins outside TI's kCoverBins). Pricing: scratchpad/price31.sh (detached), table:
+     python3 scratchpad/tab31.py scratchpad/price31. TODO when cm128 (base gate l0x4 l0x8 borrow dropfree)
+     is in: edit MI-30 and MI-31 cells with it (no new notice). miu_tlb/miu_a2 wait on MA's ruling.
    - Push: tools/gate-push.sh after pricing ends (the gate needs the memory).
    - TI re:MI-29 (TI rev 546): cm128 watchdog at CCV_TB_LATENCY=1000 was under BOTH models; reproduce
      after pricing (CCV_MIU_IMPL=model CCV_DCU_IMPL=model, then MIU model alone), find whose, row TI+DI.
