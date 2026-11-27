@@ -173,9 +173,10 @@ inline bool lineClean(const Line &l, const Bits &r, uint32_t lsb) {
 }
 
 // ---- The way predictor's fold (MA-30, AR 405 (3)) -------------------------------
-// wayfold.h's fold of PA[47:16], k = CCV_DCU_WAYPRED_BITS (the environment's
-// overrides it, the same on both sides); 0 when off. The tag starts above the
-// set index at its built size.
+// wayfold.h's fold of the tag, PA[47:7+s], k = CCV_DCU_WAYPRED_BITS and
+// s = log2 CCV_DCU_SETS (the environment's override each, the same on both
+// sides, as the DCU stub's and model's sets); 0 when off. The page's part,
+// PA[47:16], starts above the set index at its built size (MA-33 (3)).
 static_assert(kWayFoldLo == 7 + ccv::prov::kWDcuSet, "the fold's tag is above the set index");
 static_assert(kWayFoldLo + kWayFoldW == ccv::prov::kWPa, "the fold's tag ends at the PA's top");
 inline unsigned wayPredBits() {
@@ -185,7 +186,18 @@ inline unsigned wayPredBits() {
   }();
   return k;
 }
-inline unsigned paFold(uint64_t pa) { return wayFold(pa, wayPredBits()); }
+/// log2 of the L1's sets: CCV_DCU_SETS, or the environment's, read as the
+/// DCU stub's setsOf() and the model's config read it.
+inline unsigned dcuSetBits() {
+  static const unsigned b = [] {
+    const char *v = std::getenv("CCV_DCU_SETS");
+    unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : unsigned(ccv::prov::kDcuSets);
+    if (!(n >= 1 && n <= 65536 && !(n & (n - 1)))) n = unsigned(ccv::prov::kDcuSets);
+    return wayFoldSetBits(n);
+  }();
+  return b;
+}
+inline unsigned paFold(uint64_t pa) { return wayFold(pa, wayPredBits(), dcuSetBits()); }
 
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------
 //

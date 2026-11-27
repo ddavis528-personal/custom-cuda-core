@@ -22,7 +22,9 @@
 //
 // The L0 (miu_tlb's flops, 6 entries per lookup slot): hit = any valid
 // entry whose VPN matches; the PPN, the PFN's fold (pa_fold, MA-30) and the
-// perms by an AND-OR on the match. A miss flops ms and the VPN for
+// perms by an AND-OR on the match. Below 512 sets the tag reaches into the
+// page offset, PA[15:7+log2 sets], and pa_fold XORs that field's fold in
+// after the AND-OR (MA-33 (3)); at 512 sets the field is empty. A miss flops ms and the VPN for
 // miu_tlb's refill from the 32-entry TLB in A3 (MA rev 199): the L0's
 // refill loop, read here at A2 from flops miu_tlb writes later.
 //
@@ -61,10 +63,14 @@ module miu_a2 #(
   parameter  int N0 = 6,                                      // L0 entries a slot (MA rev 206)
   parameter  int FW = ccv_prov_pkg::CCV_W_PA_FOLD,            // pa_fold, 4
   parameter  int PM = 1,                                      // perms (slice 2's PTE)
+  parameter  int DS = ccv_prov_pkg::CCV_DCU_SETS,             // L1 sets, 512 (MA-33 (3))
   localparam int NQ = 4,                                      // lane quarters (octets)
   localparam int VW = 50,                                     // miu_agu8's exact sum
   localparam int SW = 9,                                      // lead_set_index
-  localparam int BW = $clog2(ccv_params_pkg::CCV_DCU_BANKS)   // the bank: lsi's low bits
+  localparam int BW = $clog2(ccv_params_pkg::CCV_DCU_BANKS),  // the bank: lsi's low bits
+  // The tag's low PA bit, 7 + log2 sets: the page offset holds tag bits
+  // PA[15:TL] below 512 sets, none at 512 (MA-33 (3)).
+  localparam int TL = $clog2(ccv_prov_pkg::CCV_P_LINE_BYTES) + $clog2(DS)
 ) (
   input  logic                miu_core_clk,
   input  logic                rst_n,
@@ -182,6 +188,16 @@ module miu_a2 #(
       end
     end
 
+  // The fold of the page offset's tag bits, PA[15:TL] (MA-33 (3)): bit b
+  // lands on fold bit (b - TL) mod FW, as ccv_common_wayfold folds a field
+  // (sim/skel/wayfold.h's wayFoldLow). Empty at 512 sets, where the page's
+  // fold from the L0 is the whole tag's and pa_fold takes no logic here.
+  function automatic logic [FW-1:0] lofold(input logic [15:0] off);
+    lofold = '0;
+    if (ccv_prov_pkg::CCV_DCU_WAYPRED_BITS != 0)
+      for (int b = TL; b < 16; b++) lofold[(b - TL) % FW] = lofold[(b - TL) % FW] ^ off[b];
+  endfunction
+
   // Lookup slot k's possible leaders: (0, k), (s < k, 2), (k, 0).
   function automatic logic can(input int k, input int s, input int q);
     can = (s == 0 && q == k) || (s < k && q == 2) || (s == k && q == 0);
@@ -238,7 +254,7 @@ module miu_a2 #(
       for (int j = 0; j < k; j++)
         bl = bl | (rv_cm06h[j] && lsi_cm06h[j*SW +: BW] == lsi_cm06h[k*SW +: BW]);
       pa_d_cm06h[k*48 +: 48]  = {ppn, off};
-      pf_d_cm06h[k*FW +: FW]  = fo;
+      pf_d_cm06h[k*FW +: FW]  = fo ^ lofold(off);
       pm_d_cm06h[k*PM +: PM]  = pg;
       ms_d_cm06h[k]           = rv_cm06h[k] && la_cm06h[k] && !hit;
       vpn_d_cm06h[k*32 +: 32] = vpn;

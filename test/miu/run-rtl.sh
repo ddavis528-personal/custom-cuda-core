@@ -26,7 +26,9 @@
 #     not the fixed leader),
 #   miu_a2: test/miu/a2_tb.cpp, A2's lookup, PA and drop, controls carry,
 #     bank, addr, line, split, fone, win (an ordinary lane in the run's
-#     windows), iblk (an interleaved lane off W's block) and align,
+#     windows), iblk (an interleaved lane off W's block) and align; at 64
+#     sets (miu_a2_s64, MA-33 (3)) control lofold (pa_fold without the
+#     page offset's tag bits),
 #   miu_tlb: test/miu/tlb_tb.cpp, each slot's L0 and the 32-entry TLB's
 #     refill (MA revs 199, 206-208), controls early (the L0 written a cycle
 #     early), norr (the grant to the lowest pending slot), tight (the
@@ -123,5 +125,7 @@ control miu_a2 split
 control miu_a2 fone
 control miu_a2 win
 control miu_a2 iblk
+bench miu_a2_s64 test/miu/cg-build.sh miu_a2_s64 "$B/miu_a2_s64" -- "$B/miu_a2_s64/tb"
+control miu_a2_s64 lofold
 control miu_a2 align
 exit $fail

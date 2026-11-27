@@ -4,6 +4,16 @@ Session `session_01QPk2jyUbWA7fW9YpUwqdxk`, started 2026-11-13. Start doc:
 `docs/miu-arch.md` (AR's handoff). Branch `claude/miu-dcu-microarch-spec-664pgr`
 in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
+## Now (2026-11-27 late)
+
+- MA-35 / MA-33 (3) DONE at Daniel's direction: fold = fold(PA[47:16]) ^ fold(PA[15:7+log2 sets]). Commit f4952819
+  (unpushed until gate; touches tools/ -> full gate). DCU tab rev 149, register MA rev 223. After push: notify TI, MI, DI
+  (owners of the edited files); TI also fixes CCV_DCU_WAYPRED_BITS doc. Model runs at 64/128/512 sets in
+  scratchpad/wf/runs (missrun, plog clean; cm128 new vs old binary pending) -> response row with figures.
+- In RTL only MIU folds (DCU stores MIU's pa_fold); ccv_common_wayfold has no design instance yet (walker not written).
+- RH (OA-504) asked for gtr4/gtw* kernels: sent inline (they live only in scratchpad/ar412/synth); told RH MA-31 had no
+  B/cycle counter (lines x 128 / cycles is the equivalent), env, and the uncommitted p1-knobs.patch; offered it if needed.
+
 ## Working rules beyond CLAUDE.md
 
 - MA owns the MIU and DCU tabs of *Per-block architecture specs*
@@ -32,7 +42,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 423, OA 503, IS 201, CP 160, OI 427, RA 159, RI 92, MA 221, DA 136, MI 71, DI 96, TI 588.
+Conventions 20, AR 426, OA 506, IS 201, CP 160, OI 427, RA 159, RI 93, MA 222, DA 136, MI 74, DI 100, TI 594.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -134,6 +144,10 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - AR 418 ANSWERED (MA rev 215, AR notified): AR's warm re-baseline -> capacity and hit-latency tables stand; only MA-30 (cold) owes a re-run = g2 grid; S1/cm32 sent, cm128 after DI-55 clean; then full table to AR. Bookmark AR 422.
 - DI-56 (FYI, DI rev 95): fold-table port, fill re-snapshot, signed declaration landed at d16fc703; closes DI-43..47, DI-52, DI-54. Bookmark DI 95.
 - MA-32 CLOSED (MA rev 214) on DI's 54eb9217 (dcu_bctl.feedback.json signed by MA, DI-40 budgets) + a518a612 (dcu_bctl CG 94/101.5), at d16fc703 on ccr-5e4d6c70 with the MA-33 fix. DI's full cm128priv runs in progress -> DI-55. Merge ccr-5e4d6c70 and ccr-58815650 at next sweep, then re-run cm128 grid.
+- Pings 2026-11-27 (Friday) to every roster session (AR OA IS TI OI CP RA RI RH MI DI, sessions per notice.py roster); all 11 pongs back the same day, addressed=yes me=ok sender=ok, each from its roster session.
+- Sweep 11-27 (10:35 trigger): register read, nothing in MA's Needs. Bookmarks now: Conventions 20, AR 426, OA 506, IS 201, CP 160, OI 427, RA 159, RI 93, MA 221, DA 136, MI 74, DI 99, TI 593. FYI: TI-590 B combined gate red (miu_ids_tb kNI=64, MI-48 fix 1ed1800b); MI-49/TI-591 drop miu_form from heavy-units via clang++ replay (3826f9cf); AR 421 TIMEOUT_MEMOP derive per bank; DI-58 waits on TI widths.
+- TI-592 (TI rev 594): MA-34 B landed in c0883a36 (W_REQ_MIU_DCU 8, MIU_DCU_IDS 160, MEMOPS_INFLIGHT 8, MSHR 8x16, EXB 8, TL src 8; MI 1ed1800b). colwalk-p1k control dropped: stall at TB_LATENCY>=300 and stale-operand CHECK at 600-1000 (seq 131 C_FADD R12 reads load addr 0x5d80), predates push; TI tracing owner (stub MIU/DCU or OOE) -- watch, it may land on MIU/DCU. Merge c0883a36 at next sweep. Bookmark TI 594.
+- DI-61 RULED (MA rev 222, DCU tab rev 148): (1) loser's same-D2 miss waits, retries by port 0 (dcu_bank_miss_busy, dcu-bank-two-miss); (2) dcu-late-miss-port retired, MA-33 path kept by choice. Bookmark DI 100, MA 222.
 - Sweep 11-27: criss-cross merges (10 merge bases) hang ort for hours. Merge with `git merge-tree --write-tree --merge-base=<C>` where C wraps a synthetic tree: the theirs-side oldest first-parent commit containing every base, with files of its unique non-merge commits taken from HEAD; check the result's diff vs HEAD equals theirs' unique files, then commit-tree -p HEAD -p theirs.
 - TI-586 (TI rev 588): TI took dcu_p1 seal() and the TL id ride-along (2f1fde73); sweep knobs not taken. My seal() commit is no longer owed.
 - MI-46 CLOSED (MI-47, MI rev 71): F-SHARED negative-sum bin and control; ccr-58815650 merged in the 11-27 sweep. Gate on 8d9064c5 failed cg twice by OOM compiling miu_form's harness; fixed by miu_form in tools/heavy-units.json (merged 11-27).
