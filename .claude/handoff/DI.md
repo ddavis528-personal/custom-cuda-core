@@ -42,16 +42,16 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    mshr_tb (BK 0, 5), mpick_tb, fill_tb, run-rtl controls (twolook etc.).
    All benches pass; lint clean. Per-unit results: /root/ccv-logs/m34units*.log
    (run: check-ngd.py --unit U; scratchpad/cgbudget.py U).
-   DI-66 RULED A (MA rev 227): no straight offer, miss at H+6. Done in
-   70c6eb89: model (bin dcu_mlc_earliest; dcu_test sample points +1), RTL
-   (sv gone, offer flops load on hnw_q only), budgets written in
-   dcu_mshr.ngd.json / dcu_mpick.ngd.json citing MA rev 227 (snt split into
-   snv+sbk: tell MA in the DI answer row). Bench control straight -> early.
-   Still open: DI-67 (rev 106) dcu_mpick 21 every-cycle flops vs allowance
-   7: fold into dcu_fill (DI's pick) or DA waiver. dcu=model kernel pins in
-   tools/check-kernel.sh (TI's file, ungated) may move with H+6: re-measure
-   with TI-590.
-   Before the gate: delete docs/ma34-rtl-plan.DI.md; then bundle increment
+   DI-66 ruled A (MA rev 227) and DI-67 ruled fold (MA rev 229): done.
+   dcu_mpick is g_mpick inside dcu_fill (unit dcu_fill_mpick, mpick_tb);
+   budgets in dcu_fill.ngd.json and dcu_mshr.ngd.json. Per-unit ngd/cg all
+   clean, run-rtl 40/40 (m34units4.log). GATE: gate-push from main checkout
+   at 9c6257e6 (+ handoff); wait with tools/gate-wait.sh. After it: DI answer
+   row to MA (applied; snt split to snv+sbk got snt's 15; DCU tab rows take
+   H+6 and the fold with this notice), then increment B etc. in a later gate.
+   dcu=model kernel pins (tools/check-kernel.sh, TI's, ungated) may move with
+   H+6: re-measure with TI-590.
+   Next gate: increment
    B, DI-25, rarb/rslot, bdat wdata, MA p1 fix (DI-63), TI-537 if landed;
    merge worktree into the branch, one gate-push from the main checkout.
    Later: lone-bank backlog report (dcu_mpick_pass, wait cycles, gtw and
