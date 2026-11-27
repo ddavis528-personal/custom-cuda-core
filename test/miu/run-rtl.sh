@@ -16,7 +16,8 @@
 #            controls early (a return counted as it lands) and norefund
 #   miu_form: test/miu/form_tb.cpp, the slot, local and private forms'
 #            state and H flops (MI-21, MI-23 (b)), controls lane0 (lane d
-#            taken as 0), nohi1 (R(ctx)'s hi + 1 not kept) and noctx
+#            taken as 0), nohi1 (R(ctx)'s hi + 1 not kept), noctx and cflat
+#            (O-69's C with b not rearranged)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/miu-rtl; mkdir -p "$B"
@@ -64,4 +65,5 @@ bench miu_form test/miu/cg-build.sh miu_form "$B/miu_form" -- "$B/miu_form/tb"
 control miu_form lane0
 control miu_form nohi1
 control miu_form noctx
+control miu_form cflat
 exit $fail

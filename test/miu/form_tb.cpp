@@ -45,7 +45,8 @@ constexpr unsigned kEW = 6, kBL = kNN - 16, kHH = kRHW - 8, kRK = kCXW + 2 * kHH
 // The A1 view's fields, LSB first (miu_pair's decode).
 constexpr unsigned kLF = 3, kAS = 4, kSF = 8, kSP = 14, kCS = kFW - kWIW - 3, kWI = kFW - kWIW;
 
-enum class Ctl { none, lane0, nohi1, noctx };
+enum class Ctl { none, lane0, nohi1, noctx, cflat };
+unsigned g_cov_cb = 0, g_cov_ch = 0;   // C's carries, counted by the model
 
 template <class W> void setBits(W *w, unsigned at, unsigned n, uint64_t v) {
   for (unsigned i = 0; i < n; ++i) {
@@ -84,6 +85,7 @@ struct Want {
   uint32_t win[kNS] = {};
   uint32_t wv = 0, fs[kNS] = {}, wh[kNS] = {}, dh[kNS] = {};
   uint64_t rk[kNS] = {};   // {ctx, hi + 1, hi, lo8, bl}
+  uint64_t c[kNS] = {};    // O-69's C
 };
 
 Want model(const Table &t, const Entry *e, Ctl ctl) {
@@ -107,6 +109,19 @@ Want model(const Table &t, const Entry *e, Ctl ctl) {
     w.rk[k] = bl | lo8 << kBL | hi << (kBL + 8) | hi1 << (kBL + 8 + kHH) |
               ctx << (kBL + 8 + 2 * kHH);
     w.dh[k] = ctl == Ctl::lane0 ? 1u : x.im & (~x.im + 1);
+    // O-69's address less the lane (MI-25 (D)): b the disp's 17 low bits,
+    // unsigned (MA rev 195), the local region whatever the form. cflat: b
+    // added as it is, not rearranged around the lane's bits [6:2].
+    const uint64_t b = bitsOf(x.raw, kSP + 2, 17);
+    const uint64_t cx = ctl == Ctl::noctx ? 0 : (uint64_t(kCore) << kWIW) | x.warp;
+    const uint64_t rb = ctl == Ctl::cflat ? b : 128 * (b / 4) + b % 4;
+    w.c[k] = bitsOf(((c.lbase + kLC) << 16) + (cx << 22) + rb, 0, kVW);
+    // Coverage: b's carry out of bits [21:0] reaching lo8 + ctx, and that
+    // sum's carry picking hi + 1.
+    const uint64_t L = (c.lbase + kLC) << 16;
+    g_cov_cb += c.set && ((L & 0x3fffff) + rb) >> 22;
+    g_cov_ch += c.set && ((L + (cx << 22) + rb) >> 30) != ((L + (cx << 22)) >> 30) &&
+                ((L + rb) >> 30) == (L >> 30);
   }
   return w;
 }
@@ -151,6 +166,8 @@ struct Bench {
   Table tab;
   Entry ent[kNE];
   bool known = false, pnew = false;
+  bool cknown = false;
+  uint64_t cwant[kNS] = {}, cnext[kNS] = {};
   struct CtW {
     bool v = false;
     unsigned c = 0;
@@ -309,8 +326,11 @@ struct Bench {
         if (fl[2].m >> j & 1u) tab.w[fl[2].c][j] = fl[2].w[j];
     }
     pnew = pen;
-    if (!known) return;
-    ++checked;
+    // C is a stage later (A2): the last known cycle's want, now.
+    const bool ck = cknown;
+    cknown = known;
+    for (unsigned k = 0; k < kNS; ++k) { cwant[k] = cnext[k]; cnext[k] = want.c[k]; }
+    if (!known && !ck) return;
     bool ok = true;
     auto chk = [&](const char *what, unsigned k, uint64_t got, uint64_t exp) {
       if (got == exp) return;
@@ -320,6 +340,11 @@ struct Bench {
                      (unsigned long long)cyc, k, what, (unsigned long long)got,
                      (unsigned long long)exp);
     };
+    if (ck)
+      for (unsigned k = 0; k < kNS; ++k)
+        chk("c", k, getBits(dut->c_cm06h.data(), k * kVW, kVW), cwant[k]);
+    if (!known) { if (!ok) ++fails; return; }
+    ++checked;
     for (unsigned k = 0; k < kNS; ++k) {
       for (unsigned u = 0; u < 4; ++u) {   // each octet's copy
         chk("win", k, dut->win_cm05h[k * 4 + u], want.win[k]);
@@ -364,17 +389,19 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
     b.step(g, pen, pe, rnd, ctw, fil);
   }
   if (rnd && (!b.cov_slot_v || !b.cov_slot_inv || !b.cov_local || !b.cov_elig || !b.cov_far ||
-              !b.cov_carry || !b.cov_noise || !b.cov_b2b)) {
+              !b.cov_carry || !b.cov_noise || !b.cov_b2b || !g_cov_cb || !g_cov_ch)) {
     std::fprintf(stderr,
                  "form: coverage: slot valid %u, slot invalid %u, local %u, eligible %u, "
-                 "W past 2^32 %u, ctx carry %u, noise %u, back to back %u\n",
+                 "W past 2^32 %u, ctx carry %u, noise %u, back to back %u, C carry to ctx %u, "
+                 "C carry to hi %u\n",
                  b.cov_slot_v, b.cov_slot_inv, b.cov_local, b.cov_elig, b.cov_far, b.cov_carry,
-                 b.cov_noise, b.cov_b2b);
+                 b.cov_noise, b.cov_b2b, g_cov_cb, g_cov_ch);
     ++b.fails;
   }
   const char *cn = ctl == Ctl::lane0    ? " control lane0:"
                    : ctl == Ctl::nohi1 ? " control nohi1:"
                    : ctl == Ctl::noctx  ? " control noctx:"
+                   : ctl == Ctl::cflat  ? " control cflat:"
                                         : ":";
   std::printf("form%s %s: %llu cycles, %u values checked, %u mismatches: %s\n", cn,
               rnd ? "random" : scenario.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
@@ -395,6 +422,7 @@ int main(int argc, char **argv) {
       if (!std::strcmp(argv[i + 1], "lane0")) ctl = Ctl::lane0;
       else if (!std::strcmp(argv[i + 1], "nohi1")) ctl = Ctl::nohi1;
       else if (!std::strcmp(argv[i + 1], "noctx")) ctl = Ctl::noctx;
+      else if (!std::strcmp(argv[i + 1], "cflat")) ctl = Ctl::cflat;
       else {
         std::fprintf(stderr, "form: unknown control %s\n", argv[i + 1]);
         return 2;
