@@ -43,8 +43,12 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
 ## Register bookmarks (sweep of Fri 11-27)
-AR 423, OA 503, IS 201, TI 586, OI 427, CP 160, RA 159, RI 92, MA 221, MI 70, DI 96, DA 136,
-Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27.
+AR 426, OA 506, IS 201, TI 594, OI 427, CP 160, RA 159, RI 93, MA 221, MI 74, DI 99, DA 136,
+Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27; all 11 ponged ok, and
+every agent's ping to MI answered.
+- Sweep merges: ort on many criss-cross bases can run hours. Use scratchpad/sweep2.sh: merge-tree
+  against the one base with fewest conflicts, auto-resolving only where one side's blob is in the
+  other's history; anything else stops for a decision.
 - MI tab rev 72: MI-47 (8566e6ff to TI; MI-20/29/46 decided), MI-48 (TI-590, OA-505).
 - TI-569/571: ccv_miu.feedback.json lands with the ccv_miu assembly (held at
   scratchpad/ccv_miu.feedback.held.json, "by": "MA" per DA-135).
@@ -54,15 +58,10 @@ Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. TI-590 (blocks TI's option-B gate): miu_ids fix 1ed1800b on gate-scratch/MI-rp (built on TI-rp
-   1183b16c in worktree scratchpad/wt-rp, local branch mi-rp): 160 ids, quarter k = ids q*4+k, log-depth
-   pick, AND-OR read; NGD 20.0, all MIU benches pass. MI-48 (rev 72) rung TI + OA. When TI lands ti-rp,
-   merge it into mi-dev (1ed1800b comes with it), re-measure MI's IMPL_PINS rows (held-wait 875/876,
-   privwin priv_form 10, UE rows) on its params.
-   OA-505 done (MI-49, rev 73): miu_form's 11.5 GB was g++ on check-cg's replay harness; replay_cxx
-   clang++ in test/miu/cg-units.json -> 564 MiB, same result. On gate-scratch/MI-rp as 3826f9cf (TI to
-   cherry-pick with 1ed1800b) and on mi-dev as 104678de (unpushed; goes with the next gate-push).
-   Pings 11-27: all 11 ponged; OI and RH sender=stale (their rosters lack MI; their fix).
+0. TI landed c0883a36 (TI-592) with MI's 1ed1800b; merged into mi-dev (28b755f4, sweep). TI takes the
+   miu_form clang++ fix (104678de, pushed in 208e4c46; MI-49/50, RI-64) in its next push and drops
+   miu_form from heavy-units. Now: re-measure MI's IMPL_PINS rows on option-B params (held-wait
+   875/876, privwin priv_form 10, UE rows; TI-590), then answer TI-590 in an MI row.
 1. Option B rest: model IdPool cap at ccv::kMiuDcuIds (TI-584), 8-bit req_id, memops 8 (after ti-rp lands).
 2. miu_grp remaining: window fill RTL (same-bank fill-vs-pass case + control in lead_tb, MA rev 213);
    lines + lost flag (OA-486 assertion + control); drop_held; predicate-transfer faults.
@@ -73,4 +72,5 @@ Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27.
 - Scratch: scratchpad/wt-tr worktree (its sim/miu/miu_block.cpp has an L0T debug trace; never carry).
 
 ## Pushed
-- ccr-58815650-0ch1hh at 8566e6ff: full PASS (sweep 11-27 merge + A2 faults + MQ lane map + F-SHARED).
+- ccr-58815650-0ch1hh at 208e4c46: SCOPED PASS (miu_form clang++, handoff); RI and TI rung.
+- Sweep merge of Fri 11-27 (2nd firing, 8 branches) on mi-dev: full gate-push in flight.
