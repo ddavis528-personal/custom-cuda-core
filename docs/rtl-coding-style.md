@@ -699,6 +699,25 @@ the always block before it (`reference_fnp.sv` passes; `bad_conn8.sv`'s
 cones leaving out a call's register argument, or the register its body
 reads, are refused).
 
+A register read back a cycle on, with no loop (OA 513, OI-229 option B:
+`u_ren1`'s lanes reading `u_rd`'s head read of rename 1's `p_v`,
+`p_gkm` and `p_pkm`), is declared `{"readback": true, "from": {"cone":
+[<parent registers>], "ahead": {<register>: n}}, "via":
+["<inst>.<input>><output>", ...], "assert", "control", "by", "date",
+"why"}`, with no `"loop"`. The lint verifies that the sources of the
+input's net lying past the stage the reader's outputs allow it (parent
+registers and sibling outputs, through the parent's combinational nets,
+its register-free children and the named crossings, each a combinational
+path that reaches the input) are exactly the cone, each `ahead` its
+stage less the input's tag; and that no closing path exists: no output
+the input reaches feeds, through the parent's combinational nets and any
+child's combinational path, a cone register's next value or enable. A
+read-back that closes is a loop and refused (`reference_bkp.sv` passes;
+`bad_conn10.sv` is refused). The cone may be the parent register that
+feeds the input directly, with no crossing (OA 514: `u_ren1nr`'s
+`pn_gname` and `pn_pname` reading group N's names in `m_gname_cq04h` and
+`m_pname_cq04h`; `reference_bnp.sv`).
+
 A loop closed by the parent's own registers (OI-207, OA-489) is declared
 with `"from"` naming the parent register the child input reads, and
 `"loop"` listing the reader's output(s), then the parent registers in

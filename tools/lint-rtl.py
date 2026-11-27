@@ -2740,7 +2740,7 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
     named = {key.split(".", 1)[0]}
     fr0 = d.get("from")
     srcs = (fr0.get("cone") or []) if isinstance(fr0, dict) else [fr0]
-    for x in list(d.get("loop") or []) + [str(g) for g in srcs if g]:
+    for x in list(d.get("loop") or []) + list(d.get("via") or []) + [str(g) for g in srcs if g]:
         if "." in str(x):
             named.add(str(x).split(".", 1)[0])
         elif str(x) in insts:
@@ -2760,6 +2760,11 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
             d.get("by"), " and ".join(signers))
     ri, rp = key.split(".", 1)
     fr = d.get("from", "")
+    if d.get("readback"):
+        why = verify_readback(ri, rp, d, pbody, insts)
+        if why:
+            return why
+        return verify_stale(d, pbody, insts, ri, fbdir)
     if isinstance(fr, dict) or "." not in str(fr):
         why = verify_regloop(ri, rp, fr, d, pbody, insts)
         if why:
@@ -2812,6 +2817,157 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
             not any(rp in r for r in port_paths(insts[ri][2], insts[ri][1]).values()):
         return "%s's input %s reaches none of its outputs" % (ri, rp)
     return verify_stale(d, pbody, insts, ri, fbdir)
+
+
+def parent_graph(pbody, insts, crossings=(), all_comb=False):
+    """(deps, flops) of a parent with each register-free child's in-to-out
+    paths joined as its logic (OA 485), each named crossing
+    "<inst>.<in>><out>" joined too, and with all_comb every child's
+    combinational in-to-out path."""
+    deps, flops = dep_graph(pbody)
+    deps = {k: set(v) for k, v in deps.items()}
+    for hi, (hchild, hports, hbody, hconns) in insts.items():
+        free = not dep_graph(hbody)[1]
+        if not free and not all_comb:
+            continue
+        for o, reach in port_paths(hbody, hports).items():
+            for on in conn_ids(hconns.get(o, "")):
+                for i, comb in reach.items():
+                    if free or comb:
+                        deps.setdefault(on, set()).update(conn_ids(hconns.get(i, "")))
+    for h in crossings:
+        if h.count(">") == 1 and "." in h:
+            ci, rest = h.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            if ci in insts:
+                for on in conn_ids(insts[ci][3].get(cout, "")):
+                    deps.setdefault(on, set()).update(conn_ids(insts[ci][3].get(cin, "")))
+    return deps, flops
+
+
+def verify_readback(ri, rp, d, pbody, insts):
+    """A register read back a cycle on (OA 513, OI-229 option B):
+    {"<inst>.<input>": {"readback": true, "from": {"cone": [<parent
+    registers>], "ahead": {<register>: n}}, "via": ["<inst>.<in>><out>",
+    ...], "assert", "control", "by", "date", "why"}}, no "loop". (1) The
+    sources of the input's net past the stage the reader's outputs allow it
+    (registers, and sibling outputs), traced through the parent's
+    combinational nets, its register-free children and the named crossings,
+    are exactly the cone, each ahead its stage less the input's tag; each
+    crossing is a combinational path its output's net reaches the input
+    through. (2) No closing path: no output of the reader that the input
+    reaches feeds, through the parent's combinational nets and any child's
+    combinational path, the next value or enable of a cone register."""
+    if ri not in insts:
+        return "%s is no instance of this module" % ri
+    rchild, rports, rbody, rconns = insts[ri]
+    if rports.get(rp) != "input":
+        return "%s is no input of %s" % (rp, ri)
+    if d.get("loop"):
+        return "a read-back names no \"loop\": it is the form for a read with none"
+    fr = d.get("from")
+    listed = [str(x) for x in ((fr or {}).get("cone") or [])] if isinstance(fr, dict) else []
+    aheads = (fr or {}).get("ahead") or {} if isinstance(fr, dict) else {}
+    if not listed:
+        return "a read-back's \"from\" is {\"cone\": [<registers>], \"ahead\": {...}}"
+    via = [str(x) for x in (d.get("via") or [])]
+    deps, flops = parent_graph(pbody, insts, via)
+    for g in listed:
+        if g not in flops:
+            return "cone register %s is no register of this module" % g
+    inet = conn_ids(rconns.get(rp, ""))
+    nets, regs = cone(deps, flops, inet)
+    for h in via:
+        if h.count(">") != 1 or "." not in h:
+            return "via %s is not \"<inst>.<input>><output>\"" % h
+        ci, rest = h.split(".", 1)
+        cin, cout = rest.split(">", 1)
+        if ci not in insts or insts[ci][1].get(cin) != "input" or \
+                insts[ci][1].get(cout) != "output":
+            return "via %s names no input and output of an instance here" % h
+        if not port_paths(insts[ci][2], insts[ci][1]).get(cout, {}).get(cin):
+            return "via %s: %s has no combinational path from %s to %s" % (
+                h, insts[ci][0], cin, cout)
+        if not set(conn_ids(insts[ci][3].get(cout, ""))) & (nets | set(inet)):
+            return "via %s does not reach %s.%s" % (h, ri, rp)
+    # Sibling outputs the cone reads are sources as registers are.
+    outnet = {}
+    for oi, (och, opt, obody, oconns) in insts.items():
+        if oi == ri or not dep_graph(obody)[1]:
+            continue
+        for o, dr in opt.items():
+            if dr == "output":
+                for nn in conn_ids(oconns.get(o, "")):
+                    outnet[nn] = "%s.%s" % (oi, o)
+    srcs = {r: r for r in regs}
+    srcs.update({nn: outnet[nn] for nn in nets if nn in outnet})
+    # The stage the reader's outputs allow the input: the least of P(O)
+    # less the child's own latency S(O) - S(I) over the outputs it reaches.
+    paths = port_paths(rbody, rports)
+    cseq = bool(dep_graph(rbody)[1])
+    sp = stage_of(rp)
+    if not sp:
+        return "%s carries no stage tag" % rp
+    allow = []
+    for o, reach in paths.items():
+        if rp not in reach:
+            continue
+        po = [stage_of(w)[2] for w in conn_ids(rconns.get(o, "")) if stage_of(w)]
+        so = stage_of(o) if cseq else None
+        if po:
+            allow.append(min(po) - ((so[2] - sp[2]) if so else 0))
+    if not allow:
+        return "%s's input %s reaches no output the parent tags" % (ri, rp)
+    late = set()
+    for n, name in srcs.items():
+        st = stage_of(n)
+        if st and st[2] > min(allow):
+            late.add(name)
+    missing = sorted(late - set(listed))
+    extra = sorted(set(listed) - late)
+    if missing:
+        return ("source(s) %s reach %s.%s past its stage but are not listed: a read-back's "
+                "cone lists every late source" % (", ".join(missing), ri, rp))
+    if extra:
+        return ("cone register(s) %s do not reach %s.%s past its stage (%02d)"
+                % (", ".join(extra), ri, rp, min(allow)))
+    for g in listed:
+        sg = stage_of(g)
+        if aheads.get(g) != sg[2] - sp[2]:
+            return "ahead for %s is %r, but it lies %d stage(s) past the input's tag" % (
+                g, aheads.get(g), sg[2] - sp[2])
+    # (2) No closing path, through any child's combinational path too.
+    cdeps, _ = parent_graph(pbody, insts, via, all_comb=True)
+    users = {}
+    for n, ds in cdeps.items():
+        for x in ds:
+            users.setdefault(x, set()).add(n)
+    for o, reach in sorted(paths.items()):
+        if rp not in reach:
+            continue
+        prev, todo = {}, []
+        for on in conn_ids(rconns.get(o, "")):
+            prev[on] = None
+            todo.append(on)
+        while todo:
+            n = todo.pop(0)
+            for u in sorted(users.get(n, ())):
+                if u in prev:
+                    continue
+                prev[u] = n
+                if u in flops:
+                    if u in listed:
+                        chain, x = [], u
+                        while x is not None:
+                            chain.append(x)
+                            x = prev[x]
+                        return ("a closing path exists: %s.%s reaches its output %s, whose "
+                                "net reaches %s's next value or enable (%s): a loop, declared "
+                                "with its \"loop\", not read back"
+                                % (ri, rp, o, u, " -> ".join(reversed(chain))))
+                    continue
+                todo.append(u)
+    return None
 
 
 def verify_regloop(ri, rp, fr, d, pbody, insts):
