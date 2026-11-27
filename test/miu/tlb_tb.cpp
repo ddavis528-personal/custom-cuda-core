@@ -23,7 +23,7 @@
 // and compared refills survive it; OA-486 (b)). A miss whose request the
 // invalidate drops ends in a re-miss: its load took the no-hit path at A2,
 // and its next lookup misses the emptied L0 and asks again.
-// The invalidate (iv_cm05h, Q-60's TLB clear) clears every entry, the
+// The invalidate (iv_cm06h, Q-60's TLB clear) clears every entry, the
 // last-write copy and the refill stages; the generator fires it often while
 // a refill is about to be written, then re-misses the slot's last page.
 // The refill bound (MI-35, MA rev 204): a slot's miss, taken with its lead
@@ -125,7 +125,7 @@ struct Bench {
     dut->ms_cm07h = in.ms;
     for (unsigned s = 0; s < kNS; ++s) dut->vpn_cm07h[s] = in.vpn[s];
     dut->fv_cm05h = in.fv;
-    dut->iv_cm05h = in.iv;
+    dut->iv_cm06h = in.iv;
     dut->fvpn_cm06h = in.fvpn;
     dut->fppn_cm06h = in.fppn;
     dut->fpm_cm06h = in.fpm;

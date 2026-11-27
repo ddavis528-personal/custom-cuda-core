@@ -44,7 +44,7 @@
 // PM): the L0s 24 x (1 + 32 + 32 + 4 + PM), the TLB 32 x the same, the
 // refill path's capture, pending and A3 result, and the pointers.
 //
-// The invalidate (OA-484, MA rev 208): iv_cm05h, a lead, flopped here, clears
+// The invalidate (OA-484, MA rev 208): iv_cm06h, a lead, flopped here, clears
 // in one cycle every TLB and L0 entry, each slot's last-write copy and the
 // refill stages (pending, granted, compared), and a write or a request in
 // that cycle is lost with them. Its source is Q-60's TLB clear, a CRU
@@ -79,7 +79,7 @@ module miu_tlb #(
   input  logic [FW-1:0]      ffold_cm06h,   // the walker's fold of fppn
   input  logic [PM-1:0]      fpm_cm06h,
   // ---- the invalidate (Q-60's TLB clear; tied 0 until its channel lands) --
-  input  logic               iv_cm05h,
+  input  logic               iv_cm06h,
   // ---- the L0s, read at A2 by miu_a2 (straight from flops) ---------------
   output logic [NS*N0-1:0]    l0v_cm11h,
   output logic [NS*N0*VW-1:0] l0vpn_cm11h,
@@ -104,12 +104,12 @@ module miu_tlb #(
     if (rst_r01h) fv_q_cm06h <= 1'b0;
     else          fv_q_cm06h <= fv_cm05h;
   end
-  logic iv_q_cm06h;                          // the invalidate, this cycle
+  logic iv_q_cm07h;                          // the invalidate, this cycle
   always_ff @(posedge miu_core_clk) begin
-    if (rst_r01h) iv_q_cm06h <= 1'b0;
-    else          iv_q_cm06h <= iv_cm05h;
+    if (rst_r01h) iv_q_cm07h <= 1'b0;
+    else          iv_q_cm07h <= iv_cm06h;
   end
-  wire clr_cr01h = rst_r01h || iv_q_cm06h;   // what clears a valid
+  wire clr_cr01h = rst_r01h || iv_q_cm07h;   // what clears a valid
   logic [ETW-1:0] tp_q_cm06h;                // the next entry, round robin (own-stage state)
   wire tp_en_cm06h = fv_q_cm06h || rst_r01h;
   always_ff @(posedge miu_core_clk) begin
@@ -189,7 +189,7 @@ module miu_tlb #(
           (sa_q_cm09h && sg_q_cm09h[s] && sv_q_cm09h == v) ||
           (ra_q_cm10h && rh_q_cm10h && rs_q_cm10h[s] && rv_q_cm10h == v) ||
           (wl_q_cm11h[s] && wv_q_cm11h == v);
-      dup_cm07h[s] = d && !iv_q_cm06h;      // the copies are cleared this cycle
+      dup_cm07h[s] = d && !iv_q_cm07h;      // the copies are cleared this cycle
     end
   end
   wire pm_en_cm07h = (|rq_q_cm07h) || any_cm08h || clr_cr01h;
@@ -268,7 +268,7 @@ module miu_tlb #(
 
   // Last cycle's L0 write, for the second-miss check.
   // An invalidate clears it with the entries (OA-484 (3)).
-  wire wr_cm10h = ra_q_cm10h && rh_q_cm10h && !iv_q_cm06h;
+  wire wr_cm10h = ra_q_cm10h && rh_q_cm10h && !iv_q_cm07h;
   wire wl_en_cm10h = wr_cm10h || (|wl_q_cm11h) || clr_cr01h;
   always_ff @(posedge miu_core_clk) begin
     if (wl_en_cm10h) wl_q_cm11h <= (clr_cr01h || !wr_cm10h) ? '0 : rs_q_cm10h;
@@ -350,13 +350,13 @@ module miu_tlb #(
     for (int s = 0; s < NS; s++)
       age_q_cm09h[s*2 +: 2] <= (rst_r01h || !pm_q_cm08h[s] || gnt_cm08h[s]) ? 2'd0
                               : age_q_cm09h[s*2 +: 2] + 2'd1;
-  logic l0late_cm08h;
+  logic l0late_cm09h;
   always_comb begin
-    l0late_cm08h = 1'b0;
+    l0late_cm09h = 1'b0;
     for (int s = 0; s < NS; s++)
-      l0late_cm08h = l0late_cm08h || (pm_q_cm08h[s] && !gnt_cm08h[s] && age_q_cm09h[s*2 +: 2] == 2'(NS - 1));
+      l0late_cm09h = l0late_cm09h || (pm_q_cm08h[s] && !gnt_cm08h[s] && age_q_cm09h[s*2 +: 2] == 2'(NS - 1));
   end
-  `CCV_ASSERT(l0_bound, !l0late_cm08h)
+  `CCV_ASSERT(l0_bound, !l0late_cm09h)
 `endif
   // A refill is granted only while one is pending, and one at a time.
   `CCV_ASSERT(gnt_one, $onehot0(gnt_cm08h) && ((gnt_cm08h & ~pm_q_cm08h) == '0) &&

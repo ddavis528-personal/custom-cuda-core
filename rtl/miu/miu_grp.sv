@@ -1,8 +1,10 @@
 // miu_grp: one address slot's group and page check at A2 (MIU tab, MA's
-// Phase 2 module table; MA-4, MA-27). Combinational, an inner helper of
-// miu_a2, timed in it (rtl-coding-style.md, NGD-5 and NGD-6; MA rev 209):
-// no path may run input to output through a module of its own, so it sits
-// inside the module that flops its result.
+// Phase 2 module table; MA-4, MA-27).
+// Spec: docs/design-snapshots/miu-spec.md (live: CCV per-block architecture
+//       specs, MIU tab), "The drop" (drop_line, drop_split); MA revs 203, 209.
+// Combinational, an inner helper of miu_a2, timed in it (rtl-coding-style.md,
+// NGD-5 and NGD-6; MA rev 209): no path may run input to output through a
+// module of its own, so it sits inside the module that flops its result.
 //
 // The memop's F pipes split the warp into F groups of 32/F consecutive
 // lanes, each led by its fixed leader, the group's first lane (MA rev 203).
@@ -53,7 +55,7 @@ module miu_grp #(
     end
 
   logic          o8, o16, o32;   // an active lane off its leader, per group size
-  logic          spl;
+  logic          spl, spl4, spl2;
   logic [NO-1:0] oa;         // an octet with an active lane
   always_comb begin
     o8 = 1'b0; o16 = 1'b0; o32 = 1'b0;
@@ -65,14 +67,13 @@ module miu_grp #(
       o32 = o32 | (am[l] && d0[l]);
     end
     for (int u = 0; u < NO; u++) oa[u] = |am[u*8 +: 8];
-    spl = 1'b0;
-    if (fl[1]) begin
-      for (int i = 0; i < NO; i++)
-        for (int j = i + 1; j < NO; j++)
-          spl = spl | (oa[i] && oa[j] && pg[i*8] != pg[j*8]);
-    end else if (fl[0]) begin
-      spl = (|oa[NO/2-1:0]) && (|oa[NO-1:NO/2]) && pg[0] != pg[NL/2];
-    end
+    // Four groups: any two active octets' leaders apart; two: the halves'.
+    spl4 = 1'b0;
+    for (int i = 0; i < NO; i++)
+      for (int j = i + 1; j < NO; j++)
+        spl4 = spl4 | (oa[i] && oa[j] && pg[i*8] != pg[j*8]);
+    spl2 = (|oa[NO/2-1:0]) && (|oa[NO-1:NO/2]) && pg[0] != pg[NL/2];
+    spl  = fl[1] ? spl4 : fl[0] ? spl2 : 1'b0;
     ok = !(fl[1] ? o8 : fl[0] ? o16 : o32) && !spl;
   end
 endmodule
