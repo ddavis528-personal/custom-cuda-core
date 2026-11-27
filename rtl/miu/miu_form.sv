@@ -45,8 +45,8 @@
 // window words, fv_cm01h and its fields are the port it will drive) and
 // the kill's clear of the valid bits, whose trigger MA is to name.
 //
-// Flops: the table (4,096 + 128), the CTA state (8 x (1 + RB + WHW)) and
-// the H flops (4 x (32 + 1 + 3 + WHW + RK + 32)). Clock gates: each window
+// Flops: the table (4,096 + 128), the CTA state (8 x (1 + RB + WHW + MWL))
+// and the H flops (4 x (32 + 1 + 3 + WHW + MWL + RK + 32)). Clock gates: each window
 // word on its fill; each CTA slot's valid bits on its write or fill; each
 // CTA slot's state on its write; the H flops on this module's flop of
 // miu_pair's pairing enable (CG-5), which is set exactly the cycle a slot
@@ -80,6 +80,7 @@ module miu_form #(
   localparam int NN  = (21 + PK > 22) ? 21 + PK : 22,          // the narrow sum's width
   localparam int RHW = VW - NN,                                // rh0, rh1: 28
   localparam int WHW = 32 - PK,                                // wh: rbase >> k
+  localparam int MWL = NN - 19,                                // -W's bits in the narrow sum, 3
   localparam int RK  = CXW + 2 * (RHW - 8) + 8 + NN - 16       // rk: 61
 ) (
   input  logic             miu_core_clk,
@@ -106,6 +107,7 @@ module miu_form #(
   output logic [NS-1:0]     wv_cm05h,
   output logic [NS*3-1:0]   fs_cm05h,      // {elig, local, slot} at [k*3 +: 3]
   output logic [NS*WHW-1:0] wh_cm05h,
+  output logic [NS*MWL-1:0] mw_cm05h,      // -W's low bits, miu_agu8's narrow sum
   output logic [NS*RK-1:0]  rk_cm05h,      // {ctx, hi + 1, hi, lo8, bl}
   output logic [NS*IW-1:0]  dh_cm05h
 );
@@ -188,6 +190,7 @@ module miu_form #(
   logic [NC-1:0]     cl_q_cm04h;                       // W below 2^32
   logic [NC*RB-1:0]  rb_q_cm04h;
   logic [NC*WHW-1:0] whq_q_cm04h;
+  logic [NC*MWL-1:0] mwq_q_cm04h;                      // -W's low MWL bits
   for (genvar c = 0; c < NC; c++) begin : g_cta
     wire ct_en_cm03h = ctv_q_cm03h && (ctc_q_cm03h == CSW'(c));
     always_ff @(posedge miu_core_clk) begin
@@ -195,6 +198,8 @@ module miu_form #(
         cl_q_cm04h[c]             <= (w_cm03h >> 32) == '0;
         rb_q_cm04h[c*RB +: RB]    <= rb_cm03h;
         whq_q_cm04h[c*WHW +: WHW] <= w_cm03h[31:PK];
+        // -W's bits at and above rbase's place in the narrow sum (bit 21).
+        mwq_q_cm04h[c*MWL +: MWL] <= MWL'(~w_cm03h[MWL-1:0]) + MWL'(1);
       end
     end
   end
@@ -234,6 +239,7 @@ module miu_form #(
   logic [NS-1:0]     wv_d_cm04h;
   logic [NS*3-1:0]   fs_d_cm04h;
   logic [NS*WHW-1:0] wh_d_cm04h;
+  logic [NS*MWL-1:0] mw_d_cm04h;
   logic [NS*RK-1:0]  rk_d_cm04h;
   logic [NS*IW-1:0]  dh_d_cm04h;
   for (genvar k = 0; k < NS; k++) begin : g_slot
@@ -278,11 +284,14 @@ module miu_form #(
       win_d_cm04h[k*32 +: 32]  = '0;
       wv_d_cm04h[k]            = 1'b0;
       wh_d_cm04h[k*WHW +: WHW] = '0;
+      mw_d_cm04h[k*MWL +: MWL] = '0;
       rb_cm04h                 = '0;
       cl_cm04h                 = 1'b0;
       for (int c = 0; c < NC; c++) begin
         wh_d_cm04h[k*WHW +: WHW] = wh_d_cm04h[k*WHW +: WHW] |
                                    ({WHW{oc_cm04h[c]}} & whq_q_cm04h[c*WHW +: WHW]);
+        mw_d_cm04h[k*MWL +: MWL] = mw_d_cm04h[k*MWL +: MWL] |
+                                   ({MWL{oc_cm04h[c]}} & mwq_q_cm04h[c*MWL +: MWL]);
         rb_cm04h = rb_cm04h | ({RB{oc_cm04h[c]}} & rb_q_cm04h[c*RB +: RB]);
         cl_cm04h = cl_cm04h | (oc_cm04h[c] & cl_q_cm04h[c]);
         for (int j = 0; j < NWN; j++) begin
@@ -305,6 +314,7 @@ module miu_form #(
   logic [NS-1:0]     wv_q_cm05h;
   logic [NS*3-1:0]   fs_q_cm05h;
   logic [NS*WHW-1:0] wh_q_cm05h;
+  logic [NS*MWL-1:0] mw_q_cm05h;
   logic [NS*RK-1:0]  rk_q_cm05h;
   logic [NS*IW-1:0]  dh_q_cm05h;
   always_ff @(posedge miu_core_clk) begin
@@ -313,6 +323,7 @@ module miu_form #(
       wv_q_cm05h  <= wv_d_cm04h;
       fs_q_cm05h  <= fs_d_cm04h;
       wh_q_cm05h  <= wh_d_cm04h;
+      mw_q_cm05h  <= mw_d_cm04h;
       rk_q_cm05h  <= rk_d_cm04h;
       dh_q_cm05h  <= dh_d_cm04h;
     end
@@ -321,6 +332,7 @@ module miu_form #(
   assign wv_cm05h  = wv_q_cm05h;
   assign fs_cm05h  = fs_q_cm05h;
   assign wh_cm05h  = wh_q_cm05h;
+  assign mw_cm05h  = mw_q_cm05h;
   assign rk_cm05h  = rk_q_cm05h;
   assign dh_cm05h  = dh_q_cm05h;
 
