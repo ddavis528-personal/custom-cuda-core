@@ -126,8 +126,8 @@ struct Bench {
       dut->ld_cm05h |= unsigned(x.ld) << s;
       dut->pipes_cm05h |= x.pipes << (s * kNS);
       dut->fs_cm05h |= x.fs << (s * 3);
-      for (unsigned h = 0; h < 2 * kNQ; ++h)
-        putBits(dut->dq_cm05h, (s * 2 * kNQ + h) * 18, 18, uint64_t(x.sh2) << 17 | uint64_t(x.sh1) << 16 | x.disp);
+      for (unsigned h = 0; h < kNQ; ++h)
+        putBits(dut->dq_cm05h, (s * kNQ + h) * 18, 18, uint64_t(x.sh2) << 17 | uint64_t(x.sh1) << 16 | x.disp);
       putBits(dut->am_cm05h, s * kNL, kNL, x.am);
       putBits(dut->wh_cm05h, s * 32, 32, x.wh);
       putBits(dut->dh_cm05h, s * kNL, kNL, uint64_t(1) << x.dlane);
