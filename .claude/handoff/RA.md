@@ -361,7 +361,7 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 506, RA 159, RI 93, TI 593, AR 426, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 221, MI 74, DI 99.
+Bookmarks: OA 506, RA 160, RI 95, TI 596, AR 430, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 221, MI 74, DI 99.
 RA 158 (11-23): OA 469 / AR 406 (3) misrouted RAU's pc_kept to RA; RAU is TI's stub. OA 472, AR 407-408, TI-526 agree;
 closed. Sweep 11-23: nothing for RA. Watch AR 410 / TI-531: CCV_P_TIMEOUT_MEMOP derived, slow memory regions end at
 1 MiB, perf-register cycles move above 0xC0000 (AR re-baselines). Merged 183cc441 (173, carried OI's 57eff422),
@@ -378,6 +378,10 @@ flops the returned credit a cycle before it counts (RI-63), so REG/LATE (+1) unl
 RA row Needs TI. OA 484: RA signs "by" on RCU parent-level CCV-L23 declarations. DA 133 (AR owns MLC spec) and
 DA 134 (OOE ratchet paths may rise to 30 NGD; not RCU). AR 415: at a flopped end the wrapper holds the flops;
 rcu_kill's credit waiver goes on migration.
+RA 160 (11-27, re RI-66 (a)): AR 416 DISCHARGED. rcu_pca_mig goes COMB on cr_go (ocrq goes, depth 4+2N, no +1);
+TI enters COMB in the form list with RI's move, never before. Credit in timed at 0, default 12 NGD: RA sets
+rcu_mig/ccv_rcu budgets for the pair only if check-ngd says over 12 on RI's move. RI adds a full-rate demotion
+check with a REG (flopped credit at 4+2N) negative control. AR 425 (b) answered: RA's merges keep the newer RA.md.
 Sweep 11-27 (Friday): nothing for RA. The 11-26 gate went red on a miu_form check-cg compile OOM; TI's a24cf95c
 (heavy-units lists miu_form) was CHERRY-PICKED (-x, a5027c8f: TI's branch had 10 bases) and the regate passed and
 pushed a5027c8f. MI-49 (3826f9cf, clang++) is the real fix; keep miu_form listed until TI carries it. AR 416 still
