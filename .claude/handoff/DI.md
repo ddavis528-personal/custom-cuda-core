@@ -36,14 +36,28 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   scratchpad/ma33 (MA-33 debug instrumentation: g_dbg_site, DBG prints).
 
 ## Open work, most urgent first
-1. MA-34 (MA rev 220/222, DCU tab rev 147/148): params landed (TI c0883a36,
-   merged). Model done (078f5069, af59fee3 on main): per-bank offers, CHECKs
-   id bank == line bank and one new miss a bank a D2; a loser's same-D2 miss
-   waits and retries on port 0 (control dcu-bank-two-miss); dcu-late-miss-port
-   retired (DI-61, MA rev 222). Next: check the model's cross-bank MLC pick and
-   retry grant vs dcu_mpick's spec; kernel sweep CCV_DCU_IMPL=model (never
-   beside a gate); then RTL: dcu_mshr per bank, dcu_mpick, bctl queue req_id
-   8; then the dcu_fill 4-buffer recheck under gtw.
+1. MA-34 RTL, ONE bundled gate (Daniel: compute-bound, bundle all ngd/cg
+   work). Worktree scratchpad/m34, backed up on gate-scratch/DI-m34 (tip
+   1c63f699): dcu_mshr per bank, dcu_mpick, dcu_fill ORs 8 buses, benches
+   mshr_tb (BK 0, 5), mpick_tb, fill_tb, run-rtl controls (twolook etc.).
+   All benches pass; lint clean. Per-unit results: /root/ccv-logs/m34units*.log
+   (run: check-ngd.py --unit U; scratchpad/cgbudget.py U).
+   BLOCKED on DI-66 (DI rev 105, notice sent to MA): sv_cc05h straight offer
+   is an NGD-5 feedthrough (dv/hit/rpa -> sv) and 35.1 NGD across both;
+   DI proposes (A) drop straight (H+6, MA re-prices; then model sim/dcu
+   H+5 -> H+6 and remove sv ports) vs (B). Also asks MA budgets: mpick
+   hstp 24.8, rstp 21.4, hv 14.2; mshr rpa 18.6, snt 14.6; new
+   dcu_mshr.ngd.json port set, new dcu_mpick.ngd.json.
+   dcu_mpick cg: 171 flops, allowance 7; every-cycle grant/send flops
+   (input-decided, CG-5 forbids input enables) exceed it even after
+   encoding: likely needs a waiver ruling (RI-15 covers interface leads
+   only) or folding mpick into dcu_fill (allowance 114.6, 46 used): add as
+   DI-66 (4) once remeasured. cr_q (3) CG-4 goes with TI-537.
+   Before the gate: delete docs/ma34-rtl-plan.DI.md; then bundle increment
+   B, DI-25, rarb/rslot, bdat wdata, MA p1 fix (DI-63), TI-537 if landed;
+   merge worktree into the branch, one gate-push from the main checkout.
+   Later: lone-bank backlog report (dcu_mpick_pass, wait cycles, gtw and
+   cm128) with the dcu_fill gtw recheck (MA rev 226 (1)).
 2. TI-590 (TI rev 592), low: re-measure dcu=model IMPL_PINS rows on ti-rp's
    params (held-wait demote dcu=model 862, pair 876; UE rows); the vadd4-swap
    rows are gone. Answer in the DI tab.
@@ -63,14 +77,13 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit-tree with both parents. Session home installed; --check in sweep.
 
 ## Status
-- Pushed 5a4a865c: OA-508 merge of 7f5195a4 (DI-62, rev 101, OA notified), on
-  724beb26 (TI c0883a36 + MA-34 model, SCOPED PASS 28/28). Before: f2accd75, sweep merge to
-  11-27.
-- OI-225 -> DI-63 (rev 102; MA, OI notified): p1 ignores MA-27 drop; fix is MA's (dcu_p1.cpp). Repro: build/oracle/coremark32priv, CCV_MIU_IMPL=model CCV_DCU_IMPL=p1 seed 1, 3000 cycles.
-- Pongs 11-27: all answered; OI and RH sender=stale (their roster); tell
-  Daniel if still stale next Friday.
+- Pushed 393d8275 (SCOPED PASS 11/28). DI-63 (p1 ignores MA-27 drop, OI-225):
+  MA built the fix (588 -> 0), lands after MA's gate. DI-64 confirmed by MA
+  rev 225 (DCU tab rev 150). Forced-model kernel diffs (transp4, vadd ue,
+  privwin, no-resource-cap) come from TI's params (f1ef8080), told TI (DI-64).
+- Pongs 11-27: OI and RH sender=stale; tell Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 102, MI 74, MA 222, AR 426, OA 506, TI 594, OI 427, DA 136,
-RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-63 (id m8yvbw8rqgz.120139).
+Conventions 20, DI 105, MI 76, MA 226, AR 426, OA 506, TI 594, OI 427, DA 136,
+RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-66 (row id .124161).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
