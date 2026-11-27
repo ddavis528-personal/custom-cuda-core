@@ -55,17 +55,11 @@
       "date": "2026-11-21",
       "why": "From miu_cap's and miu_pair's flops; the adders take the whole 25 (MIU tab rev 163, 'Port NGD budgets': about 18 for the sum, 2 for the window level, 4 for the operand mux)."
     },
-    "oct_cm05h": {
-      "arrival": 0.0,
-      "by": "MA",
-      "date": "2026-11-21",
-      "why": "the lane octet, a constant the parent ties; arrival 0 as every miu_agu8 input (MIU tab rev 163, Port NGD budgets)"
-    },
     "win_cm05h": {
       "arrival": 0.0,
       "by": "MA",
       "date": "2026-11-21",
-      "why": "miu_form's flops at H (MI-21, MI-22), straight from a flop; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets)"
+      "why": "miu_form's per-octet (* keep *) copy of the window at H (MI-22 (c), MA rev 185); miu_agu8 inputs from miu_form arrive at 0."
     },
     "fs_cm05h": {
       "arrival": 0.0,
@@ -74,12 +68,6 @@
       "why": "miu_form's flops at H (MI-21, MI-22), straight from a flop; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets)"
     },
     "wh_cm05h": {
-      "arrival": 0.0,
-      "by": "MA",
-      "date": "2026-11-21",
-      "why": "miu_form's flops at H (MI-21, MI-22), straight from a flop; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets)"
-    },
-    "rk_cm05h": {
       "arrival": 0.0,
       "by": "MA",
       "date": "2026-11-21",
@@ -96,6 +84,12 @@
       "by": "MA",
       "date": "2026-11-21",
       "why": "every lane's base, miu_cap's flops (out budget 0), for O-83's decision on lane d; miu_agu8 inputs arrive at 0 (MIU tab rev 163, Port NGD budgets; MI-21 (a))"
+    },
+    "sl_cm05h": {
+      "arrival": 0.0,
+      "by": "MA",
+      "date": "2026-11-23",
+      "why": "miu_form's per-octet (* keep *) copy of fsel's slot bit at H, the base 2:1 mux's select (MI-22 (c), MA rev 185); miu_agu8 inputs from miu_form arrive at 0."
     }
   }
 }
