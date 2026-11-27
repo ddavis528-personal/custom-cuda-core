@@ -78,7 +78,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    arrival 0 on all ins but ge (12); rk_cm05h arrival 0 in miu_lead.ngd.json -> UNTIL THEN check-ngd FAILS
    (miu_lead 34.9, miu_a2 37.6) and blocks gate-push. (2) L0 refill loop feedback declaration (OA/AR/DA).
    (3) LRU vs round robin (RTL+model are RR). (4) miu_pair disp copies 576 -> one per quarter.
-   MI-33 (rev 58, TI rung): IMPL_PINS miu=model held-wait demote 776 -> 768 (needed for the gate too).
+   MI-33 answered by TI rev 550: TI re-pins held-wait itself after its landing (875/876), merges 29603c02 after.
+   MI-34 (rev 59): told TI it isn't pushed yet; RING TI WITH THE TIP once gate-push lands.
    mi-dev unpushed: 29603c02 model fix, e1e3d708 miu_tlb, cf78f366 BCAST knob, 58b001a8 miu_lead (332 flops,
    23.0), 9b9dd004 miu_a2 (361 flops, CG clean, 24.6 in at arrival 0, a2_tb + controls carry/bank/addr).
    Pricing IN FLIGHT: scratchpad/price32.sh then price32b.sh (ruledbc), coremark32priv rest then cm128 one at a
