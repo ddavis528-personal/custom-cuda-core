@@ -1637,6 +1637,24 @@ private:
       for (size_t b = a + 1; b != leads.size(); ++b)
         if ((leads[a] / kLine) % ccv::kDcuBanks == (leads[b] / kLine) % ccv::kDcuBanks && !why)
           why = "drop_bank";
+    // MI-30 pricing (MA rev 198): CCV_MIU_L0=n, an n-entry L0 TLB per lookup
+    // slot at A2, the 32-entry TLB behind it at A3. A leader's page missing
+    // from its slot's L0 drops the first pass (drop_l0); A3 fills the L0.
+    if (!l0_.empty() && !why) {
+      unsigned slot_bits = pipes ? pipes : 1u;
+      for (unsigned g = 0; g != f; ++g) {
+        const unsigned slot = unsigned(__builtin_ctz(slot_bits));
+        slot_bits &= slot_bits - 1;
+        const uint32_t grp = uint32_t((uint64_t(1) << per) - 1) << (g * per);
+        if (!(j.active & grp)) continue;
+        k_.hit("l0_lookup");
+        if (!l0_[slot].lookup(page)) {
+          k_.hit("l0_miss");
+          l0_[slot].fill(page);
+          if (!why) why = "drop_l0";
+        }
+      }
+    }
     if (!why) return nullptr;
     j.inelig = true;
     j.hit = false;
@@ -2484,6 +2502,13 @@ private:
   }
   const bool gate_all_ = envOn("CCV_MIU_GATE_ALL");
   const bool lead_pos_ = envOn("CCV_MIU_LEAD_POS");
+  /// MI-30 pricing aid (model-only, default off): CCV_MIU_L0=n gives each
+  /// lookup slot an n-entry LRU L0 TLB in front of the leaders (eligibility).
+  std::vector<miu::Tlb> l0_ = [] {
+    const char *v = std::getenv("CCV_MIU_L0");
+    const unsigned n = v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
+    return n ? std::vector<miu::Tlb>(ccv::prov::kDcacheLookups, miu::Tlb(n)) : std::vector<miu::Tlb>();
+  }();
   void a1GateFlop() {
     ge1_b_ = ge1_a_;
     ge2_b_ = ge2_a_;
