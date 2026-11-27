@@ -100,7 +100,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 423, OA 501, TI 584, MA 218, DI 93,
+- **Bookmarks** (revs read through): AR 423, OA 501, TI 584, MA 219, DI 93,
   MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 136, Conventions 20 (full
   sweep read 11-24; TI 584 read only for TI-582).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
@@ -255,7 +255,10 @@ Credit rules (TI-49):
    delta for the area table. Daniel then chose B in this session,
    about 41 kbit. MA rung twice. MA owes the TI/DI/MI rows, then tells
    OA the THRESHOLD_MLC re-sweep can run. AR owes the 132-entry miss
-   table in the MLC spec.
+   table in the MLC spec. MA rev 219 agreed AR 419: the new parameter is
+   CCV_MIU_MEMOPS_INFLIGHT=8, about +800 flops (MI to measure); the
+   return-state delta is +19.2 kbit; the 160-id pick splits by bank if it
+   goes over 25 NGD. Nothing owed.
 000i1. **Re-baseline DONE (eb1c3851, AR 418 .685318, 11-24; MA rung).**
    RH's runs (warm-MLC recipe, 4e3dda64 vs 77f7849e, 49 exact): S1 1,640
    and cm32priv 1,177,935 unchanged at every seed; cm128priv 1,977,489 ->

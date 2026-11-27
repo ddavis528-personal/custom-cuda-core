@@ -1711,7 +1711,11 @@ CCV_DCU_WAYS=8`, as AR rev 360's runs) at 4e3dda64 (before) and 77f7849e
   - DCU miss buffers, +13 kbit;
   - MIU return state, about +19 kbit;
   - MLC miss table, about +8 kbit;
-  - MIU id table, +0.8k flops.
+  - MIU id table, +0.8k flops;
+  - MIU memops in flight at 8 (`CCV_MIU_MEMOPS_INFLIGHT`), about +0.8k
+    flops (MA's estimate, for MI to measure).
+  MIU's return state is 32 kbit in all at B, +19.2 kbit over today's
+  12.8 kbit (MA rev 219).
   `CCV_LAT_MLC_HIT_MAX` stays 28: its queue term is FET's ids (PF-39,
   AR 413).
 - **Signal:** the read class (AR 412 (3)): a streaming read at
