@@ -287,6 +287,14 @@ for c in adv-late late-lead no-adv-bypass no-double no-double-adv keep-stale no-
     say "  control $c (decrx)" "caught"
   fi
 done
+# row-early: an arrival read a cycle before its warp's allocation writes the
+# row (OA 509 (3c), u_keep's table); keep_row_settled must fire, by name.
+re_out=$(DECRX_CONTROL=row-early "$dir/decrx_tb" 3 2>&1)
+if grep -q 'CCV keep_row_settled failed' <<<"$re_out"; then
+  say "  control row-early (decrx, keep_row_settled assertion)" "caught"
+else
+  say "  control row-early (decrx, keep_row_settled assertion)" "MISSED"; fail=1
+fi
 
 # ooe_slot (OA 435 (1)): the tier-1 slots' residency, demotion and kill,
 # driven from the model's control-step log (Core::slotLog) every cycle. Its

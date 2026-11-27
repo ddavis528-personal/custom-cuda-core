@@ -47,7 +47,9 @@
 // epoch, so it must be kept: the bench expects the model's drop),
 // no-ev-lead (the event lead never reaches it), no-rel (a release never
 // reaches it) and no-walk (a demotion's notice never opens its straggler
-// walk: the stragglers the model keeps for it are dropped, AR 395).
+// walk: the stragglers the model keeps for it are dropped, AR 395) and
+// row-early (an arrival of a warp in its allocation's drive, a cycle before
+// its row is written: keep_row_settled, by name; OA 509 (3c)).
 //
 // The straggler walk (AR 395, #71): a demotion's notice opens the slot's
 // walk (wo, from the model's log), and every resident slot's walk bit and,
@@ -240,6 +242,15 @@ void drive(const Edge &e, const Edge *nx, uint32_t lead) {
     setField(dut->arv_warp_cq01h, k * LW, LW, control == "late-lead" ? last_warp[k] : a.warp);
     setField(dut->arv_ep_cq01h, k * EP, EP, control == "late-lead" ? last_ep[k] : ep);
     if ((al_warps | rel_warps) >> a.warp & 1u) { ++same_drive; fail("an arrival led in its warp's allocation or release", a.warp, 0, 0); }
+  }
+  // row-early (OA 509 (3c)): an arrival of a warp allocated in this drive,
+  // on a free port, so u_keep reads its slot's row a cycle before the
+  // allocation writes it; ooe_decrx's keep_row_settled must name it.
+  if (control == "row-early" && !e.log.alloc.empty() && arr.size() < E) {
+    const unsigned k = unsigned(arr.size());
+    dut->arv_v_cq01h |= 1u << k;
+    setField(dut->arv_warp_cq01h, k * LW, LW, e.log.alloc.front().second);
+    setField(dut->arv_ep_cq01h, k * EP, EP, 0);
   }
   for (unsigned k = 0; k != E; ++k) { last_warp[k] = cur_warp[k]; last_ep[k] = cur_ep[k]; }
   tick();

@@ -308,6 +308,22 @@ module ooe_decrx #(
   `CCV_ASSERT(al_free_slot, al_busy_cq02h == '0)
   `CCV_ASSERT(al_new_warp, al_dup_cq02h == '0 && al_two_cq01h == '0)
   `CCV_ASSERT(al_not_advanced, (al_v_cq01h & (adv_cq01h | adn_cq01h)) == '0)
+  // keep_row_settled (OA 509 (3c), u_keep's table): u_keep reads a slot's
+  // row (sv, sw, se, sn, s2, wq, wep) as the flops hold it, and a release
+  // or an allocation writes the row at this edge, for the next cycle; an
+  // advance it bypasses (adv, adn). So no uop of a warp released or
+  // allocated in this cycle arrives in it: the read never meets the write.
+  logic [E-1:0] chk_rdwr_cq02h;
+  always_comb
+    for (int k = 0; k < E; k++) begin
+      chk_rdwr_cq02h[k] = 1'b0;
+      for (int s = 0; s < S; s++)
+        if (arv_v_cq01h[k] &&
+            ((rel_cq01h[s] && sv_cq02h[s] && arv_warp_cq01h[k * LW +: LW] == swi_cq02h[s * LW +: LW]) ||
+             (al_v_cq01h[s] && arv_warp_cq01h[k * LW +: LW] == al_warp_cq01h[s * LW +: LW])))
+          chk_rdwr_cq02h[k] = 1'b1;
+    end
+  `CCV_ASSERT(keep_row_settled, chk_rdwr_cq02h == '0)
 endmodule
 `undef CCV_CLK
 `undef CCV_RST
