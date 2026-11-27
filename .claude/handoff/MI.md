@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
-  MA 191, MI 51, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MA 195, MI 51, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
   MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
   deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
@@ -83,13 +83,13 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    until it lands, then swaps. MI rev 42 told TI miu_cred's needs; TI-538/539 full form, ccv_common_cr_cnt (DEPTH, SPEND_W, REFUND_W,
    THRESH list); TI-541 (DA, AR 415 (5)): link credits keep the cr_go exception at a flopped sender, depths 4+2N (FYI).
    MI rev 43: no same-cycle return, capture stays in miu_cred. TI posts the port list after AR/OA/RA/MA.
-0b'''. MI-26 (MI rev 51, MA rung): MA ruled MI-22 (revs 185/187), MI-23 (186: closed), MI-24 (188: A), then
-   MI-25 (191): build (D). Done on mi-dev 1c74ec2d (unpushed, not yet gated): agu8 = ordinary sum + ilv + loc
-   (24.5 NGD, 412 flops), control noshift; miu_form budgets by MA, per-octet win/sl keep copies, CG/NGD clean
-   (6,366 flops). Asked MA: local disp bound for C; agu8 out / A2 in budgets (proposed 0/0). Next: C per slot in
-   miu_form, then miu_lead/grp/a2 per (D) (measure VPN add in lead vs A2), NGD of agu8/lead/grp/a2/tlb, then push.
-   Fill assertion + orphan control (MA rev 187) go with miu_rsp. Diagnosis script for f-f paths:
-   scratchpad ngdq2.py (rr with fanout, worst ends and starts).
+0b'''. MI-26 (MI rev 51, MA rung): MA ruled MI-22..25; (D) built. MA rev 195: local b unsigned 17-bit, C once per
+   slot, agu8 out 0 / A2 in 0. Pushed e0a29c01 (agu8 (D), form). mi-dev c642ce7b (unpushed): C formed at A1 from
+   H flops (ctx, local region, disp 17), c_cm06h, form 24.3 NGD / 6,851 flops, CG clean; bench C-carry bins.
+   Tell MA in the next row: C sits at A1, out c_cm06h (A2 reads it at 0). Next: miu_lead per (D) (leader field
+   select; measure VPN (5+k)-bit add in lead vs A2), miu_grp/miu_a2 (12/12), report NGD of agu8/lead/grp/a2/tlb
+   to MA before the push. Fill assertion + orphan control (MA rev 187) go with miu_rsp. Diagnosis script for
+   f-f paths: scratchpad ngdq2.py (rr with fanout, worst ends and starts).
 0b''. MI-22/23 (MI revs 44-48, MA rung): miu_form built on mi-dev (bench form_tb, controls lane0/nohi1/noctx; NGD
    24.3 ff / 22.5 in; check-cg not yet run: OOM beside the gate, rerun alone). NOT pushable until MA sets its port
    budgets (ccv_miu has no unit: architect's). Ports: writes valid-then-fields (ctv_cm01h, ctc/ctl_cm02h; fv_cm01h,
