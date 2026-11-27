@@ -235,7 +235,8 @@ module ooe_rename #(
   input  logic              ctl_nolt,
   input  logic              ctl_norq,       // the go's room read with no lagged take subtracted (u_go.room)
   input  logic              ctl_pels,       // the go's pool change lead cut off (u_go.pool_en)
-  input  logic              ctl_noprv       // ooe_rendep's G-1 hits dropped from prv_dep (OA-496)
+  input  logic              ctl_noprv,      // ooe_rendep's G-1 hits dropped from prv_dep (OA-496)
+  input  logic              ctl_pwd         // the pending group's valid dropped from the reads (pw-drop, OA 509)
 `endif
 );
 
@@ -384,6 +385,15 @@ module ooe_rename #(
   logic [S*R*4*PW-1:0] c_pv_cq03h;
   logic [S*R*4*R-1:0]  c_gk_cq03h, c_pk_cq03h;  // each read's pending writer, one-hot by port (#35)
   logic [S*R*4*R-1:0]  c_pw_cq01h;
+  // The pending group's valid as the reads take it. pw-drop (OA 509's
+  // pw-late, a cycle late, would read a stage-04 copy at 03, which the stage
+  // tags refuse): none, so a read misses a writer still in flight (pw_seen).
+  logic [R-1:0] pw_v_cq03h;
+`ifdef CCV_CHECK_RENAME
+  assign pw_v_cq03h = ctl_pwd ? '0 : p_v_cq03h;
+`else
+  assign pw_v_cq03h = p_v_cq03h;
+`endif
   for (genvar s = 0; s < S; s++) begin : g_rd
     logic [R*3*4-1:0] src_cq01h;
     logic [R*4-1:0]   dst_cq01h;
@@ -403,7 +413,7 @@ module ooe_rename #(
       .rat_cq02h(rat_cq02h[s * MW +: MW]), .h_src_cq01h(src_cq01h), .h_dst_cq01h(dst_cq01h),
       .h_gwe_cq01h(gwe_cq01h), .h_pguard_cq01h(pguard_cq01h), .h_pdst_cq01h(pdst_cq01h), .h_pwe_cq01h(pwe_cq01h),
       .h_pq_cq01h(pq_cq01h), .po_v_cq02h, .po_slot_cq02h, .po_dst_cq02h, .po_gwe_cq02h, .po_gname_cq02h,
-      .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(p_v_cq03h),
+      .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(pw_v_cq03h),
       .pw_gkm_cq01h(p_gkm_cq03h[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(p_pkm_cq03h[s * 4 * R +: 4 * R]),
       .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk_cq03h[s * R * 4 * R +: R * 4 * R]),
       .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
@@ -1132,6 +1142,46 @@ module ooe_rename #(
     , .ctl_noprv
 `endif
     );
+
+`ifdef CCV_CHECK_RENAME
+  // pw_seen (OA 509, the u_ren1 pending-writer loop): each head's read of a
+  // register that a pending-group port still in flight writes (granted at
+  // 02, in Rename 1's register now, not yet in the map) names that port, the
+  // last one, as its pending writer; it never takes the map's stale entry.
+  // Recomputed here from the register's own lanes, apart from the go's
+  // per-register writer map (p_gkm/p_pkm) and the valid the reads take.
+  function automatic logic [R-1:0] chk_pw(input int s, input logic [3:0] a, input int k);
+    logic [R-1:0] m, w;
+    logic later;
+    for (int p = 0; p < R; p++)
+      m[p] = p_v_cq03h[p] && p_slot_cq03h[p * LS +: LS] == LS'(s) &&
+             (k == 0 ? p_gwe_cq03h[p] && p_dst_cq03h[p * 4 +: 4] == a
+                     : p_pwe_cq03h[p] && p_pdst_cq03h[p * 2 +: 2] == a[1:0]);
+    later = 1'b0;
+    for (int p = R - 1; p >= 0; p--) begin
+      w[p]  = m[p] && !later;
+      later = later || m[p];
+    end
+    chk_pw = w;
+  endfunction
+  logic chk_pw_ok_cq03h;
+  always_comb begin
+    chk_pw_ok_cq03h = 1'b1;
+    for (int s = 0; s < S; s++)
+      for (int h = 0; h < R; h++)
+        for (int i = 0; i < 4; i++) begin
+          logic [3:0] ga;
+          logic [1:0] pa;
+          ga = i < 3 ? c_src_cq01h[((h * S + s) * 3 + i) * 4 +: 4] : c_dst_cq01h[(h * S + s) * 4 +: 4];
+          pa = i == 0 ? c_pguard_cq01h[(h * S + s) * 2 +: 2] : i == 1 ? c_pdst_cq01h[(h * S + s) * 2 +: 2]
+             : c_pq_cq01h[((h * S + s) * 2 + (i % 2)) * 2 +: 2];
+          if (c_gk_cq03h[((s * R + h) * 4 + i) * R +: R] != chk_pw(s, ga, 0) ||
+              c_pk_cq03h[((s * R + h) * 4 + i) * R +: R] != chk_pw(s, {2'b00, pa}, 1))
+            chk_pw_ok_cq03h = 1'b0;
+        end
+  end
+  `CCV_ASSERT(pw_seen, chk_pw_ok_cq03h)
+`endif
 
   // The ports a group requests: the RCU ports its mains and copies take,
   // then the MIU ports, each class's from its first.

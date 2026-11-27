@@ -46,7 +46,9 @@
 // unmet, its last take not subtracted), no-room-take (the go's room read
 // with no lagged take) and pool-en-short (the go's pool change lead cut
 // off; fits_fresh, from seed 5), no-prv (ooe_rendep's G-1 hits
-// dropped from prv_dep: OA-496's control for u_map's table read).
+// dropped from prv_dep: OA-496's control for u_map's table read), pw-drop
+// (the pending group's valid dropped from the head reads; pw_seen, OA
+// 509's control for u_ren1's pending-writer loop, in place of its pw-late).
 // no-take-q to pool-en-short need names that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
 // GPR ceiling of 24, the model's set alike.
 // The sectioned build (RENAME_SECTIONS) adds no-merge (no head's attributes
@@ -369,6 +371,7 @@ void clearInputs() {
   dut->ctl_norq = control == "no-room-take";
   dut->ctl_pels = control == "pool-en-short";
   dut->ctl_noprv = control == "no-prv";
+  dut->ctl_pwd = control == "pw-drop";
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
