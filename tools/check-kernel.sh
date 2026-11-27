@@ -823,6 +823,10 @@ fi
 # path proves nothing about it. Bins are counted in the stubs (COVER line).
 # privwin's priv_form: 11 until OOE's C9h (OA's rev 372), 12 with it: one more
 # private memop re-executed, its formation counted again (TI's response OI-123).
+# 16 with MA-34's eight memops in flight (DA rev 136). The same run moves
+# vadd's UE (CCV_DCU_UE_INJECT=1) to an access whose L1 answer comes late
+# (l1_late=4), so nothing recovers there (0, as under MIU's model), and
+# ldpar's second recovery away (1): hit and ldpar keep ue_recover covered.
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 # Pins that hold only for the stubs' timing (DI-3, MI-4): under a block's
 # model (CCV_DCU_IMPL=model, CCV_MIU_IMPL=model) its row here replaces the
@@ -842,8 +846,6 @@ miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=62
 miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
-dcu=model vadd4-swap orphan=2
-miu=model vadd4-swap-miu impl=stub
 dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=56
 dcu=model,miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=1
 dcu=model,miu=model no-resource-cap v60=16
@@ -926,8 +928,8 @@ pgcross l1_inelig=1
 hit@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
 transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60 l1_hit=0
 spinwait@CCV_DCU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
-vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
-ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
+vadd@CCV_DCU_UE_INJECT=1 ue_recover=0 ue_fatal=0 machine_check=0 kill=0
+ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0
 hit@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=1 machine_check=1 kill=1
 predswap@CCV_DCU_UE_INJECT=1 ue_recover=0 ue_fatal=1 machine_check=1 kill=1
 atom@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
@@ -968,7 +970,7 @@ predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0
-privwin priv_form=11 priv_fault=0
+privwin priv_form=16 priv_fault=0
 rope local_form=44 frame_lookups=0
 fence fence=1 fence_wait>0
 addrhigh addr_fault=1 fault=1 kill=1
@@ -1236,8 +1238,8 @@ else
 fi
 # Memop credits against their own watchdog (AR 349/350). A memop credit is
 # held from landing to its MIU queue entry's release (MA-5), and behind the
-# stub's in-order queue coremark128's outlive CCV_P_TIMEOUT_BP (8192), so the
-# channel's is CCV_P_TIMEOUT_MEMOP (40960: CCV_MEMOP_CREDITS x CCV_WARP_LANES
+# stub's in-order queue coremark128's outlived CCV_P_TIMEOUT_BP (8192) with
+# four memops in flight (7328 with MA-34's eight), so the channel's is CCV_P_TIMEOUT_MEMOP (40960: CCV_MEMOP_CREDITS x CCV_WARP_LANES
 # lines / 16 fills in flight, rounds of CCV_P_TIMEOUT_MEM; AR-410);
 # ccv_dec_ooe_uop's, whose credits wait on memop's, derives from it
 # (CCV_P_TIMEOUT_UOP, AR 352). The holds come from a stated stress, the
@@ -1248,11 +1250,13 @@ fi
 # warp, where 45000 cycles retire about 1300 in all). It must raise no
 # response_within_n and no CHECK but the operand lines a bounded run's
 # flushHeld() reports, and no assertion but quiesced_at_end, the cut-off
-# run's, and its longest memop hold must pass 8192, or the control below
-# proves nothing. It guards the watchdogs and those checks only: the unbounded runs
-# AR 350 asks for (coremark32 and coremark128 to their end) are outside the
+# run's, and its longest memop hold must pass 4096, or the control below
+# proves nothing (8192 until MA-34's eight memops in flight, DA rev 136,
+# drained the stub's queue faster: the hold fell from over 8192 to 7328).
+# It guards the watchdogs and those checks only: the unbounded runs AR 350
+# asks for (coremark32 and coremark128 to their end) are outside the
 # gate. Control: the bank rebuilt with the memop watchdog at
-# CCV_P_TIMEOUT_BP (tools/build-skel.sh, an incremental build) fires.
+# CCV_P_TIMEOUT_BP / 2 (tools/build-skel.sh, an incremental build) fires.
 cb=$B/cm128-bounded; rm -rf "$cb"; mkdir -p "$cb"
 cp -r test/bench/coremark128 "$cb/coremark128"
 sed -i 's/^MAXSTEPS=.*/MAXSTEPS=40000/' "$cb/coremark128/kernel.cfg"
@@ -1269,36 +1273,36 @@ else
   uh=$(sed -n 's/^BPAGE ccv_dec_ooe_uop max=\([0-9]*\) .*/\1/p' "$cbl")
   ret=$(field "$cbl" retired)
   if [ "$rwn" = 0 ] && [ "$other" = 0 ] && [ "$asrt" = 0 ] && [ "$(field "$cbl" finished)" = 0 ] &&
-     [ "${ret:-0}" -gt 1000 ] && [ "${mh:-0}" -gt 8192 ]; then
-    rm -rf "$B/skel-memop8192"; cp -a "$B/skel" "$B/skel-memop8192"
-    sed -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP/ccv_prov_pkg::CCV_P_TIMEOUT_BP/' \
-        -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_UOP/(ccv_prov_pkg::CCV_P_TIMEOUT_BP \/ 2)/' \
-      rtl/generated/ccv_common_chk_bank.sv >"$cb/bank-memop8192.sv"
+     [ "${ret:-0}" -gt 1000 ] && [ "${mh:-0}" -gt 4096 ]; then
+    rm -rf "$B/skel-memop-narrow"; cp -a "$B/skel" "$B/skel-memop-narrow"
+    sed -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP/(ccv_prov_pkg::CCV_P_TIMEOUT_BP \/ 2)/' \
+        -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_UOP/(ccv_prov_pkg::CCV_P_TIMEOUT_BP \/ 4)/' \
+      rtl/generated/ccv_common_chk_bank.sv >"$cb/bank-memop-narrow.sv"
     if ! grep -q CCV_P_TIMEOUT_MEMOP rtl/generated/ccv_common_chk_bank.sv ||
        ! grep -q CCV_P_TIMEOUT_UOP rtl/generated/ccv_common_chk_bank.sv; then
       bad "coremark128: memop watchdog control" "the bank names no CCV_P_TIMEOUT_MEMOP or CCV_P_TIMEOUT_UOP to narrow"
-    elif ! tools/build-skel.sh "$B/skel-memop8192" "$cb/bank-memop8192.sv"; then
-      bad "coremark128: memop watchdog control" "the 8192 bank does not build ($B/skel-memop8192.log)"
+    elif ! tools/build-skel.sh "$B/skel-memop-narrow" "$cb/bank-memop-narrow.sv"; then
+      bad "coremark128: memop watchdog control" "the narrowed bank does not build ($B/skel-memop-narrow.log)"
     else
-      CCV_TB_LATENCY=1000 "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
-      # Both narrowed must fire (AR 352 (3)): memop's at 8192, and
+      CCV_TB_LATENCY=1000 "$B/skel-memop-narrow/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
+      # Both narrowed must fire (AR 352 (3)): memop's at 4096, and
       # dec_ooe_uop's, whose credits wait on memop's (CCV_P_TIMEOUT_UOP), at
-      # 4096: since CCV_LAT_L1_CMPL 15 (AR 368) the run's longest uop hold is
-      # under 8192, so a watchdog there proves nothing; the hold must pass
-      # 4096, or this control proves nothing either.
+      # 2048: since MA-34 (eight memops in flight) the run's longest uop hold
+      # is 3536, under 4096, so a watchdog there proves nothing; the hold must
+      # pass 2048, or this control proves nothing either.
       if ! grep -q 'u_ooe_miu_memop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
-        bad "coremark128: memop watchdog control" "with the memop watchdog at 8192, no response_within_n on ccv_ooe_miu_memop"
-      elif [ "${uh:-0}" -le 4096 ]; then
-        bad "coremark128: uop watchdog control" "the longest uop hold ${uh:-none} is not over 4096: the narrowed watchdog proves nothing"
+        bad "coremark128: memop watchdog control" "with the memop watchdog at 4096, no response_within_n on ccv_ooe_miu_memop"
+      elif [ "${uh:-0}" -le 2048 ]; then
+        bad "coremark128: uop watchdog control" "the longest uop hold ${uh:-none} is not over 2048: the narrowed watchdog proves nothing"
       elif ! grep -q 'u_dec_ooe_uop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
-        bad "coremark128: uop watchdog control" "with the uop watchdog at 4096, no response_within_n on ccv_dec_ooe_uop (hold ${uh:-none})"
+        bad "coremark128: uop watchdog control" "with the uop watchdog at 2048, no response_within_n on ccv_dec_ooe_uop (hold ${uh:-none})"
       else
-        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of $(sed -n 's/^BPAGE ccv_ooe_miu_memop .*watchdog=\([0-9]*\).*/\1/p' "$cbl"), at CCV_TB_LATENCY=1000; memop at 8192 and uop at 4096 fire)"
+        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of $(sed -n 's/^BPAGE ccv_ooe_miu_memop .*watchdog=\([0-9]*\).*/\1/p' "$cbl"), at CCV_TB_LATENCY=1000; memop at 4096 and uop at 2048 fire)"
       fi
     fi
-    rm -rf "$B/skel-memop8192" "$B/skel-memop8192.log"
+    rm -rf "$B/skel-memop-narrow" "$B/skel-memop-narrow.log"
   else
-    bad "coremark128, 45000 cycles: memop watchdog" "$rwn response_within_n, $other CHECK not operand, $asrt assertions not quiesced_at_end, finished=$(field "$cbl" finished), retired=$ret, memop hold ${mh:-none} (want 0, 0, 0, 0, >1000, >8192)"
+    bad "coremark128, 45000 cycles: memop watchdog" "$rwn response_within_n, $other CHECK not operand, $asrt assertions not quiesced_at_end, finished=$(field "$cbl" finished), retired=$ret, memop hold ${mh:-none} (want 0, 0, 0, 0, >1000, >4096)"
   fi
 fi
 rm -rf "$cb/o"
@@ -1806,12 +1810,14 @@ fi
 ue() { CCV_DCU_UE_INJECT=1 "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" ${2:+--break "$2"} >"$B/kernel_ue_$1_${2:-none}.log" 2>&1; }
 uelog() { echo "$B/kernel_ue_$1_${2:-none}.log"; }
 # provswap, not ldpar: its UE lands where the table is full under every
-# MIU and DCU implementation set (MI-4 (A2), MI rev 20).
-CCV_DCU_UE_TRACK=1 ue provswap
+# MIU and DCU implementation set (MI-4 (A2), MI rev 20). At its second hit
+# since MA-34 (DA rev 136): with eight memops in flight its first hit's UE
+# finds the table free under the stubs and under DCU's model.
 l=$(uelog provswap)
+CCV_DCU_UE_TRACK=1 CCV_DCU_UE_INJECT=2 "$SKEL" --kernel build/oracle/provswap/oracle.jsonl >"$l" 2>&1
 if [ "$(field "$l" check_failures)" = 0 ] && [ "$(cover "$l" ue_fatal)" = 1 ] &&
    [ "$(cover "$l" machine_check)" = 1 ] && grep -q '^UE dcu: core-fatal .*(table full)' "$l"; then
-  say "a UE that finds DCU's track table full is core-fatal" "PASS (provswap, CCV_DCU_UE_TRACK=1)"
+  say "a UE that finds DCU's track table full is core-fatal" "PASS (provswap, CCV_DCU_UE_TRACK=1, second hit)"
 else
   bad "a UE that finds DCU's track table full" "not core-fatal: $(grep '^KERNEL' "$l")"
 fi
@@ -2436,8 +2442,9 @@ mi7 "slotform, cold TLB: a load over two pages" "$log" tlb_two_page=2
 # demoted while warp 1 is held at its barrier, ends == ccv-sim; the control
 # fet-ignore-held resumes the warp past its wait, and its LD_SHARED reads
 # the other warps' stores before they are made (the cycle is per
-# implementation set, an IMPL_PINS row).
-hw=$(impl_pins held-wait demote=881); hw=${hw#demote=}
+# implementation set, an IMPL_PINS row; the stubs' 881 became 868 with
+# MA-34's eight memops in flight: 867-869 and 885-887 catch it).
+hw=$(impl_pins held-wait demote=868); hw=${hw#demote=}
 log="$B/kernel_transp4_held_wait.log"
 CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:$hw "$SKEL" --kernel build/oracle/transp4/oracle.jsonl >"$log" 2>&1
 w=$(ok "$log")
@@ -2586,34 +2593,19 @@ done
 # orphans its DCU requests, and reports the warp ready to RAU once they are
 # home. RAU restores only a ready warp (RAU spec rev 25), so the restored
 # warp's replayed load hits (stall's one L1 hit; none without the swap).
-# vadd4's discard orphans one request at a 13-entry decode queue, since
-# FET's credits pace its warps (TI-46 (b)), and none at 15 with the free lag
-# (OI-111): the deeper queue paces them so that none is in flight at the
-# discard. Exact at each depth; stall's drain carries the orphan going home.
-decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("params/ccv_params.json"))["params"] if p["name"] == "CCV_P_DECQ"))')
-# With the testbench at 20+-5 cycles (DA rev 132, AR 412) the stub pair
-# leaves vadd4 two orphans at the shipped depth; the depth rule above was
-# measured at the old fixed 10 and is not re-derived here.
-v4orph=2
-# DI-3: the DCU model's timing left vadd4 one orphan at any depth; since
-# DI-48's fix (a bank loser's read miss goes to the MSHR at its D2) it leaves
-# two, as the pair does (IMPL_PINS' vadd4-swap row, DI-38).
-# MI-4 (A)(4), MI rev 33: the MIU model completes vadd4's one MLC miss
-# before RAU demotes the warp, so no drain happens under it; vadd4's half
-# runs on the stub MIU there (the vadd4-swap-miu row), stall's stays as run.
-v4miu=$(impl_pins vadd4-swap-miu impl=${CCV_MIU_IMPL:-stub}); v4miu=${v4miu#impl=}
-v4log="$B/kernel_vadd4_swap.log"
-if [ "$v4miu" != "${CCV_MIU_IMPL:-stub}" ]; then
-  v4log="$B/kernel_vadd4_swap_miu-$v4miu.log"
-  CCV_MIU_IMPL=$v4miu CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$v4log" 2>&1
-fi
-v4orph=$(CCV_MIU_IMPL=$v4miu impl_pins vadd4-swap orphan=$v4orph); v4orph=${v4orph#orphan=}
+# A drain of many orphans: spmbank's discard orphans 19 requests under every
+# MIU and DCU implementation set, all home before the warp is ready. It was
+# vadd4's, paced by the decode queue (TI-46 (b), OI-111), until MA-34's eight
+# memops in flight (DA rev 136) completed vadd4's one MLC miss before RAU
+# demotes it under the stubs too, as the MIU model already did (MI-4 (A)(4)):
+# no drain forms there under any implementation set.
+sborph=19
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
-w2=$(ok "$v4log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
+w2=$(ok "$B/kernel_spmbank_swap.log" bulk_discard=1 orphan=$sborph ready=1 restored=1)
 if [ -z "$w$w2" ]; then
-  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits and orphan home; vadd4's $v4orph orphan(s) at decq $decq on the $v4miu MIU, then ready)"
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits and orphan home; spmbank's $sborph orphans home, then ready)"
 else
-  bad "replay drain" "stall: $w; vadd4: $w2"
+  bad "replay drain" "stall: $w; spmbank: $w2"
 fi
 rd() { CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" --break "$2" >"$B/kernel_$1_$2.log" 2>&1; }
 rd swap drop-replay
