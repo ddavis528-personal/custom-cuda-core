@@ -361,7 +361,7 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 506, RA 161, RI 96, TI 596, AR 431, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 221, MI 74, DI 99.
+Bookmarks: OA 506, RA 162, RI 96, TI 600, AR 433, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 221, MI 74, DI 99.
 RA 158 (11-23): OA 469 / AR 406 (3) misrouted RAU's pc_kept to RA; RAU is TI's stub. OA 472, AR 407-408, TI-526 agree;
 closed. Sweep 11-23: nothing for RA. Watch AR 410 / TI-531: CCV_P_TIMEOUT_MEMOP derived, slow memory regions end at
 1 MiB, perf-register cycles move above 0xC0000 (AR re-baselines). Merged 183cc441 (173, carried OI's 57eff422),
@@ -378,6 +378,9 @@ flops the returned credit a cycle before it counts (RI-63), so REG/LATE (+1) unl
 RA row Needs TI. OA 484: RA signs "by" on RCU parent-level CCV-L23 declarations. DA 133 (AR owns MLC spec) and
 DA 134 (OOE ratchet paths may rise to 30 NGD; not RCU). AR 415: at a flopped end the wrapper holds the flops;
 rcu_kill's credit waiver goes on migration.
+RA 162 (re TI-597) + AR 428: SETTLED. Forms: REG (in-cycle spend, 4+2N), REG_LATE (LATE_COUNT, OOE cok, 4+2N+1),
+COMB (4+2N); missing entry = REG_LATE (AR's default). AR 428 corrects AR 416 (1) under Daniel's option A, no
+DA ruling needed. rcu_pca_mig: REG now, COMB with RI's cr_go move, 4+2N either way; COMB at 3+2N is a slack record.
 RA 161 (re RI-67): RI's bench shows the flopped RCU credit (used the cycle after arrival = channel.h,
 CCV_CREDIT_TURNAROUND) full rate at 4+2N; the +1 fits only first use 2 cycles after arrival. RA 160 (5) control
 corrected to RI's credlate. RI to run COMB at depth 3 for AR. AR 416 (1) (Daniel's "REG one more credit")
