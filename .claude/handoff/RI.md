@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 634bb54e (11-25/26 sweep, PASS full, without ccr-58815650). Earlier: 21dd6b95 (11-24 sweep); bd3bf7b8 (handoff, credit module); 9f124ce6 (11-23 sweep); c3f77676 (11-22 sweep); 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: 208e9130 (11-27 sweep, PASS full). Earlier: 634bb54e (11-25/26 sweep); 21dd6b95 (11-24 sweep); bd3bf7b8 (handoff, credit module); 9f124ce6 (11-23 sweep); c3f77676 (11-22 sweep); 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,14 +57,14 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
-- (-32, OPEN) 11-27 sweep merges HELD: every branch but 9eb50716/c22116ce now carries miu_form (3fe9deaa..c642ce7b)
-  without its fix; the miu_form CG harness under g++ peaks 7-11.5 GB and the 15 GB container OOMs (RI-64, rev 93).
-  Fix = replay_cxx clang++ in test/miu/cg-units.json (MI 104678de on gate-scratch/MI, TI copy 3826f9cf on
-  gate-scratch/MI-rp; 564 MiB). MI-50 and TI-591 promise to ring with the tip. When a branch carries it: fetch, branch
-  ri-sweep27 from 634bb54e, merge all (9 bases: use ort, not resolve, or merge low-base ones first), confirm
-  `git grep replay_cxx -- test/miu/cg-units.json`, full gate-push. 11-27 register read done (nothing for RI;
-  bookmarks AR 426, OA 506, IS 201, TI 593, OI 427, CP 160, DA 136, RA 159, RI 93, MA 221, MI 74, DI 99, Conv 20).
-  Friday pings 11-27: all 11 pongs checked ok; answered pings from MI, MA, AR, OA, TI, OI, CP, IS, RA, DI.
+- (-32) 11-27 sweep: pushed 208e9130 (PASS full; ngd 12.3 ks, cg 11.7 ks). Merged 58815650 63 (MI, with the
+  miu_form clang++ fix; RI-64 closed by it), infra 54, miu-dcu-spec 143, 3868632d 48, 126afa13 6, 5e4d6c70 4,
+  80102643 3, 9eb50716 1, c22116ce 1. Register: nothing for RI (bookmarks AR 426, OA 506, IS 201, TI 593, OI 427,
+  CP 160, DA 136, RA 159, RI 93, MA 221, MI 74, DI 99, Conv 20). Friday pings: all 11 pongs ok.
+  Lesson: 9 merge bases (each agent's 11-24 tip) made ort's virtual base explode (90 min timeout, no result);
+  resolve caps at 6. Recipe: scratchpad vmerge.sh/vmerge2.sh = flat virtual base (octopus base + merge-tree of the
+  tips), final `git merge-tree --merge-base=V`, then every path where one side still equals a base tip takes the
+  other side, trust-report ours; commit-tree with both parents. ~2 s per branch.
 - (-31) 11-25/26 sweep: pushed 634bb54e (PASS full). Merged infra 2, c22116ce 3, 5e4d6c70 5, miu-dcu-spec 6,
   9eb50716 7, 80102643 12, 3868632d 8, 126afa13 9 (trust-report taken ours, regenerated). Left out ccr-58815650
   (45, MI) after three CG OOMs on miu_form (RI-64). Lesson: a cc1plus OOM in check-cg is a unit, not concurrency;
