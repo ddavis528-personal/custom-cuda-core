@@ -18,8 +18,11 @@
 #     launches), scale (no index scale) and lowest (the lowest active lane,
 #     not the fixed leader),
 #   miu_tlb: test/miu/tlb_tb.cpp, each slot's L0 and the 32-entry TLB's
-#     refill (MA rev 199), controls early (the L0 written a cycle early)
-#     and norr (the grant to the lowest pending slot),
+#     refill (MA revs 199, 206-208), controls early (the L0 written a cycle
+#     early), norr (the grant to the lowest pending slot), tight (the
+#     refill bound one cycle short), l0dup (no second-miss filter), wvkeep
+#     (an invalidate leaves the last-write copy) and ivkeep (it leaves the
+#     refills in flight),
 #   miu_ids: test/miu/ids_tb.cpp, the DCU req_ids: quarter picks, releases
 #     and the id-to-entry table,
 #   miu_cred: test/miu/cred_tb.cpp, DCU bank credits and the A1 gate,
@@ -89,6 +92,10 @@ control miu_lead lowest
 bench miu_tlb test/miu/cg-build.sh miu_tlb "$B/miu_tlb" -- "$B/miu_tlb/tb"
 control miu_tlb early
 control miu_tlb norr
+control miu_tlb tight
+control miu_tlb l0dup
+control miu_tlb wvkeep
+control miu_tlb ivkeep
 bench miu_a2 test/miu/cg-build.sh miu_a2 "$B/miu_a2" -- "$B/miu_a2/tb"
 control miu_a2 carry
 control miu_a2 bank

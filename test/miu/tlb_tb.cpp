@@ -1,6 +1,6 @@
 //===-- tlb_tb.cpp - miu_tlb bench: the L0s at A2 and the 32-entry TLB at A3 -===//
 //
-// MA rev 199 (re:MI-31): each lookup slot's 4-entry L0, refilled from one
+// MA rev 199 (re:MI-31), rev 206: each lookup slot's 6-entry L0, refilled from one
 // 32-entry TLB at A3 through one port, round robin over the slots. The
 // bench drives what miu_lead and miu_a2 would: each slot's request valid
 // (the lead, rv_cm06h), and a cycle on the slot's leader VPN and its L0
@@ -9,12 +9,29 @@
 // by cycle: the TLB's entries in fill order, each slot's pending refill
 // (replaced by the slot's next lead), the grant, the compare a cycle on
 // (an OR of every matching entry), and each slot's L0 written in turn.
-// Every cycle it checks all 16 L0 entries (valid, VPN, PPN, fold, perms)
+// Every cycle it checks all 24 L0 entries (valid, VPN, PPN, fold, perms)
 // and A3's miss with its VPN.
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py); the wires change only with their valids. Controls,
-// each of which must fail: early (the L0 written a cycle early) and norr
-// (the grant always to the lowest pending slot).
+// each of which must fail: early (the L0 written a cycle early), norr
+// (the grant always to the lowest pending slot) and tight (the refill bound
+// one cycle short), and l0dup (the model asks again on a second miss and
+// writes the page twice: the bench's no-duplicate check fires on it), and
+// wvkeep (an invalidate leaves the last-write copy set, so a re-miss of
+// that page after the clear is dropped: OA-484 (3), MA rev 208), and
+// ivkeep (the invalidate leaves a request in flight: the pending, granted
+// and compared refills survive it; OA-486 (b)). A miss whose request the
+// invalidate drops ends in a re-miss: its load took the no-hit path at A2,
+// and its next lookup misses the emptied L0 and asks again.
+// The invalidate (iv_cm05h, Q-60's TLB clear) clears every entry, the
+// last-write copy and the refill stages; the generator fires it often while
+// a refill is about to be written, then re-misses the slot's last page.
+// The refill bound (MI-35, MA rev 204): a slot's miss, taken with its lead
+// at cm07h, is granted within NS cycles (1 uncontended, at most NS - 1 more
+// behind the round robin), so its L0 entry is written NS + 2 cycles after
+// the miss's step at most: from miu_a2's compare at cm06h, a usable entry
+// within 5 cycles uncontended and NS + 4 = 8 at most. Every grant is held to
+// it (tight: to one cycle less), and the bench must reach it.
 //===----------------------------------------------------------------------===//
 #include "Vmiu_tlb.h"
 #include "verilated.h"
@@ -30,7 +47,7 @@
 
 namespace {
 
-constexpr unsigned kNS = 4, kN0 = 4, kNT = 32, kFW = 4;
+constexpr unsigned kNS = 4, kN0 = 6, kNT = 32, kFW = 4;
 
 struct Ent { bool v = false; uint32_t vpn = 0, ppn = 0, fold = 0, pm = 0; };
 
@@ -41,11 +58,12 @@ struct In {
   unsigned rv = 0, ms = 0;     // per slot
   uint32_t vpn[kNS] = {};
   bool fv = false;             // the fill's valid; its payload a cycle on
+  bool iv = false;             // the invalidate
   uint32_t fvpn = 0, fppn = 0, fpm = 0;
 };
 
 struct Model {
-  bool fvq = false;
+  bool fvq = false, ivq = false;
   unsigned tp = 0;
   Ent te[kNT];
   unsigned rq = 0, pm = 0, rr = 0;
@@ -58,6 +76,8 @@ struct Model {
   uint32_t rp = 0, rf = 0, rg = 0, rvv = 0;
   unsigned wp[kNS] = {};
   Ent l0[kNS][kN0];
+  unsigned wl = kNS;   // the slot last cycle's L0 write went to, or kNS
+  uint32_t wv = 0;
 };
 
 struct Bench {
@@ -67,6 +87,9 @@ struct Bench {
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0;
   unsigned cov_hit = 0, cov_miss = 0, cov_contend = 0, cov_wrap = 0, cov_cancel = 0;
+  unsigned wait_max = 0, cov_bound = 0, cov_dup = 0, dups = 0, cov_iv = 0, cov_ivw = 0;
+  Ent l0seen[kNS][kN0];   // the L0 as miu_a2 compared it: the cycle before the miss
+  uint64_t since[kNS] = {};   // the step each slot's pending miss was taken
   std::string ctl;
   Model m;
 
@@ -102,6 +125,7 @@ struct Bench {
     dut->ms_cm07h = in.ms;
     for (unsigned s = 0; s < kNS; ++s) dut->vpn_cm07h[s] = in.vpn[s];
     dut->fv_cm05h = in.fv;
+    dut->iv_cm05h = in.iv;
     dut->fvpn_cm06h = in.fvpn;
     dut->fppn_cm06h = in.fppn;
     dut->fpm_cm06h = in.fpm;
@@ -126,6 +150,13 @@ struct Bench {
   // The next state from the old state o and this cycle's inputs.
   Model next(const Model &o, const In &in) {
     Model n = o;
+    // The invalidate, flopped: this cycle it clears what follows (wvkeep:
+    // not the last-write copy).
+    const bool keep = ctl == "wvkeep";
+    const bool iv = o.ivq, ivs = iv && ctl != "ivkeep";   // ivs: the stages cleared
+    n.ivq = in.iv;
+    cov_iv += iv;
+    cov_ivw += iv && o.ra && o.rh;
     // The TLB's fill.
     n.fvq = in.fv;
     if (o.fvq) {
@@ -135,11 +166,28 @@ struct Bench {
     // The capture and the pending refills.
     n.rq = in.rv;
     const unsigned g = grant(o);
+    if (g < kNS) {   // the bound: granted within NS steps of the miss's step
+      const unsigned d = unsigned(cyc - since[g]);
+      const unsigned lim = ctl == "tight" ? kNS - 1 : kNS;
+      wait_max = d > wait_max ? d : wait_max;
+      cov_bound += d == kNS;
+      if (d > lim && ++fails <= 20)
+        std::fprintf(stderr, "tlb: cycle %llu: slot %u granted %u cycles after its miss, over %u\n",
+                     (unsigned long long)cyc, g, d, lim);
+    }
     for (unsigned s = 0; s < kNS; ++s) {
       if (o.rq >> s & 1) {
+        // The second miss (MI-35, OA-481): a VPN already on its way raises
+        // no request (l0dup: the model asks again).
+        const uint32_t v = in.vpn[s];
+        const bool dup = ctl != "l0dup" && (in.ms >> s & 1) && (!iv || keep) &&
+                         (((o.pm >> s & 1) && g == s && o.vq[s] == v) || (o.sa && o.sg == s && o.sv == v) ||
+                          (o.ra && o.rh && o.rs == s && o.rvv == v) || (o.wl == s && o.wv == v));
+        cov_dup += dup;
         n.vq[s] = in.vpn[s];
         cov_cancel += (o.pm >> s & 1) && g != s && !(in.ms >> s & 1);
-        n.pm = (n.pm & ~(1u << s)) | ((in.ms >> s & 1) << s);
+        n.pm = (n.pm & ~(1u << s)) | (unsigned((in.ms >> s & 1) && !dup) << s);
+        if (in.ms >> s & 1) since[s] = cyc;
       } else if (g == s) {
         n.pm &= ~(1u << s);
       }
@@ -147,35 +195,63 @@ struct Bench {
     if (o.pm) n.rr = (g + 1) % kNS;
     cov_contend += __builtin_popcount(o.pm) > 1;
     // The grant's flops.
-    n.sa = o.pm != 0;
+    n.sa = o.pm != 0 && !ivs;
     if (o.pm) { n.sg = g; n.sv = o.vq[g]; }
     // The compare, a cycle on: every matching entry ORed.
     bool hit = false;
     uint32_t p = 0, f = 0, pg = 0;
     for (const Ent &e : o.te)
       if (e.v && e.vpn == o.sv) { hit = true; p |= e.ppn; f |= e.fold; pg |= e.pm; }
-    n.ra = o.sa;
-    n.tmo = o.sa && !hit;
+    n.ra = o.sa && !ivs;
+    n.tmo = o.sa && !hit && !ivs;
     if (o.sa) {
       n.rh = hit; n.rs = o.sg; n.rp = p; n.rf = f; n.rg = pg; n.rvv = o.sv;
       cov_hit += hit;
       cov_miss += !hit;
     }
     // Each slot's L0, a cycle on (early: from the compare itself).
-    const bool w = ctl == "early" ? (o.sa && hit) : (o.ra && o.rh);
+    const bool w = !iv && (ctl == "early" ? (o.sa && hit) : (o.ra && o.rh));
     const unsigned ws = ctl == "early" ? o.sg : o.rs;
     const Ent we = ctl == "early" ? Ent{true, o.sv, p, f, pg} : Ent{true, o.rvv, o.rp, o.rf, o.rg};
+    const bool wr = o.ra && o.rh && (!iv || keep);
+    n.wl = wr ? o.rs : kNS;
+    if (wr) n.wv = o.rvv;
     if (w) {
       n.l0[ws][o.wp[ws]] = we;
       n.wp[ws] = (o.wp[ws] + 1) % kN0;
       cov_wrap += o.wp[ws] == kN0 - 1;
     }
+    if (iv) {
+      if (ivs) n.pm = 0;
+      for (Ent &e : n.te) e.v = false;
+      for (auto &sl : n.l0)
+        for (Ent &e : sl) e.v = false;
+    }
     return n;
   }
   void step(const In &in) {
     drive(in);
+    // The L0 as miu_a2 compares it this cycle: the module's own outputs.
+    for (unsigned s = 0; s < kNS; ++s)
+      for (unsigned e = 0; e < kN0; ++e) {
+        const unsigned i = s * kN0 + e;
+        l0seen[s][e] = Ent{bool(dut->l0v_cm11h >> i & 1), dut->l0vpn_cm11h[i], 0, 0, 0};
+      }
     edge();
     m = next(m, in);
+    // No slot's L0 holds a page twice: the DUT's, and the model's as the
+    // check's own control (l0dup makes the model write duplicates).
+    for (unsigned s = 0; s < kNS; ++s)
+      for (unsigned a = 0; a < kN0; ++a)
+        for (unsigned c = a + 1; c < kN0; ++c) {
+          const unsigned ia = s * kN0 + a, ic = s * kN0 + c;
+          const bool dd = (dut->l0v_cm11h >> ia & 1) && (dut->l0v_cm11h >> ic & 1) &&
+                          dut->l0vpn_cm11h[ia] == dut->l0vpn_cm11h[ic];
+          const bool dm = m.l0[s][a].v && m.l0[s][c].v && m.l0[s][a].vpn == m.l0[s][c].vpn;
+          if ((dd || dm) && ++dups <= 5 && ++fails <= 20)
+            std::fprintf(stderr, "tlb: cycle %llu: slot %u's L0 holds a page twice (%s)\n",
+                         (unsigned long long)cyc, s, dd ? "RTL" : "model");
+        }
     ++checked;
     bool ok = bool(dut->tm_cm10h) == m.tmo && (!m.tmo || dut->tmv_cm10h == m.rvv);
     for (unsigned s = 0; s < kNS; ++s)
@@ -187,7 +263,7 @@ struct Bench {
         ok = ok && v == w.v;
         if (!w.v) continue;
         ok = ok && dut->l0vpn_cm11h[i] == w.vpn && dut->l0ppn_cm11h[i] == w.ppn &&
-             uint32_t(dut->l0fold_cm11h >> (i * kFW) & 0xf) == w.fold &&
+             (dut->l0fold_cm11h[i * kFW / 32] >> (i * kFW % 32) & 0xf) == w.fold &&
              uint32_t(dut->l0pm_cm11h >> i & 1) == w.pm;
       }
     if (!ok && ++fails <= 20)
@@ -210,6 +286,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
   const bool rnd = scenario.empty();
   const unsigned n = rnd ? 60000 : scenario == "idle" ? 3000 : 4000;
   In prev{}, cur{};
+  uint32_t last[kNS] = {};
   for (unsigned i = 0; i < n; ++i) {
     // Rates: valid per slot, miss given a valid, fill.
     unsigned pv = 0, pmiss = 0, pf = 0;
@@ -221,14 +298,25 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
     for (unsigned s = 0; s < kNS; ++s) {
       if (g.below(100) < pv) in.rv |= 1u << s;
       if (prev.rv >> s & 1) {
-        in.vpn[s] = g.page();
-        if (g.below(100) < pmiss) in.ms |= 1u << s;
+        // Often the slot's last miss again (the second miss, MI-35); a miss
+        // only on a page miu_a2's L0 compare did not find.
+        in.vpn[s] = rnd && g.below(3) == 0 ? last[s] : g.page();
+        bool held = false;
+        for (unsigned e = 0; e < kN0; ++e)
+          held = held || (b.l0seen[s][e].v && b.l0seen[s][e].vpn == in.vpn[s]);
+        if (!held && g.below(100) < pmiss) {
+          in.ms |= 1u << s;
+          last[s] = in.vpn[s];
+        }
       } else {
         in.vpn[s] = rnd && g.below(2) ? uint32_t(g.r()) : prev.vpn[s];
         if (rnd) in.ms = (in.ms & ~(1u << s)) | (g.below(2) << s);
       }
     }
     in.fv = g.below(100) < pf;
+    // The invalidate: rare, and often while a granted refill is a cycle
+    // from its L0 write, so the clear meets the write and the copy.
+    in.iv = rnd && (g.below(400) == 0 || (b.m.sa && g.below(16) == 0));
     if (prev.fv) {
       in.fvpn = g.page();
       in.fppn = uint32_t(g.r());
@@ -248,9 +336,10 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
     cur = in;
   }
   (void)cur;
-  if (rnd && (!b.cov_hit || !b.cov_miss || !b.cov_contend || !b.cov_wrap || !b.cov_cancel)) {
-    std::fprintf(stderr, "tlb: coverage: hit %u miss %u contend %u wrap %u cancel %u\n",
-                 b.cov_hit, b.cov_miss, b.cov_contend, b.cov_wrap, b.cov_cancel);
+  if (rnd && (!b.cov_hit || !b.cov_miss || !b.cov_contend || !b.cov_wrap || !b.cov_cancel || !b.cov_bound || !b.cov_ivw ||
+              (!b.cov_dup && ctl != "l0dup"))) {
+    std::fprintf(stderr, "tlb: coverage: hit %u miss %u contend %u wrap %u cancel %u bound %u (longest wait %u) second miss %u invalidate %u (at a write %u)\n",
+                 b.cov_hit, b.cov_miss, b.cov_contend, b.cov_wrap, b.cov_cancel, b.cov_bound, b.wait_max, b.cov_dup, b.cov_iv, b.cov_ivw);
     ++b.fails;
   }
   std::printf("tlb%s%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
@@ -258,8 +347,8 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
               rnd ? "random" : scenario.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
               b.fails ? "FAIL" : "PASS");
   if (rnd && !ctl.empty())
-    std::printf("tlb: coverage: hit %u miss %u contend %u wrap %u cancel %u\n", b.cov_hit,
-                b.cov_miss, b.cov_contend, b.cov_wrap, b.cov_cancel);
+    std::printf("tlb: coverage: hit %u miss %u contend %u wrap %u cancel %u bound %u (longest wait %u) second miss %u invalidate %u (at a write %u)\n",
+                b.cov_hit, b.cov_miss, b.cov_contend, b.cov_wrap, b.cov_cancel, b.cov_bound, b.wait_max, b.cov_dup, b.cov_iv, b.cov_ivw);
   return b.fails ? 1 : 0;
 }
 
@@ -273,7 +362,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "early" && ctl != "norr") {
+      if (ctl != "early" && ctl != "norr" && ctl != "tight" && ctl != "l0dup" && ctl != "wvkeep" && ctl != "ivkeep") {
         std::fprintf(stderr, "tlb: unknown control %s\n", ctl.c_str());
         return 2;
       }

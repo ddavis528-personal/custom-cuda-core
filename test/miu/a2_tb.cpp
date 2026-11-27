@@ -40,7 +40,7 @@
 
 namespace {
 
-constexpr unsigned kNS = 4, kNQ = 4, kN0 = 4, kVW = 50, kSW = 9, kFW = 4, kBW = 3;
+constexpr unsigned kNS = 4, kNQ = 4, kN0 = 6, kVW = 50, kSW = 9, kFW = 4, kBW = 3;
 constexpr uint64_t kM50 = (uint64_t(1) << kVW) - 1u;
 
 int g_argc;
@@ -154,13 +154,12 @@ struct Bench {
     }
     for (unsigned i = 0; i < kNS * kNQ; ++i) putBits(dut->va_cm06h, i * kVW, kVW, x.va[i]);
     dut->l0v_cm11h = 0;
-    dut->l0fold_cm11h = 0;
     dut->l0pm_cm11h = 0;
     for (unsigned i = 0; i < kNS * kN0; ++i) {
       putS(dut->l0v_cm11h, i, 1, x.l0v[i]);
       putBits(dut->l0vpn_cm11h, i * 32, 32, x.l0vpn[i]);
       putBits(dut->l0ppn_cm11h, i * 32, 32, x.l0ppn[i]);
-      putS(dut->l0fold_cm11h, i * kFW, kFW, x.l0fold[i]);
+      putBits(dut->l0fold_cm11h, i * kFW, kFW, x.l0fold[i]);
       putS(dut->l0pm_cm11h, i, 1, x.l0pm[i]);
     }
   }

@@ -96,6 +96,18 @@
       "by": "MA",
       "date": "2026-11-24",
       "why": "miu_grp's group check at its out 12; 22.3 at the drop flop (MA rev 203, re:MI-32 (1))."
+    },
+    "vpn_cm07h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0 refill's request: miu_a2's flops, read at arrival 0 by miu_tlb's second-miss filter, a per-slot match against the pending, granted, writing and last-written VPN, 13.0 NGD inside (MA rev 207, re:MI-39 (a))."
+    },
+    "ms_cm07h": {
+      "required": 0.0,
+      "by": "MA",
+      "date": "2026-11-24",
+      "why": "The L0 refill's request: miu_a2's flops, read at arrival 0 by miu_tlb's second-miss filter, a per-slot match against the pending, granted, writing and last-written VPN, 13.0 NGD inside (MA rev 207, re:MI-39 (a))."
     }
   }
 }
