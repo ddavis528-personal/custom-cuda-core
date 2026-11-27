@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 208e9130 (11-27 sweep, PASS full). Earlier: 634bb54e (11-25/26 sweep); 21dd6b95 (11-24 sweep); bd3bf7b8 (handoff, credit module); 9f124ce6 (11-23 sweep); c3f77676 (11-22 sweep); 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: edd0155a (mig_tb full-rate check + credlate, SCOPED PASS 14/28). Earlier: 208e9130 (11-27 sweep, PASS full); 634bb54e (11-25/26 sweep); 21dd6b95 (11-24 sweep); bd3bf7b8 (handoff, credit module); 9f124ce6 (11-23 sweep); c3f77676 (11-22 sweep); 769e4ca6 (11-21 sweep); 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,6 +57,17 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+- (-33) Credit migration drafted, LOCAL ONLY: worktree /home/user/ri-cr, branch ri-crmod (never push):
+  8af0c469 rcu_kill on cr_dst; 96d61e5d rcu_mig map/rau/pca ends on cr_dst PULSE 0, kill ends PULSE 1;
+  121afc66 COMB demotion sender (count sees the return in-cycle, counter registered), CD parameter,
+  rcu_mig_cd3 build, controls credlate2 (depth 4) and credlate (depth 3) per RA-163 / AR 429.
+  All against test/rcu/draft/ccv_common_cr_dst_ref.sv, a stand-in (never merge). When TI's cr_cnt/cr_go/
+  cr_src/cr_dst land (TI-595 v3, TI-598): merge them into ri-crmod, drop the stand-in, run the CG/NGD units
+  for rcu_kill/rcu_mig (not yet checked on the draft) and test/rcu/run-rtl.sh, then gate-push.
+  Rows: RI-69 (rev 98, depth table + credlate2), RI-70 (rev 99, Needs TI: replay harness at -O0, 385 s -> 8 s
+  per harness build, .obs byte-identical; all OPT_* must agree, the PCH carries __OPTIMIZE__), RI-71 (rev 100,
+  RA-163/AR 429 done in the draft). TI-605: tools/sweep-merge.sh (6a3b5132) carries RI-65's virtual base;
+  RI-70 -O0 and RI-66 are in TI's next gate. Waiver: rcu_lanes pcm_n_cr04h CG-3 cannot retire under CG-5; it stands.
 - (-32) 11-27 sweep: pushed 208e9130 (PASS full; ngd 12.3 ks, cg 11.7 ks). Merged 58815650 63 (MI, with the
   miu_form clang++ fix; RI-64 closed by it), infra 54, miu-dcu-spec 143, 3868632d 48, 126afa13 6, 5e4d6c70 4,
   80102643 3, 9eb50716 1, c22116ce 1. Register: nothing for RI (bookmarks AR 426, OA 506, IS 201, TI 593, OI 427,
