@@ -1856,11 +1856,19 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     // whose miss launched last cycle is passed over now (dcu_mpick: a bank
     // learns of its send a cycle on, its head picked a cycle ahead; DI-65),
     // as DI-35's retry grant passes over the bank it granted.
-    auto it = to_mlc_.begin();
-    for (; it != to_mlc_.end() && it->first < t; ++it)
-      if (!(mlc_last_t_ + 1 == t && bankOf(it->second.pa) == mlc_last_bank_)) break;
-    if (it != to_mlc_.end() && it->first < t) {
-      if (it != to_mlc_.begin()) h_.hit("dcu_mpick_pass");
+    // Oldest D2 first, ties (one D2, two banks) to the lowest bank (DI-64).
+    auto pass = [&](const MlcReq &q) { return mlc_last_t_ + 1 == t && bankOf(q.pa) == mlc_last_bank_; };
+    auto it = to_mlc_.end();
+    for (auto j = to_mlc_.begin(); j != to_mlc_.end(); ++j) {
+      if (j->first >= t || pass(j->second)) continue;
+      if (it == to_mlc_.end() || j->first < it->first ||
+          (j->first == it->first && bankOf(j->second.pa) < bankOf(it->second.pa)))
+        it = j;
+    }
+    if (it != to_mlc_.end()) {
+      if (std::any_of(to_mlc_.begin(), to_mlc_.end(), [&](const auto &q) {
+            return q.first < it->first && pass(q.second); }))
+        h_.hit("dcu_mpick_pass");
       if (it->first + 1 == t) h_.hit("dcu_mlc_straight");
       // dcu_mpick's stamp is 10 bits, taken at D2 and compared modulo
       // (DI-64, DCU tab rev 150): a miss picked past half the range would
