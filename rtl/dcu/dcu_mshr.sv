@@ -484,7 +484,17 @@ module dcu_mshr #(
     pcon_cc05h = !hvi_q_cc05h ? coh_of(qop_cc04h)
                : hrc_q_cc05h ? coh_of(rcop_q_cc05h) : hco_cc05h;
   end
-  assign of_en_cc05h = rst_r01h || pres_cc04h || hvi_q_cc05h;
+  // The head changes only when it is sent or a head appears (an allocation
+  // is younger than every unsent entry; a record turned entry keeps its id
+  // and payload): the flops take a new head the cycle after either (hnw_q,
+  // from snt, a flop's enable never an input's, CG-5), and this D2's
+  // request while no head is held.
+  logic hnw_q_cc05h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (rst_r01h) hnw_q_cc05h <= 1'b0;
+    else          hnw_q_cc05h <= hvn_cc05h && (!hvi_q_cc05h || snt_cc05h);
+  end
+  assign of_en_cc05h = rst_r01h || (pres_cc04h && !hvi_q_cc05h) || hnw_q_cc05h;
   always_ff @(posedge dcu_core_clk) begin
     if (rst_r01h) ofv_q_cc05h <= 1'b0;
     else          ofv_q_cc05h <= hvi_q_cc05h || al_cc05h;
@@ -553,8 +563,9 @@ module dcu_mshr #(
   end
 
   // ---- The next free id ---------------------------------------------------
-  // The bank holds an offer, the id it allocates; a request takes it
-  // whatever it did. It, or an empty offer, takes last cycle's pick. The
+  // The bank holds an offer, the id it allocates; any request present takes
+  // it whatever it did, a hit too. It, or an empty offer, takes last
+  // cycle's pick. The
   // pick is made a cycle ahead from this module's flops alone: the lowest
   // free entry (one freed now counts) less the offer, the pick and the offer
   // taken last cycle (an allocation's entry is valid only a cycle on); so an
@@ -577,7 +588,10 @@ module dcu_mshr #(
   logic [NE-1:0] nfoh_cc05h, uan_cc05h;
   logic          nfvn_cc05h;
   always_comb begin
-    qf_cc05h   = pq_cc04h || !nfv_q_cc05h;
+    // Any request present takes the offer, a hit too (the enable is from
+    // this module's flops alone, CG-5); one it does not allocate is free
+    // again and picked two cycles on.
+    qf_cc05h   = pres_cc04h || !nfv_q_cc05h;
     nfoh_cc05h = qf_cc05h ? pk_q_cc05h : nfoh_q_cc05h;
     nfvn_cc05h = qf_cc05h ? |pk_q_cc05h : nfv_q_cc05h;
     uan_cc05h  = nfoh_q_cc05h & {NE{pq_cc04h}};

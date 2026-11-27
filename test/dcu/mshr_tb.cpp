@@ -195,14 +195,14 @@ struct Model {
       x.list[x.cnt++] = pq->item();
       ++merges;
     }
-    // The next id: a request takes the offer; it, or an empty offer, takes
+    // The next id: any request present takes the offer (a hit too); it, or an empty offer, takes
     // last cycle's pick; the new pick is the lowest free (or freed now)
     // entry less the offer, the pick and the offer taken last cycle.
     if (pres || freeId || (pk && !nf)) {
       std::optional<unsigned> nn = nf;
       std::array<bool, kNe> ua2{};
       if (pq && nf) ua2[*nf] = true;
-      if (pq || !nf) {
+      if (pres || !nf) {
         nn = pk;
         skipped += pq && !nn;
       }
