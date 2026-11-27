@@ -32,6 +32,8 @@ case "$unit" in
     vl miu_ids "" "" "$PWD/rtl/miu/miu_ids.sv" "$PWD/test/miu/ids_tb.cpp" ;;
   miu_rcap)
     vl miu_rcap "" "" "$PWD/rtl/miu/miu_rcap.sv" "$PWD/test/miu/rcap_tb.cpp" ;;
+  miu_hitq)
+    vl miu_hitq "" "" "$PWD/rtl/miu/miu_hitq.sv" "$PWD/test/miu/hitq_tb.cpp" ;;
   miu_lead)
     vl miu_lead "" "" "$PWD/rtl/miu/miu_lead.sv" "$PWD/test/miu/lead_tb.cpp" ;;
   miu_tlb)
