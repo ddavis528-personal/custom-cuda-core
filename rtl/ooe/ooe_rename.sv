@@ -236,7 +236,8 @@ module ooe_rename #(
   input  logic              ctl_norq,       // the go's room read with no lagged take subtracted (u_go.room)
   input  logic              ctl_pels,       // the go's pool change lead cut off (u_go.pool_en)
   input  logic              ctl_noprv,      // ooe_rendep's G-1 hits dropped from prv_dep (OA-496)
-  input  logic              ctl_pwd         // the pending group's valid dropped from the reads (pw-drop, OA 509)
+  input  logic              ctl_pwd,        // the pending group's valid dropped from the reads (pw-drop, OA 509)
+  input  logic              ctl_pnl         // Rename 2's register skips every other group (pn-late, pn_bound)
 `endif
 );
 
@@ -380,9 +381,9 @@ module ooe_rename #(
   (* keep *) logic [R*2-1:0]  p_pdst_cq03h;
   logic [S*16*R-1:0]   p_gkm_cq03h;   // the pending group's writers, per slot and register (#35)
   logic [S*4*R-1:0]    p_pkm_cq03h;
-  logic [S*R*4*GW-1:0] c_gv_cq03h;
+  logic [S*R*4*GW-1:0] c_gv_cq02h;
   logic [S*R*4*R-1:0]  c_gw_cq01h;
-  logic [S*R*4*PW-1:0] c_pv_cq03h;
+  logic [S*R*4*PW-1:0] c_pv_cq02h;
   logic [S*R*4*R-1:0]  c_gk_cq03h, c_pk_cq03h;  // each read's pending writer, one-hot by port (#35)
   logic [S*R*4*R-1:0]  c_pw_cq01h;
   // The pending group's valid as the reads take it. pw-drop (OA 509's
@@ -415,9 +416,9 @@ module ooe_rename #(
       .h_pq_cq01h(pq_cq01h), .po_v_cq02h, .po_slot_cq02h, .po_dst_cq02h, .po_gwe_cq02h, .po_gname_cq02h,
       .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(pw_v_cq03h),
       .pw_gkm_cq01h(p_gkm_cq03h[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(p_pkm_cq03h[s * 4 * R +: 4 * R]),
-      .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk_cq03h[s * R * 4 * R +: R * 4 * R]),
+      .h_gv_cq01h(c_gv_cq02h[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk_cq03h[s * R * 4 * R +: R * 4 * R]),
       .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
-      .h_pv_cq01h(c_pv_cq03h[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk_cq03h[s * R * 4 * R +: R * 4 * R]),
+      .h_pv_cq01h(c_pv_cq02h[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk_cq03h[s * R * 4 * R +: R * 4 * R]),
       .h_pw_cq01h(c_pw_cq01h[s * R * 4 * R +: R * 4 * R]));
   end
   logic [R-1:0]      l_v_cq02h, l_gwe_cq02h, l_pwe_cq02h, l_br_cq02h;
@@ -442,7 +443,7 @@ module ooe_rename #(
   logic [S*4*R-1:0]  l_pkm_cq02h;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .GR(GR), .PW(PW), .LC(LC), .XW(XL + 10)) u_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xw_cq02h),
-    .c_gv_cq01h(c_gv_cq03h), .c_gk_cq01h(c_gk_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pk_cq01h(c_pk_cq03h),
+    .c_gv_cq01h(c_gv_cq02h), .c_gk_cq01h(c_gk_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq02h), .c_pk_cq01h(c_pk_cq03h),
     .c_pw_cq01h, .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
@@ -639,6 +640,7 @@ module ooe_rename #(
   logic [R*GW-1:0]            m_gname_cq04h;      // each GPR name: its row and, with sections, its position
   logic [R*PW-1:0]            m_pname_cq04h;
   logic                       r2_en_cq03h;
+  logic                       m2_en_cq03h;   // Rename 2's register (pn-late below)
   assign r2_en_cq03h = p_v_cq03h != '0;
   always_ff @(posedge ooe_core_clk)
     if (r2_en_cq03h) begin
@@ -1144,6 +1146,7 @@ module ooe_rename #(
     );
 
 `ifdef CCV_CHECK_RENAME
+
   // pw_seen (OA 509, the u_ren1 pending-writer loop): each head's read of a
   // register that a pending-group port still in flight writes (granted at
   // 02, in Rename 1's register now, not yet in the map) names that port, the
@@ -1246,8 +1249,48 @@ module ooe_rename #(
     if (rst_r01h)         req_cq04h <= '0;
     else if (rq_en_cq03h) req_cq04h <= req_of(d_v_cq03h, d_mem_cq03h, d_cp_cq03h);
   end
+`ifdef CCV_CHECK_RENAME
+  // pn_bound (OA 514, pw_seen's Rename 2 half; u_ren1nr's pn_gname and
+  // pn_pname, read back from m_gname/m_pname): a read whose pending writer
+  // is a port of the group before it takes that port's new name from Rename
+  // 2's register, so the register must hold that group, the one just ahead
+  // in order, and the port must write the class it reads. Each group is
+  // numbered as it enters Rename 1's register; the number follows it into
+  // p_ (with q_) and into m_ with its names.
+  logic [7:0] chk_gseq_cq03h, chk_pseq_cq03h, chk_mseq_cq04h;
+  always_ff @(posedge ooe_core_clk)
+    if (rst_r01h)         chk_gseq_cq03h <= '0;
+    else if (r1_en_cq02h) chk_gseq_cq03h <= chk_gseq_cq03h + 8'd1;
+  always_ff @(posedge ooe_core_clk)
+    if (r1_en_cq02h) chk_pseq_cq03h <= chk_gseq_cq03h;
+  always_ff @(posedge ooe_core_clk)
+    if (m2_en_cq03h) chk_mseq_cq04h <= chk_pseq_cq03h;
+  logic chk_pn_ok_cq04h;
+  always_comb begin
+    chk_pn_ok_cq04h = 1'b1;
+    for (int pnl = 0; pnl < R; pnl++)
+      for (int pni = 0; pni < 4; pni++)
+        if (o_v_cq03h[pnl]) begin
+          if ((q_gk_cq03h[(pnl * 4 + pni) * R +: R] | q_pk_cq03h[(pnl * 4 + pni) * R +: R]) != '0 &&
+              chk_mseq_cq04h != chk_pseq_cq03h - 8'd1)
+            chk_pn_ok_cq04h = 1'b0;
+          if ((q_gk_cq03h[(pnl * 4 + pni) * R +: R] & ~m_gwe_cq04h) != '0 ||
+              (q_pk_cq03h[(pnl * 4 + pni) * R +: R] & ~m_pwe_cq04h) != '0)
+            chk_pn_ok_cq04h = 1'b0;
+        end
+  end
+  `CCV_ASSERT(pn_bound, chk_pn_ok_cq04h)
+`endif
+  // Rename 2's register enable; pn-late (a check build's control for
+  // pn_bound) skips every other group, so a read finds the names of the
+  // group before the one it waits on.
+`ifdef CCV_CHECK_RENAME
+  assign m2_en_cq03h = r2_en_cq03h && !(ctl_pnl && chk_pseq_cq03h[0]);
+`else
+  assign m2_en_cq03h = r2_en_cq03h;
+`endif
   always_ff @(posedge ooe_core_clk) begin
-    if (r2_en_cq03h) begin
+    if (m2_en_cq03h) begin
       m_gwe_cq04h   <= p_gwe_cq03h;
       m_pwe_cq04h   <= p_pwe_cq03h;
       m_cv_cq04h    <= d_cp_cq03h;

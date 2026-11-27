@@ -288,13 +288,17 @@ for c in adv-late late-lead no-adv-bypass no-double no-double-adv keep-stale no-
   fi
 done
 # row-early: an arrival read a cycle before its warp's allocation writes the
-# row (OA 509 (3c), u_keep's table); keep_row_settled must fire, by name.
-re_out=$(DECRX_CONTROL=row-early "$dir/decrx_tb" 3 2>&1)
-if grep -q 'CCV keep_row_settled failed' <<<"$re_out"; then
-  say "  control row-early (decrx, keep_row_settled assertion)" "caught"
-else
-  say "  control row-early (decrx, keep_row_settled assertion)" "MISSED"; fail=1
-fi
+# row (OA 509 (3c), u_keep's tables): keep_row_settled (sv, sw) and
+# keep_ep_settled (se, sn, s2, wq, wep; OA 515 (1)) must each fire, by name.
+# Past the first failure (a sim stops at its first), so each is seen.
+re_out=$(DECRX_CONTROL=row-early "$dir/decrx_tb" 3 +verilator+error+limit+1000000 2>&1)
+for a in keep_row_settled keep_ep_settled; do
+  if grep -q "CCV $a failed" <<<"$re_out"; then
+    say "  control row-early (decrx, $a assertion)" "caught"
+  else
+    say "  control row-early (decrx, $a assertion)" "MISSED"; fail=1
+  fi
+done
 
 # ooe_slot (OA 435 (1)): the tier-1 slots' residency, demotion and kill,
 # driven from the model's control-step log (Core::slotLog) every cycle. Its
@@ -771,7 +775,7 @@ done
 # sectioned rows (NS 4, slice 6: the narrow allocator), its random cores
 # held to the decided form (its directed cores, timed for whole rows, are
 # the first build's).
-for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec,no-prv,pw-drop" \
+for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec,no-prv,pw-drop,pn-late" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
            "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take,no-room-take,pool-en-short:8" \
            "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write,pend-follows"; do
@@ -812,6 +816,15 @@ for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-
       say "  control $c ($name)" "caught"
     fi
   done
+  # pn-late must fire pn_bound itself (OA 514/515: the assertion the
+  # pn_gname/pn_pname read-backs cite), not only a check downstream of it.
+  case ",$ctls," in *,pn-late,*)
+    if RENAME_CONTROL=pn-late "$dir/rename_tb" 3 +verilator+error+limit+1000000 2>&1 | grep -q "CCV pn_bound failed"; then
+      say "  control pn-late ($name, pn_bound assertion)" "caught"
+    else
+      say "  control pn-late ($name, pn_bound assertion)" "MISSED"; fail=1
+    fi;;
+  esac
 done
 
 # ooe_select, with its two ooe_picks, driven from the model's sectioned

@@ -324,6 +324,34 @@ module ooe_decrx #(
           chk_rdwr_cq02h[k] = 1'b1;
     end
   `CCV_ASSERT(keep_row_settled, chk_rdwr_cq02h == '0)
+  // keep_ep_settled (OA 515 (1), u_keep's tables on se, sn, s2, wq and
+  // wep): the same claim for the row's five epoch fields, which a release
+  // or an allocation writes with it. No arrival of the slot's warp meets a
+  // change of any of them at that write (an advance's change u_keep
+  // bypasses, so only the release's and the allocation's count).
+  logic [S-1:0] ep_wr_cq02h;
+  logic [E-1:0] chk_epwr_cq02h;
+  always_comb begin
+    for (int s = 0; s < S; s++)
+      ep_wr_cq02h[s] = (rel_cq01h[s] | al_v_cq01h[s]) &&
+                       (se_nx_cq01h[s * EP +: EP] != sei_cq02h[s * EP +: EP] ||
+                        sn_nx_cq01h[s * EP +: EP] != sni_cq02h[s * EP +: EP] ||
+                        s2_nx_cq01h[s * EP +: EP] != s2i_cq02h[s * EP +: EP] ||
+                        // wq clears at the write unless a walk opens, and
+                        // wep takes the walk's epoch only then
+                        wq_cq02h[s] != wo_cq01h[s] ||
+                        (wo_cq01h[s] && wep_cq02h[s * EP +: EP] !=
+                         (adv_cq01h[s] ? sni_cq02h[s * EP +: EP] : sei_cq02h[s * EP +: EP])));
+    for (int k = 0; k < E; k++) begin
+      chk_epwr_cq02h[k] = 1'b0;
+      for (int s = 0; s < S; s++)
+        if (arv_v_cq01h[k] && ep_wr_cq02h[s] &&
+            ((sv_cq02h[s] && arv_warp_cq01h[k * LW +: LW] == swi_cq02h[s * LW +: LW]) ||
+             (al_v_cq01h[s] && arv_warp_cq01h[k * LW +: LW] == al_warp_cq01h[s * LW +: LW])))
+          chk_epwr_cq02h[k] = 1'b1;
+    end
+  end
+  `CCV_ASSERT(keep_ep_settled, chk_epwr_cq02h == '0)
 endmodule
 `undef CCV_CLK
 `undef CCV_RST
