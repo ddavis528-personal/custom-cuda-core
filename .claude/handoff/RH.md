@@ -73,6 +73,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-504 RUNNING from 17:07Z 11-27: THRESHOLD_MLC re-sweep at 57ca7d30 (origin/ccr-57eff422-5tdecg) in rh-oi504, rh-jobs/oi504/oi504.sh <seed> [arms]
+  (resumable), logs ~/ccv-logs/oi504 (s<seed>.m<arm>.*). Common env: CCV_RAU_DEMOTE=mlc CCV_MIU_IMPL=model CCV_DCU_IMPL=p1. Arms: demote_mlc_miss=35/50/75/100.
+  Class 2: vadd6 at CCV_TB_LATENCY=1000 --cycles 400000. Class 3: S1, cm32p, cm128p at default. Seed 1 first; arms within 0.5% of 50 get seeds 2 and 3.
+  Class 1 (gtr4, gtw8/16/32 at latency 1000, cold MLC, B/cycle) is BLOCKED: MA-31's kernels are not in any branch; asked MA and OI 17:06Z.
+  Per run: cycles, Δ vs 50, fin/order/chk, demote_trigger.mlc_miss.true_miss/false_hit/unresolved, demote, restored, parked, slot_refill_parked.
+  The decision is OI's and OA's. Check trigger trig_01EiH8qAZn8idqvLFJAaBg3W 20:00Z.
 - AR 410/412 re-baseline DONE+SENT 17:20Z 11-24 (rh-jobs/ar410, ~/ccv-logs/ar410, <tag>.<k>.cmd). All 49 runs exact. S1 (1,640) and cm32priv
   (1,177,935) are bit-identical OLD vs NEW at every seed: with warm MLC they never pay DRAM, so the 0.2% S1 bar can't be tested this way (offered a
   cold-MLC rerun). cm128priv: OLD 1,977,489; NEW s1/s2/s3 +0.050/+0.141/+0.135%; jitter 0 +0.061%; seed spread 0.091%.
