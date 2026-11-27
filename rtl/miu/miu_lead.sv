@@ -9,21 +9,22 @@
 // A memop of footprint F (4, 2 or 1 pipes) arrives on address slot s, its
 // lead pipe ctz(pipes) = s, and owns the lookup slots of its pipes. Its 32
 // lanes split into F groups of 32/F consecutive lanes, group g on the
-// footprint's g-th slot, and a group's lookup is the line of its lowest
-// active lane, its leader (MA-4), chosen by lane position, never by an
-// address compare (AR 362 (2)).
+// footprint's g-th slot, and a group's lookup is the line of its leader
+// (MA-4): its first lane by position, fixed (MA rev 199, re:MI-31), never
+// an address compare (AR 362 (2)). The lookup launches when the group has
+// an active lane; when the leader lane is not one, A2 drops it (the memop
+// finishes in passes).
 //
 // A1 (H, tag 05), (b) of MI-27: a first-pass lookup is a .global load,
 // whose base sits at bit 16 and up (the slot form's window too), so below
-// bit 16 a lane's sum is (index << scale) + disp. Per lane, three 16-bit
-// 2-input adds (scale 0, 1, 2) of the index's low bits and its four lanes'
-// copy of disp (miu_pair's a1q, (* keep *) per four lanes, so no disp flop
-// drives more than 12 adders), bits [15:2] kept; per address slot and lane
-// quarter (8 lanes) one AND-OR on the quarter's lowest active lane and its
-// scale picks 14 bits of the 24 sums (both selects early; the scale off
-// the adders' path). The form's select joins the route's AND-OR likewise. A group of 16 or 32 lanes takes its first quarter with
-// an active lane. Lookup slot k takes the group of the memop whose pipes
-// hold k (footprints are disjoint, V-60, so at most one).
+// bit 16 a lane's sum is (index << scale) + disp. A leader is a quarter's
+// lane 0, so per address slot and quarter only that lane adds: three
+// 16-bit 2-input adds (scale 0, 1, 2) of its index's low bits and the
+// quarter's copy of disp (miu_pair's a1q, the first of its two), the scale
+// picking after. A group of 16 or 32 lanes takes its first quarter.
+// Lookup slot k takes the group of the memop whose pipes hold k
+// (footprints are disjoint, V-60, so at most one); the route's AND-OR over
+// (address slot, quarter) carries the form's select too.
 //
 // The set index (lead_set_index: address bits [15:7]) is a field select on
 // that sum, with no add (MI-25 (D) (4)): S[15:7] for an ordinary or
@@ -35,13 +36,19 @@
 // miu_cred's flops ge1/ge2 and used[b], this module's flop of its own
 // launches last cycle, so the gate reads no bank of the sum.
 //
-// The leader's whole sum is A2's (MI-27 (2) (i)): A2 picks S from
-// miu_agu8's flops by an AND-OR on the one-hot leader this module flops,
-// its lane and its address slot.
+// The leader's whole sum is A2's: miu_a2 picks S from miu_agu8's flops by
+// an AND-OR on the (address slot, quarter) one-hot this module flops (at
+// most three are possible per lookup slot). For an interleaved leader's
+// VPN this module flops its low part beside the sum, l6 = {0, S[15:11]} +
+// bl (one 3-input 18-bit add per scale, less 32 when S's own add carries
+// out of bit 15), and R(ctx)'s VPN[31:6] for l6's carry 0 and 1 (lo8 +
+// ctx and + 1, each carry picking hi or hi + 1, as miu_form's C), so A2
+// takes the VPN by one 2:1 (miu_a2: 23.3 NGD, MI-32).
 //
 // Flops (tag 06, H+1), each output from its own: per lookup slot, the req
-// valid (DCU and, as the spend, miu_cred) and lead_set_index; the
-// leader's lane one-hot and address-slot one-hot (A2). Inside, (* keep *)
+// valid (DCU and, as the spend, miu_cred) and lead_set_index; for A2 the
+// leader's (address slot, quarter) one-hot, its lane's activity, the form
+// {interleaved, local}, l6 and R(ctx)'s two VPN highs. Inside, (* keep *)
 // copies: the valid and the bank, for used[b].
 //
 // Inputs are miu_cap's, miu_pair's, miu_form's and miu_cred's flops (arrival
@@ -65,7 +72,8 @@ module miu_lead #(
   localparam int BW = (NB > 1) ? $clog2(NB) : 1,
   localparam int NQ = NL / 8,                                 // lane quarters, 4
   localparam int PK = $clog2(PW),
-  localparam int WHW = WL - PK
+  localparam int WHW = WL - PK,
+  localparam int RK = 61                                      // miu_form's rk (k = 0)
 ) (
   input  logic                miu_core_clk,
   input  logic                rst_n,
@@ -87,6 +95,7 @@ module miu_lead #(
   input  logic [NS*3-1:0]     fs_cm05h,      // {interleaved-eligible, local, slot}
   input  logic [NS*WHW-1:0]   wh_cm05h,
   input  logic [NS*NL-1:0]    dh_cm05h,
+  input  logic [NS*RK-1:0]    rk_cm05h,      // {ctx, hi + 1, hi, lo8, bl}, miu_form's
   // The gate (miu_cred's flops).
   input  logic [NB-1:0]       ge1_cm05h,
   input  logic [NB-1:0]       ge2_cm05h,
@@ -94,9 +103,17 @@ module miu_lead #(
   // (miu_cred).
   output logic [NS-1:0]       rv_cm06h,
   output logic [NS*SW-1:0]    lsi_cm06h,
-  // A2: lookup slot k's leader: its lane one-hot and address-slot one-hot.
-  output logic [NS*NL-1:0]    lo_cm06h,
-  output logic [NS*NS-1:0]    so_cm06h
+  // A2: lookup slot k's fixed leader (MA rev 199): its (address slot,
+  // quarter) one-hot at [k*NS*NQ + s*NQ + q], the lane q*8 of slot s; that
+  // lane active; the form {interleaved, local}; and the interleaved VPN's
+  // parts: l6 = {0, S[15:11]} + bl (VPN[5:0] and the carry), and R(ctx)'s
+  // VPN[31:6] for carry 0 and 1 (26 bits each, rh at [k*52 +: 52], carry 0
+  // low).
+  output logic [NS*NS*NQ-1:0] lq_cm06h,
+  output logic [NS-1:0]       la_cm06h,
+  output logic [NS*2-1:0]     fm_cm06h,
+  output logic [NS*7-1:0]     l6_cm06h,
+  output logic [NS*52-1:0]    rh_cm06h
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
@@ -130,73 +147,110 @@ module miu_lead #(
     ks16 = (a ^ b) ^ {g[14:0], 1'b0};
   endfunction
 
+  // S[15:11] + bl, beside the sum: a 3:2 of the two operands' low 16 bits
+  // and bl << 11, one 18-bit add, bits [17:11]; less 32 when the 16-bit sum
+  // carries out of bit 15 (S is that sum's low 16 bits).
+  function automatic logic [6:0] l6f(input logic [15:0] a, input logic [15:0] b, input logic [5:0] c);
+    logic [17:0] x, y, u, v, g, p, gn, pn;
+    logic [16:0] w;
+    x = {2'b0, a};
+    y = {2'b0, b};
+    u = {1'b0, c, 11'b0};
+    v = x ^ y ^ u;
+    w = (x[16:0] & y[16:0]) | (x[16:0] & u[16:0]) | (y[16:0] & u[16:0]);
+    g = v & {w, 1'b0};
+    p = v ^ {w, 1'b0};
+    for (int d = 1; d < 18; d = d * 2) begin
+      gn = g;
+      pn = p;
+      for (int i = d; i < 18; i = i + 1) begin
+        gn[i] = g[i] | (p[i] & g[i-d]);
+        pn[i] = p[i] & p[i-d];
+      end
+      g = gn;
+      p = pn;
+    end
+    x = (v ^ {w, 1'b0}) ^ {g[16:0], 1'b0};
+    w = 17'(a) + 17'(b);
+    l6f = x[17:11] - {w[16], 5'b0};
+  endfunction
+
   // ---- The gate, every bank -------------------------------------------------
   logic [NB-1:0] used_cm05h;
   logic          gt_cm05h;
   assign gt_cm05h = &((used_cm05h & ge2_cm05h) | (~used_cm05h & ge1_cm05h));
 
-  // ---- Per address slot and quarter: the leader and its set index --------
+  // ---- Per address slot and quarter: the first lane's sum ----------------
+  // The fixed leader (MA rev 199) is a group's first lane by position, a
+  // quarter's lane 0, so a quarter adds only that lane: its sums at scale 0,
+  // 1 and 2, the scale picking after.
   logic [NS*NQ*SW-1:0] qi_cm05h;     // ordinary: S[15:7]
   logic [NS*NQ*SW-1:0] qj_cm05h;     // interleaved: S[10:2]
-  logic [NS*NQ*8-1:0]  qo_cm05h;     // the quarter leader's one-hot
+  logic [NS*NQ*7-1:0]  q6_cm05h;     // {0, S[15:11]} + bl, the interleaved VPN's low bits
   logic [NS*NQ-1:0]    qh_cm05h;     // the quarter has an active lane
+  logic [NS*NQ-1:0]    qa_cm05h;     // its lane 0 is active
   logic [NS-1:0]       sil_cm05h, slc_cm05h;   // the slot's form: interleaved, local
+  logic [NS*52-1:0]    sr_cm05h;     // the slot's R(ctx) VPN[31:6], carry 0 and 1
   for (genvar s = 0; s < NS; s = s + 1) begin : g_slot
     always_comb begin
       // Lane d's base by its one-hot, then one compare with W >> k.
       logic [WHW-1:0] bd;
+      logic [8:0]     t0, t1;
+      logic [6:0]     cx;
+      logic [7:0]     l8;
+      logic [19:0]    h0, h1;
       bd = '0;
       for (int i = 0; i < NL; i++)
         bd = bd | ({WHW{dh_cm05h[s*NL + i]}} & base_cm05h[(s*NL + i)*WL + PK +: WHW]);
       sil_cm05h[s] = fs_cm05h[s*3 + 2] & (bd == wh_cm05h[s*WHW +: WHW]);
       slc_cm05h[s] = fs_cm05h[s*3 + 1];
+      // R(ctx) as miu_form's C: lo8 + ctx, and + 1 for a carry from below;
+      // each carry picks hi or hi + 1 (no add after the sum's).
+      {cx, h1, h0, l8} = rk_cm05h[s*RK + 6 +: RK - 6];
+      t0 = 9'(l8) + 9'(cx);
+      t1 = 9'(l8) + 9'(cx) + 9'd1;
+      sr_cm05h[s*52 +: 52] = {t1[8] ? h1[17:0] : h0[17:0], t1[7:0],
+                              t0[8] ? h1[17:0] : h0[17:0], t0[7:0]};
     end
     for (genvar q = 0; q < NQ; q = q + 1) begin : g_q
-      logic [15:0]     d_cm05h, e_cm05h;   // lanes 0-3's copy of disp, 4-7's
-      logic            sh1_cm05h, sh2_cm05h;
-      logic [8*42-1:0] lix_cm05h;    // per lane, the sums at scale 0, 1, 2, bits [15:2]
-      logic [7:0]      amq_cm05h, oh_cm05h;
-      logic [13:0]     ix_cm05h;
+      logic [15:0] d_cm05h, ix_cm05h;
+      logic        sh1_cm05h, sh2_cm05h;
+      logic [47:0] lix_cm05h;        // lane 0's sums at scale 0, 1, 2
+      logic [20:0] l6x_cm05h;        // and its l6 at each
       always_comb begin
         d_cm05h   = dq_cm05h[(s*NQ + q)*36 +: 16];
-        e_cm05h   = dq_cm05h[(s*NQ + q)*36 + 18 +: 16];
         sh1_cm05h = dq_cm05h[(s*NQ + q)*36 + 16];
         sh2_cm05h = dq_cm05h[(s*NQ + q)*36 + 17];
-        for (int i = 0; i < 8; i++)
-          for (int c = 0; c < 3; c++) begin
-            logic [15:0] t;
-            t = ks16(idx_cm05h[(s*NL + q*8 + i)*16 +: 16] << c, i < 4 ? d_cm05h : e_cm05h);
-            lix_cm05h[(i*3 + c)*14 +: 14] = t[15:2];
-          end
-        amq_cm05h = am_cm05h[s*NL + q*8 +: 8];
-        for (int i = 0; i < 8; i++)
-          oh_cm05h[i] = amq_cm05h[i] && ((amq_cm05h & ((8'd1 << i) - 8'd1)) == 8'd0);
-        // The pick and the scale in one AND-OR: the selects (the lane's
-        // one-hot and the scale, both from flops) are early, the sums late.
-        ix_cm05h = '0;
-        for (int i = 0; i < 8; i++)
-          for (int c = 0; c < 3; c++) begin
-            logic sel;
-            sel = oh_cm05h[i] && (c == 2 ? sh2_cm05h : c == 1 ? (sh1_cm05h && !sh2_cm05h) :
-                                                        !(sh1_cm05h || sh2_cm05h));
-            ix_cm05h = ix_cm05h | ({14{sel}} & lix_cm05h[(i*3 + c)*14 +: 14]);
-          end
-        // Both fields; the slot's form picks after the route.
-        qi_cm05h[(s*NQ + q)*SW +: SW] = ix_cm05h[5 +: SW];
-        qj_cm05h[(s*NQ + q)*SW +: SW] = ix_cm05h[0 +: SW];
-        qo_cm05h[(s*NQ + q)*8 +: 8]   = oh_cm05h;
-        qh_cm05h[s*NQ + q]            = |amq_cm05h;
+        for (int c = 0; c < 3; c++)
+        begin
+          lix_cm05h[c*16 +: 16] = ks16(idx_cm05h[(s*NL + q*8)*16 +: 16] << c, d_cm05h);
+          l6x_cm05h[c*7 +: 7]   = l6f(idx_cm05h[(s*NL + q*8)*16 +: 16] << c, d_cm05h,
+                                      rk_cm05h[s*RK +: 6]);
+        end
+        ix_cm05h = ({16{sh2_cm05h}} & lix_cm05h[32 +: 16]) |
+                   ({16{sh1_cm05h && !sh2_cm05h}} & lix_cm05h[16 +: 16]) |
+                   ({16{!(sh1_cm05h || sh2_cm05h)}} & lix_cm05h[0 +: 16]);
+        qi_cm05h[(s*NQ + q)*SW +: SW] = ix_cm05h[7 +: SW];
+        qj_cm05h[(s*NQ + q)*SW +: SW] = ix_cm05h[2 +: SW];
+        q6_cm05h[(s*NQ + q)*7 +: 7]   = ({7{sh2_cm05h}} & l6x_cm05h[14 +: 7]) |
+                                        ({7{sh1_cm05h && !sh2_cm05h}} & l6x_cm05h[7 +: 7]) |
+                                        ({7{!(sh1_cm05h || sh2_cm05h)}} & l6x_cm05h[0 +: 7]);
+        qh_cm05h[s*NQ + q]            = |am_cm05h[s*NL + q*8 +: 8];
+        qa_cm05h[s*NQ + q]            = am_cm05h[s*NL + q*8];
       end
     end
   end
 
-  // ---- Lookup slot k: its group's leader ---------------------------------
+  // ---- Lookup slot k: its group's fixed leader -----------------------------
   // Slot s's memop owns k when pipes_s[k]; its group is g = the pipes below
   // k, of F = |pipes|, the quarters [g * 4/F, (g + 1) * 4/F); the leader is
-  // the first of them with an active lane. One-hot over (s, q).
+  // the first of them's lane 0. One-hot over (s, q); the lookup launches if
+  // the group has an active lane (A2 drops it if the leader is not one).
   logic [NS*NS*NQ-1:0] rsel_cm05h;   // [k][s][q]
+  logic [NS-1:0]       ga_cm05h;     // slot k's group has an active lane
   always_comb begin
     rsel_cm05h = '0;
+    ga_cm05h   = '0;
     for (int s = 0; s < NS; s++) begin
       logic [NS-1:0] pp;
       logic [NQ-1:0] h;
@@ -210,47 +264,49 @@ module miu_lead #(
         logic act, up;
         act = v_q_cm05h[s] && ld_cm05h[s] && pp[k];
         up  = k != s;                              // footprint 2's second group
-        for (int q = 0; q < NQ; q++) begin
-          logic first4, firsth;
-          first4 = h[q] && ((h & ((NQ'(1) << q) - NQ'(1))) == '0);
-          firsth = h[q] && ((q % 2 == 0) || !h[q & ~1]);
+        for (int q = 0; q < NQ; q++)
           rsel_cm05h[(k*NS + s)*NQ + q] = act && (
-              (a4 && q == k && h[q]) ||
-              (a2 && ((q >= 2) == up) && firsth) ||
-              (a1 && first4));
-        end
+              (a4 && q == k) || (a2 && q == (up ? 2 : 0)) || (a1 && q == 0));
+        ga_cm05h[k] = ga_cm05h[k] | (act && (
+              (a4 && h[k]) || (a2 && (up ? (h[2] || h[3]) : (h[0] || h[1]))) || (a1 && (|h))));
       end
     end
   end
 
-  // The selected leader per lookup slot, its set index and the gate.
-  logic [NS-1:0]    rv_d_cm05h;
+  // The leader's fields per lookup slot, routed by the one-hot, and the gate.
+  logic [NS-1:0]    rv_d_cm05h, la_d_cm05h;
   logic [NS*SW-1:0] lsi_d_cm05h;
-  logic [NS*NL-1:0] lo_d_cm05h;
-  logic [NS*NS-1:0] so_d_cm05h;
+  logic [NS*2-1:0]  fm_d_cm05h;
+  logic [NS*7-1:0]  l6_d_cm05h;
+  logic [NS*52-1:0] rh_d_cm05h;
   always_comb begin
     for (int k = 0; k < NS; k++) begin
       logic [SW-1:0] si;
-      logic          any;
-      si = '0; any = 1'b0;
-      lo_d_cm05h[k*NL +: NL] = '0;
-      so_d_cm05h[k*NS +: NS] = '0;
+      logic [6:0]    s6;
+      logic [51:0]   r;
+      logic          la, il, lc;
+      si = '0; s6 = '0; r = '0; la = 1'b0; il = 1'b0; lc = 1'b0;
       for (int s = 0; s < NS; s++)
         for (int q = 0; q < NQ; q++) begin
           logic h;
-          h   = rsel_cm05h[(k*NS + s)*NQ + q];
-          any = any | h;
+          h  = rsel_cm05h[(k*NS + s)*NQ + q];
           // The route and the form in one AND-OR (the form's selects are
           // early): local disp[10:2], interleaved S[10:2], else S[15:7].
-          si  = si | ({SW{h && slc_cm05h[s]}} & dq_cm05h[(s*NQ + q)*36 + 2 +: SW]) |
-                     ({SW{h && !slc_cm05h[s] && sil_cm05h[s]}} & qj_cm05h[(s*NQ + q)*SW +: SW]) |
-                     ({SW{h && !slc_cm05h[s] && !sil_cm05h[s]}} & qi_cm05h[(s*NQ + q)*SW +: SW]);
-          lo_d_cm05h[k*NL + q*8 +: 8] = lo_d_cm05h[k*NL + q*8 +: 8] |
-                                         ({8{h}} & qo_cm05h[(s*NQ + q)*8 +: 8]);
-          so_d_cm05h[k*NS + s] = so_d_cm05h[k*NS + s] | h;
+          si = si | ({SW{h && slc_cm05h[s]}} & dq_cm05h[(s*NQ + q)*36 + 2 +: SW]) |
+                    ({SW{h && !slc_cm05h[s] && sil_cm05h[s]}} & qj_cm05h[(s*NQ + q)*SW +: SW]) |
+                    ({SW{h && !slc_cm05h[s] && !sil_cm05h[s]}} & qi_cm05h[(s*NQ + q)*SW +: SW]);
+          s6 = s6 | ({7{h}} & q6_cm05h[(s*NQ + q)*7 +: 7]);
+          r  = r  | ({52{h}} & sr_cm05h[s*52 +: 52]);
+          la = la | (h && qa_cm05h[s*NQ + q]);
+          il = il | (h && !slc_cm05h[s] && sil_cm05h[s]);
+          lc = lc | (h && slc_cm05h[s]);
         end
-      rv_d_cm05h[k]             = any && gt_cm05h;
-      lsi_d_cm05h[k*SW +: SW]   = si;
+      rv_d_cm05h[k]           = ga_cm05h[k] && gt_cm05h;
+      lsi_d_cm05h[k*SW +: SW] = si;
+      la_d_cm05h[k]           = la;
+      fm_d_cm05h[k*2 +: 2]    = {il, lc};
+      l6_d_cm05h[k*7 +: 7]    = s6;
+      rh_d_cm05h[k*52 +: 52]  = r;
     end
   end
 
@@ -273,13 +329,19 @@ module miu_lead #(
     end
   end
   (* keep *) logic [NS*SW-1:0] lsi_q_cm06h;
-  logic [NS*NL-1:0] lo_q_cm06h;
-  logic [NS*NS-1:0] so_q_cm06h;
+  logic [NS*NS*NQ-1:0] lq_q_cm06h;
+  logic [NS-1:0]       la_q_cm06h;
+  logic [NS*2-1:0]     fm_q_cm06h;
+  logic [NS*7-1:0]     l6_q_cm06h;
+  logic [NS*52-1:0]    rh_q_cm06h;
   always_ff @(posedge miu_core_clk) begin
     if (pay_en_cm05h) begin
       lsi_q_cm06h <= lsi_d_cm05h;
-      lo_q_cm06h  <= lo_d_cm05h;
-      so_q_cm06h  <= so_d_cm05h;
+      lq_q_cm06h  <= rsel_cm05h;
+      la_q_cm06h  <= la_d_cm05h;
+      fm_q_cm06h  <= fm_d_cm05h;
+      l6_q_cm06h  <= l6_d_cm05h;
+      rh_q_cm06h  <= rh_d_cm05h;
       for (int k = 0; k < NS; k++) bk_q_cm05h[k*BW +: BW] <= lsi_d_cm05h[k*SW +: BW];
     end
   end
@@ -290,8 +352,11 @@ module miu_lead #(
   end
   assign rv_cm06h  = rvo_q_cm06h;
   assign lsi_cm06h = lsi_q_cm06h;
-  assign lo_cm06h  = lo_q_cm06h;
-  assign so_cm06h  = so_q_cm06h;
+  assign lq_cm06h  = lq_q_cm06h;
+  assign la_cm06h  = la_q_cm06h;
+  assign fm_cm06h  = fm_q_cm06h;
+  assign l6_cm06h  = l6_q_cm06h;
+  assign rh_cm06h  = rh_q_cm06h;
 
   // A valid launches only with a memop in A1 (its payload's enable).
   `CCV_ASSERT(rv_pay, (rv_d_cm05h == '0) || pay_en_cm05h)
