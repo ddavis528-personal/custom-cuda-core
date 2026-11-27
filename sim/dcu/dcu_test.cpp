@@ -856,15 +856,13 @@ int main(int argc, char **argv) {
   // A late lookup's miss (MA-33): tag-stale's relook misses at its access,
   // cycles past its D, so it waits and retries on port 0, and its slot's
   // next miss (its bank's, MA-34) has the bank's offer to itself.
-  // dcu-late-miss-port places the late miss straight on its bank's port,
-  // where the two meet in one cycle at some spacing (startMiss's CHECKs).
-  for (bool ctl : {false, true})
-    test(ctl ? "dcu-late-miss-port-control" : "late-miss-retry", [&] {
-      unsigned caught = 0, retried = 0;
+  // (dcu-late-miss-port, its control, is retired: per bank the two never
+  // share a D2; DCU tab rev 148, DI-61.)
+  test("late-miss-retry", [&] {
+      unsigned retried = 0;
       for (unsigned d = 0; d != 8; ++d) {
         Config c = cfg(9);
         c.ways = 1;
-        if (ctl) c.brk = "dcu-late-miss-port";
         Bench b(c);
         const uint64_t v = bank0(1), n = v + uint64_t(c.sets) * kLineBytes, o = bank0(2);
         const uint64_t x = bank0(3);   // bank 0, its own set
@@ -877,18 +875,13 @@ int main(int argc, char **argv) {
         b.reqs[F + 1] = {rd(0, 2, o), rd(1, 3, v)};
         b.reqs[F + 1 + d].push_back(rd(1, 4, x));
         b.run(F + 120);
-        if (refused(b, "offered while in use") || refused(b, "started two misses")) ++caught;
         retried += b.h.bins["dcu_late_miss_retry"] != 0;
-        if (!ctl) {
+        {
           EXPECT(b.h.fails.empty(), "d %u: %s", d, b.h.fails.empty() ? "" : b.h.fails[0].c_str());
           EXPECT(b.rsp(2) && b.rsp(3) && b.rsp(4), "d %u: every read answered", d);
           const Rsp *r = b.rsp(3);
           EXPECT(r && !r->hit && r->line[0] == pat(v, 0), "d %u: the relook misses, refilled", d);
         }
-      }
-      if (ctl) {
-        EXPECT(caught >= 1, "the control is refused at some spacing");
-        return;
       }
       EXPECT(retried == 8, "the late miss retries on port 0: %u of 8", retried);
     });

@@ -940,11 +940,10 @@ void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t ti
 void Core::missOrWait(const Req &r, uint64_t d2, bool late) {
   const unsigned b = bankOf(r.pa);
   // A late lookup's miss (MA-33): a waiter, or a re-read, decides its miss
-  // at its access, cycles past its D; its slot's port belongs to the slot's
-  // on-time lookups then, so it waits and retries on port 0 (dcu_mshr's
-  // ids leave only by a port pick). dcu-late-miss-port, the control, puts
-  // it on its slot's port, where it meets the slot's next miss with one
-  // id (the CHECK in startMiss).
+  // at its access, cycles past its D; it waits and retries on port 0. Per
+  // bank (MA-34) it can no longer meet another miss of its bank at one D2,
+  // so this is kept by choice, one path for every miss that waits (DCU tab
+  // rev 148, DI-61); dcu-late-miss-port, its control, is retired.
   // A second miss in one bank in one cycle (MA-34: one dcu_mshr a bank,
   // one new miss a cycle): a bank-conflict loser deciding its miss at D2
   // beside its bank's winner waits the same way and retries on port 0.
@@ -955,7 +954,7 @@ void Core::missOrWait(const Req &r, uint64_t d2, bool late) {
     bq_[b].push_back(Acc{Acc::MissW, now_, d2 + kRetryLag, r.pa, r, 0, {}});
     return;
   }
-  if (late && c_.brk != "dcu-late-miss-port") {
+  if (late) {
     h_.hit("dcu_late_miss_retry");
     h_.hit("dcu_miss_wait");
     bq_[b].push_back(Acc{Acc::MissW, now_, d2 + kRetryLag, r.pa, r, 0, {}});
