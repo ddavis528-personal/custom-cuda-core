@@ -77,8 +77,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 418 .685318 (tab rev 422).
-  - **The next AR row inserts after .685318**, labelled AR 419.
+  - Latest row: AR 419 .686863 (tab rev 423).
+  - **The next AR row inserts after .686863**, labelled AR 420.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -87,7 +87,7 @@ Credit rules (TI-49):
 
   | Tab | Node |
   |---|---|
-  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .135300, rev 133) |
+  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .137863, rev 136) |
   | TI | e8b1d9d9-df9b |
   | OA | 4c6a3151-83eb |
   | OI | 384bc26c-cef6 |
@@ -100,8 +100,8 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 422, OA 501, TI 584, MA 215, DI 93,
-  MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 134, Conventions 20 (full
+- **Bookmarks** (revs read through): AR 423, OA 501, TI 584, MA 219, DI 93,
+  MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 136, Conventions 20 (full
   sweep read 11-24; TI 584 read only for TI-582).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
@@ -245,6 +245,20 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+
+000m. **Read-path depth DECIDED: B, 128 lines (DA row .137863, 11-24; PF-54).**
+   MA-31 (MA rev 218) sized A 64 / B 128 / C 192 on p1 at TB latency 1000.
+   AR 419 (.686863) agreed B, with three points: (2) keep CCV_MIU_PIPES 4,
+   since it is the AGU count tied to CCV_SECTIONS, and add a new MIU
+   parameter for memops in flight, at 8; (3) MLC gets a 132-entry miss
+   table, split by bank, about 8 kbit; (4) MA states the return-state
+   delta for the area table. Daniel then chose B in this session,
+   about 41 kbit. MA rung twice. MA owes the TI/DI/MI rows, then tells
+   OA the THRESHOLD_MLC re-sweep can run. AR owes the 132-entry miss
+   table in the MLC spec. MA rev 219 agreed AR 419: the new parameter is
+   CCV_MIU_MEMOPS_INFLIGHT=8, about +800 flops (MI to measure); the
+   return-state delta is +19.2 kbit; the 160-id pick splits by bank if it
+   goes over 25 NGD. Nothing owed.
 000i1. **Re-baseline DONE (eb1c3851, AR 418 .685318, 11-24; MA rung).**
    RH's runs (warm-MLC recipe, 4e3dda64 vs 77f7849e, 49 exact): S1 1,640
    and cm32priv 1,177,935 unchanged at every seed; cm128priv 1,977,489 ->
