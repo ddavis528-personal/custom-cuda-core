@@ -108,10 +108,9 @@ module dcu_mshr #(
   input  logic                   hit_cc04h,
   input  logic [WSL-1:0]         mslot_cc04h,
   // The retry (DI-35), from dcu_mpick's flops: its grant (R+1, the lead)
-  // and at D2 its valid for this bank and its payload.
+  // and at D2 its payload (rl_q, this module's flop of the grant, is its valid).
   input  logic                   rgv_cc03h,
   input  logic [WB-1:0]          rgb_cc03h,
-  input  logic                   rv_cc04h,
   input  logic [WL-1:0]          rpa_cc04h,
   input  logic [WI-1:0]          rrid_cc04h,
   input  logic [1:0]             rop_cc04h,      // 0 read, 1 atomic, 2 store
@@ -127,7 +126,8 @@ module dcu_mshr #(
   output logic                   hv_cc05h,
   output logic [WTS-1:0]         hstp_cc05h,
   output logic                   sv_cc05h,
-  input  logic                   snt_cc05h,
+  input  logic                   snv_cc05h,     // dcu_mpick sent last cycle's offer of
+  input  logic [WB-1:0]          sbk_cc05h,     // this bank (sbk == BK)
   output logic [WEB-1:0]         pid_cc05h,
   output logic [WL-1:0]          ppa_cc05h,
   output logic [WC-1:0]          pcoh_cc05h,
@@ -350,6 +350,8 @@ module dcu_mshr #(
   // pdm: merged into last cycle (its count and next list word now). The
   // entry sent now (snt), turned sent now.
   logic [NE-1:0] pd_cc05h, pdm_cc05h, xhit_cc05h, fhit_cc04h, shit_cc05h;
+  logic          snt_cc05h;
+  assign snt_cc05h = snv_cc05h && sbk_cc05h == BKW;
   always_comb begin
     for (int e = 0; e < NE; e++) begin
       pd_cc05h[e]   = rcal_q_cc05h && rcio_q_cc05h[e];
@@ -756,7 +758,6 @@ module dcu_mshr #(
   `CCV_ASSERT(mshr_own_slot, !mv_cc04h || mslot_cc04h == sp_slot_q_cc04h)
   `CCV_ASSERT(mshr_mv_lead, !mv_cc04h || sl_q_cc04h)
   `CCV_ASSERT(mshr_one_request, !(rl_q_cc04h && mv_cc04h))
-  `CCV_ASSERT(mshr_retry_lead, rv_cc04h == rl_q_cc04h)
   `CCV_ASSERT(mshr_retry_bank, !rl_q_cc04h || rpa_cc04h[WB-1:0] == BKW)
   `CCV_ASSERT(mshr_fill_in_flight, !(fv_q_cc04h && fmine_cc04h) ||
               (ev_q_cc05h[fe_cc04h] && !pd_cc05h[fe_cc04h] &&

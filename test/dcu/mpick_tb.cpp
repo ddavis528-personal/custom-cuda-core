@@ -276,7 +276,6 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     // The grant, the retry at D2, the send, the bank told, the payload.
     b.expect(bool(d.rgv_cc03h) == bool(rpick), "retry grant valid");
     if (rpick) b.expect(d.rgb_cc03h == *rpick, "retry grant bank");
-    b.expect(d.rv_cc04h == (rcap ? 1u << *grantPrev : 0u), "retry at D2: bank");
     if (rcap) {
       b.expect(uint64_t(d.rpa_cc04h) == rcap->pa, "retry at D2: line");
       b.expect(d.rrid_cc04h == rcap->rid, "retry at D2: req_id");
@@ -287,7 +286,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       ++cov_rgrant;
     }
     b.expect(bool(d.mv_cc05h) == send, send ? "should send" : "should not send");
-    b.expect(d.snt_cc05h == (send ? 1u << *mpick : 0u), "the bank told of its send");
+    if (send) b.expect(d.sbk_cc05h == *mpick, "the bank told of its send");
     if (mcap) {
       b.expect(d.mrid_cc06h == ((*sentPrev << kWeb) | mcap->id), "request req_id");
       b.expect(uint64_t(d.mpa_cc06h) == (mcap->pa << 7), "request PA");

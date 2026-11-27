@@ -268,8 +268,8 @@ struct Bench {
     dut->dv_cc04h = 0;
     dut->hit_cc04h = 0;
     dut->rgv_cc03h = 0;
-    dut->rv_cc04h = 0;
-    dut->snt_cc05h = 0;
+    dut->snv_cc05h = 0;
+    dut->sbk_cc05h = 0;
     dut->fv_cc03h = 0;
     dut->xv_cc04h = 0;
   }
@@ -421,7 +421,6 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     const bool retryNow = grantPrev;
     if (retryNow) {
       pq = waiters.front();
-      d.rv_cc04h = 1;
     }
     const Req rp = retryNow ? waiters.front() : rnd ? g.req() : Req{};
     d.rpa_cc04h = rp.pa;
@@ -514,7 +513,15 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
         d.xid_cc04h = rnd ? g.below(128) : 0;
       }
     }
-    d.snt_cc05h = sentPrev;
+    // dcu_mpick's send of last cycle: this bank's, else another bank's (or
+    // none) beside it.
+    if (sentPrev) {
+      d.snv_cc05h = 1;
+      d.sbk_cc05h = kBk;
+    } else {
+      d.snv_cc05h = rnd && g.below(3) == 0;
+      d.sbk_cc05h = rnd ? g.otherBank() : kBk;
+    }
 
     // The model's cycle; the offers and last cycle's offered payload before
     // the edge; then the edge and the flopped outputs.

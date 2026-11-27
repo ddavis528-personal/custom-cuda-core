@@ -75,7 +75,6 @@ module dcu_mpick #(
   input  logic [NBK-1:0]         rexcl_cc03h,
   input  logic [NBK*WF-1:0]      rfold_cc03h,
   input  logic [NBK*WST-1:0]     rsti_cc03h,
-  output logic [NBK-1:0]         rv_cc04h,
   output logic [WL-1:0]          rpa_cc04h,
   output logic [WI-1:0]          rrid_cc04h,
   output logic [1:0]             rop_cc04h,
@@ -88,7 +87,7 @@ module dcu_mpick #(
   input  logic [NBK-1:0]         hv_cc05h,
   input  logic [NBK*WTS-1:0]     hstp_cc05h,
   input  logic [NBK-1:0]         sv_cc05h,
-  output logic [NBK-1:0]         snt_cc05h,
+  output logic [WB-1:0]          sbk_cc05h,      // the bank sent from, under mv_cc05h
   input  logic [NBK*WEB-1:0]     pid_cc05h,
   input  logic [NBK*WL-1:0]      ppa_cc05h,
   input  logic [NBK*WC-1:0]      pcoh_cc05h,
@@ -161,19 +160,14 @@ module dcu_mpick #(
   assign rgv_cc03h = rgv_q_cc03h;
   assign rgb_cc03h = rgb_q_cc03h;
 
-  // The granted bank's payload, captured under the grant, and its bank,
-  // one-hot, for the retry's D2 in that bank's dcu_mshr.
-  logic [NBK-1:0] rv_q_cc04h;
+  // The granted bank's payload, captured under the grant, for the retry's
+  // D2 in that bank's dcu_mshr (whose own flop of rgv/rgb is its valid).
   logic [WL-1:0]  rpa_q_cc04h;
   logic [WI-1:0]  rrid_q_cc04h;
   logic [1:0]     rop_q_cc04h;
   logic           rexcl_q_cc04h;
   logic [WF-1:0]  rfold_q_cc04h;
   logic [WST-1:0] rsti_q_cc04h;
-  always_ff @(posedge dcu_core_clk) begin
-    if (rst_r01h) rv_q_cc04h <= '0;
-    else          rv_q_cc04h <= gv_q_cc03h ? NBK'(1) << gb_q_cc03h : '0;
-  end
   logic rp_en_cc03h;
   assign rp_en_cc03h = gv_q_cc03h;
   always_ff @(posedge dcu_core_clk) begin
@@ -186,7 +180,6 @@ module dcu_mpick #(
       rsti_q_cc04h  <= rsti_cc03h[gb_q_cc03h*WST +: WST];
     end
   end
-  assign rv_cc04h    = rv_q_cc04h;
   assign rpa_cc04h   = rpa_q_cc04h;
   assign rrid_cc04h  = rrid_q_cc04h;
   assign rop_cc04h   = rop_q_cc04h;
@@ -195,24 +188,28 @@ module dcu_mpick #(
   assign rsti_cc04h  = rsti_q_cc04h;
 
   // ---- The MLC request's pick (DI-64, DI-65) -----------------------------
-  // The bank sent from last cycle, in three copies: the pick's (passed
-  // over), the payload capture's, and the output's to the banks.
-  (* keep *) logic [NBK-1:0] sm_q_cc05h, sb_q_cc05h, snt_q_cc05h;
+  // The bank sent from last cycle, encoded (a valid and its bank: fewer
+  // flops written every cycle), in three copies: the pick's (passed over),
+  // the payload capture's, and the output's to the banks.
+  (* keep *) logic [WB-1:0]  sm_q_cc05h, sb_q_cc05h, snb_q_cc05h;
   (* keep *) logic           mv_q_cc05h, mvi_q_cc05h;
   logic [WCR-1:0] cr_q_cc05h;                 // ccv_dcu_mlc_req's credits
   logic           crq_q_cc05h;                // a credit back, a cycle on
   logic [NBK-1:0] hok_cc05h, sok_cc05h, hwin_cc05h, swin_cc05h, win_cc05h;
   logic           hold_cc05h [NBK][NBK];      // [i][j]: head i's stamp strictly older than j's
   logic           crok_cc05h, snd_cc05h;
+  logic [NBK-1:0] smh_cc05h;                  // last cycle's send, one-hot
+  logic [WB-1:0]  wb_cc05h;                   // this send's bank
   always_comb begin
+    smh_cc05h = mvi_q_cc05h ? NBK'(1) << sm_q_cc05h : '0;
     for (int i = 0; i < NBK; i++)
       for (int j = 0; j < NBK; j++) begin
         logic [WTS-1:0] d;
         d = hstp_cc05h[j*WTS +: WTS] - hstp_cc05h[i*WTS +: WTS];
         hold_cc05h[i][j] = |d && !d[WTS-1];
       end
-    hok_cc05h = hv_cc05h & ~sm_q_cc05h;
-    sok_cc05h = sv_cc05h & ~sm_q_cc05h;
+    hok_cc05h = hv_cc05h & ~smh_cc05h;
+    sok_cc05h = sv_cc05h & ~smh_cc05h;
     for (int i = 0; i < NBK; i++) begin
       hwin_cc05h[i] = hok_cc05h[i];
       for (int j = 0; j < NBK; j++)
@@ -224,6 +221,9 @@ module dcu_mpick #(
     // The count takes last cycle's send only now (mvi_q): a credit is left.
     crok_cc05h = cr_q_cc05h > WCR'(mvi_q_cc05h);
     snd_cc05h  = crok_cc05h && |win_cc05h;
+    wb_cc05h   = '0;
+    for (int i = 0; i < NBK; i++)
+      if (win_cc05h[i]) wb_cc05h = wb_cc05h | WB'(i);
   end
   always_ff @(posedge dcu_core_clk) begin
     if (rst_r01h) begin
@@ -231,17 +231,17 @@ module dcu_mpick #(
       mvi_q_cc05h <= 1'b0;
       sm_q_cc05h  <= '0;
       sb_q_cc05h  <= '0;
-      snt_q_cc05h <= '0;
+      snb_q_cc05h <= '0;
     end else begin
       mv_q_cc05h  <= snd_cc05h;
       mvi_q_cc05h <= snd_cc05h;
-      sm_q_cc05h  <= snd_cc05h ? win_cc05h : '0;
-      sb_q_cc05h  <= snd_cc05h ? win_cc05h : '0;
-      snt_q_cc05h <= snd_cc05h ? win_cc05h : '0;
+      sm_q_cc05h  <= wb_cc05h;
+      sb_q_cc05h  <= wb_cc05h;
+      snb_q_cc05h <= wb_cc05h;
     end
   end
   assign mv_cc05h  = mv_q_cc05h;
-  assign snt_cc05h = snt_q_cc05h;
+  assign sbk_cc05h = snb_q_cc05h;
 
   // The credits less the sends before last cycle (a send counts a cycle
   // late, from its valid's flop: depth). The credit pulse is captured
@@ -264,17 +264,10 @@ module dcu_mpick #(
   logic [WL-1:0]  ppan_cc05h;
   logic [WC-1:0]  pcon_cc05h;
   always_comb begin
-    pb_cc05h   = '0;
-    pidn_cc05h = '0;
-    ppan_cc05h = '0;
-    pcon_cc05h = '0;
-    for (int b = 0; b < NBK; b++)
-      if (sb_q_cc05h[b]) begin
-        pb_cc05h   = pb_cc05h | WB'(b);
-        pidn_cc05h = pidn_cc05h | pid_cc05h[b*WEB +: WEB];
-        ppan_cc05h = ppan_cc05h | ppa_cc05h[b*WL +: WL];
-        pcon_cc05h = pcon_cc05h | pcoh_cc05h[b*WC +: WC];
-      end
+    pb_cc05h   = sb_q_cc05h;
+    pidn_cc05h = pid_cc05h[sb_q_cc05h*WEB +: WEB];
+    ppan_cc05h = ppa_cc05h[sb_q_cc05h*WL +: WL];
+    pcon_cc05h = pcoh_cc05h[sb_q_cc05h*WC +: WC];
   end
   logic [WE-1:0] mrid_q_cc06h;
   logic [WL-1:0] mpa_q_cc06h;
@@ -299,8 +292,8 @@ module dcu_mpick #(
   `CCV_ASSERT(mpick_one_bank, !snd_cc05h || $onehot(win_cc05h))
   `CCV_ASSERT(mpick_credit, cr_q_cc05h <= WCR'(NCR))
   `CCV_ASSERT(mpick_credit_floor, cr_q_cc05h >= WCR'(mvi_q_cc05h))
-  `CCV_ASSERT(mpick_pass_over, !(|(win_cc05h & sm_q_cc05h)))
-  `CCV_ASSERT(mpick_straight_no_head, !(|(sv_cc05h & hv_cc05h & ~sm_q_cc05h)))
+  `CCV_ASSERT(mpick_pass_over, !(|(win_cc05h & smh_cc05h)))
+  `CCV_ASSERT(mpick_straight_no_head, !(|(sv_cc05h & hv_cc05h & ~smh_cc05h)))
 
 endmodule
 `undef CCV_CLK
