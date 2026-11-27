@@ -63,12 +63,13 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit-tree with both parents. Session home installed; --check in sweep.
 
 ## Status
-- Pushed f2accd75 (SCOPED PASS 24/28): sweep merge of every remote branch to
-  11-27. On top (unpushed until the next gate): TI c0883a36 + MA-34 model.
+- Pushed 5a4a865c: OA-508 merge of 7f5195a4 (DI-62, rev 101, OA notified), on
+  724beb26 (TI c0883a36 + MA-34 model, SCOPED PASS 28/28). Before: f2accd75, sweep merge to
+  11-27.
 - Pongs 11-27: all answered; OI and RH sender=stale (their roster); tell
   Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 100, MI 74, MA 222, AR 426, OA 506, TI 594, OI 427, DA 136,
-RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-61 (id m8yvbw8rqgz.117367).
+Conventions 20, DI 101, MI 74, MA 222, AR 426, OA 506, TI 594, OI 427, DA 136,
+RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-62 (id m8yvbw8rqgz.119788).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
