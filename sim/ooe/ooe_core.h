@@ -2485,6 +2485,12 @@ public:
   unsigned walkEpoch(unsigned s) const { return s < slot_.size() ? slot_[s].walk_epoch : 0; }
 private:
   RxLog rxlog_;
+  /// keep_row_settled (OA 513 (3); ooe_decrx's assertion of u_keep's
+  /// table): the warps whose slot this cycle's control allocated or
+  /// released, and last cycle's. A uop that arrives the cycle after its
+  /// warp's slot was written would have u_keep read the row that write
+  /// lands in.
+  std::vector<unsigned> keep_now_, keep_prev_;
   SlotLog slotlog_;
 public:
   /// The first RCU-class entry index past the last; MIU entries follow.

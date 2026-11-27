@@ -2538,6 +2538,39 @@ bool pcKept(bool retire_first, bool control) {
   return ok;
 }
 
+/// keep_row_settled (OA 513 (3); ooe_decrx's assertion of u_keep's
+/// table): no uop arrives the cycle after its warp's slot was allocated or
+/// released, so u_keep never reads a row in the cycle its write lands. A
+/// launch's uops come fetch_delay cycles after FET sees it, so none does;
+/// the control (row-early) delivers FET's uops with no delay, the first in
+/// the cycle after the allocation, which the model's check must name.
+bool keepRowSettled(bool control) {
+  Config c = baseConfig();
+  Env e(c);
+  if (control) e.fetch_delay = 0;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 3; ++i) { Op a; a.k = kLane; a.dst = 4 + i; a.nsrc = 1; p.push_back(a); }
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 60; ++k) e.step();
+  unsigned named = 0;
+  for (const std::string &m : e.errors) named += m.find("keep_row_settled") != std::string::npos;
+  if (!control) {
+    g_test = "keep_row_settled: a launch's uops";
+    EXPECT(e.errors.empty(), "%zu errors%s%s", e.errors.size(), e.errors.empty() ? "" : ", first: ",
+           e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+  return named == 0;
+}
+
+void testKeepRowSettled() {
+  keepRowSettled(false);
+  const bool held = keepRowSettled(true);
+  std::printf("  %-24s %s\n", "control row-early", held ? "MISSED" : "caught");
+  g_test = "keep_row_settled (control)";
+  EXPECT(!held, "a uop arriving the cycle after its launch must fail keep_row_settled");
+}
+
 void testPcKept() {
   pcKept(false, false);
   pcKept(true, false);
@@ -6772,6 +6805,7 @@ int main(int argc, char **argv) {
   testMlcTrigger();
   testMlcSplit();
   testPcKept();
+  testKeepRowSettled();
   {
     // OI-90 (OA's rev 286): the hold, on the atom-early-wake storm.
     unsigned over[2];

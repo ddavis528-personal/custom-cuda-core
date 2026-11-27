@@ -333,6 +333,10 @@ bool Core::straggler(const Uop &u) {
 
 /// Into the decode queue, after this cycle's rename: renamed from the next.
 void Core::uop(const Uop &u) {
+  for (unsigned w : keep_prev_)
+    if (w == u.warp % kWarpIds)
+      err("keep_row_settled (OA 513 (3)): warp %u's uop arrived the cycle after its slot was allocated or released",
+          u.warp);
   // A uop fetched before its warp's last epoch change is wrong-path (A-70).
   // A killed warp's uop still on the link from DEC is one (RI-57, rokilllane
   // on test/phys/links_split.json): OOE advanced the epoch at the kill and
@@ -498,6 +502,8 @@ void Core::cycle(uint64_t now) {
   }
   pfree_.clock();
   rxlog_ = RxLog();
+  keep_prev_.swap(keep_now_);
+  keep_now_.clear();
   slotlog_ = SlotLog();
   decq_flushed_ = 0;
   decq_freed_prev_ = decq_freed_;
@@ -2467,6 +2473,7 @@ void Core::releaseSlot(unsigned slot) {
       err("RI-12: slot %u released with %u of warp %u's uops queued, its count %u", slot, q, s.warp, s.decq);
   }
   slot_of_[s.warp % kWarpIds] = -1;
+  keep_now_.push_back(s.warp % kWarpIds);
   rxlog_.rel |= 1u << slot;
   if (slot < squash_due_.size()) squash_due_[slot].on = false;
   rlog_.release |= 1u << slot;
@@ -2522,6 +2529,7 @@ void Core::control() {
       s.warp_in_cta = a.warp_in_cta;
       slot_of_[a.warp % kWarpIds] = int(a.slot);
       rxlog_.alloc.push_back({a.slot, a.warp});
+      keep_now_.push_back(a.warp % kWarpIds);
       // The CTA's barrier count, at launch and at restore-allocate, since a
       // restored warp may land in another slot (OA's response IS-16).
       s.bar_count = a.barrier_count;
