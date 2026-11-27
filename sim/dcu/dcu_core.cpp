@@ -1854,6 +1854,10 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     // The oldest unsent miss, its valid no earlier than D2 + 1 (H+5 for a
     // lookup's own D2): straight from D2 when nothing older waits.
     if (to_mlc_.front().first + 1 == t) h_.hit("dcu_mlc_straight");
+    // dcu_mpick's stamp is 10 bits, taken at D2 and compared modulo
+    // (DI-64, DCU tab rev 150): a miss picked past half the range would
+    // order wrongly in the RTL, so the bin counts any (dcu_mpick_alias).
+    if (t - to_mlc_.front().first > 512) h_.hit("dcu_mpick_alias");
     o.mlc = to_mlc_.front().second;
     to_mlc_.pop_front();
   }
