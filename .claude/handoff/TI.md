@@ -31,13 +31,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 ## Daily sweep (scheduled task trig_01A8r3ENUjnLyTaNUcc23ZbF, 02:11 PT)
 Register section 4 from the bookmarks; then the repo half (daily-sweep.sh,
 detached; wait with gate-wait). Exit 3 = a real conflict to resolve.
-The sweep merges fewest bases first, retries a merge past 300 s with
-`-s resolve`, and past 8 bases picks the branch's own commits then records an
-`-s ours` merge; an empty pick is skipped (be7c37b7). /home/user/ti-ret is
+The sweep merges fewest bases first; a merge past 300 s falls back to
+tools/sweep-merge.sh (AR 425: newest single base, conflicts settled only by
+exact-blob history, else exit 3 naming the files). /home/user/ti-ret is
 gone: run the sweep from /home/user/ti-rp.
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-592 (rev 594). Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-595 (rev 597). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -55,19 +55,19 @@ background `while pgrep` wait.
   on the 11-27 sweep db54eeb6 (release 73edf5d5; tag refused, local only).
   Before it c0883a36: MA-34 (B) + AR 417 EXB 8, gate-scope ALWAYS_READERS
   (lint-rtl.py, check-1d.sh name rtl/rcu/ but run in s1d). MI-47's 8566e6ff in.
+- 51c78bc4: a kernel run cut at its cycle cap names the cap and no longer
+  fails held checks of unretired instructions (colwalk-p1k was the 20000
+  cap at CCV_TB_LATENCY >= 560, not a stall). TI-593 corrected TI-592; AR 424
+  wants no control; TI-594 closed AR 422 (1).
 - TI-591 (RI-64): miu_form OOM is MI's clang++ fix 104678de, on MI's
   ccr-58815650-0ch1hh at 208e4c46, pushed after the 11-27 fetch. Task 90: when
   a landed tip has it, drop miu_form from tools/heavy-units.json.
-- TI-592 (AR 422 (1)): colwalk-p1k control dropped. That kernel stalls at
-  latency >=300 and has a stale-operand CHECK (seq 131 C_FADD R12 0x5d80):
-  trace it to its owner (stub MIU/DCU or OOE) when no gate runs.
 - Disk: scratchpad priv/ and ~/.cache/ccache untouched: ask Daniel first.
 - Known: MIU-model rows on bank bounds are stub-MIU only (slotform,
   coremark128).
 
 ## In flight
-- Nothing running. Next: task 90 after the next sweep; colwalk-p1k stall
-  trace; then the open work below, plus DI-38 (1) (task 72, needs DI's spec),
+- Next: task 90 after the next sweep; then the open work below, plus DI-38 (1) (task 72, needs DI's spec),
   MI 29603c02 held-wait re-pin (task 80), AR 417 swap-class control (task 79),
   task 76 credit modules.
 
