@@ -15,9 +15,14 @@ namespace dcu {
 namespace {
 /// A waiting miss's next MSHR decision: the RTL's offer, grant and retry (DI-36).
 constexpr uint64_t kRetryLag = 5;
-/// DI-37 (MA, DCU tab rev 114): K, the cycles a ready fill write waits
+/// DI-37 (MA, DCU tab rev 114; CCV_DCU_FILL_AGE, TI-533): K, the cycles a ready fill write waits
 /// before it beats new lookups; it writes within K + 5 of ready.
-constexpr uint64_t kFillHold = 4;
+constexpr uint64_t kFillHold = ccv::prov::kDcuFillAge;
+/// DI-43 (MA rev 184): in the RTL's form a fill's victim snapshot waits for
+/// its bank's older fills' snapshots and for the fold table's margin of
+/// their writes, at most 3 cycles for each other fill the bank holds (its
+/// snapshot, its write's two-cycle margin) and 2 for a write already at W.
+constexpr uint64_t kSnapWait = 3 * (kCreditDepth - 1) + 2;
 std::string fmt(const char *f, unsigned long long a = 0, unsigned long long b = 0,
                 unsigned long long c = 0) {
   char buf[256];
@@ -337,6 +342,9 @@ bool Core::eligible(unsigned b, size_t i) const {
     return h <= reads;
   }
   case Acc::FillW:
+    // (the RTL's form: its way is known a cycle after its snapshot, the
+    // write a cycle on, however late the snapshot; DI-43)
+    if (c_.victim_at >= 2 && a.fb != ~0u && now_ < a.born + 2) return false;
     if (c_.brk == "dcu-wb-early") return true;
     for (size_t j = 0; j != i; ++j)
       if (bq_[b][j].k == Acc::EvictR && bq_[b][j].fb == a.fb) return false;
@@ -421,7 +429,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       h_.hit("store_hit");
       return;
     }
-    missOrWait(r, now_ - dOff() + 1);
+    missOrWait(r, now_ - dOff() + 1, late || r.reread);
     return;
   }
   const bool hit = w && (r.op == Op::Read || w->owned);
@@ -431,6 +439,10 @@ void Core::serveLook(const Req &r, uint64_t born) {
   // miss reads the predicted way's word and discards it. A tag hit always
   // has a fold match (the CHECK).
   const bool fm = c_.wp_bits && !r.reread && !c_.wp_mru && foldMatch(r.pa);
+  // DI-42 (MA's DCU tab rev 121): a granted lookup whose fold row was read
+  // (D0 = H+2, a cycle before P) in a fill's fold write cycle or the next
+  // discards its compare; on a hit it takes the mispredict's re-read.
+  const bool mg = c_.wp_bits && !r.reread && !late && inMargin(r.pa, born - 1);
   // CHECK (part 4): a way's fold valid bit tracks its tag's valid bit, so
   // after an invalidate no fold match names it (dcu-prb-stale, the control).
   if (c_.wp_bits) {
@@ -440,7 +452,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
         h_.fail(fmt("dcu: way %llu of line %llx's set has its fold valid bit set, invalid", k, r.pa));
   }
   if (c_.wp_bits && !r.reread && !c_.wp_mru) {
-    if (hit && !fm) h_.fail(fmt("dcu: a tag hit on line %llx without a fold match", r.pa));
+    if (hit && !fm && !mg) h_.fail(fmt("dcu: a tag hit on line %llx without a fold match", r.pa));
     if (!hit && fm) {
       h_.hit("dcu_wp_fold_miss");
       h_.hit("dcu_wp_reaccess_cycles", 2);
@@ -450,7 +462,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
     }
   }
   if (!hit) {
-    missOrWait(r, now_ - dOff() + 1);
+    missOrWait(r, now_ - dOff() + 1, late || r.reread);
     return;
   }
   // CHECK (part 3): no load reads a line an older store to it has not yet
@@ -458,6 +470,20 @@ void Core::serveLook(const Req &r, uint64_t born) {
   for (auto it = stp_.lower_bound(r.pa); it != stp_.end() && it->first == r.pa; ++it)
     if (it->second < born)
       h_.fail(fmt("dcu: a load of line %llx read before an older store's write", r.pa));
+  if (mg && c_.brk != "dcu-ft-margin") {
+    h_.hit("dcu_ft_margin_reread");
+    h_.hit("dcu_wp_reaccess_cycles", 2);
+    entLeave(b, r, now_ + 1);
+    Req x = r;
+    x.reread = true;
+    x.ent_gone = true;
+    bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, x, 0, {}});
+    bq_[b].back().tway = int(w - l1_.data());
+    return;
+  }
+  // CHECK (DI-42): no lookup answers from a fold row read in the margin
+  // (dcu-ft-margin, the control, answers it at its hit slot).
+  if (mg) h_.fail(fmt("dcu: a lookup of line %llx answered from a fold row read in a fill's write margin", r.pa));
   if (c_.wp_bits && !r.reread) {
     if (predicted(r.pa)) {
       ++st_.wp_right;
@@ -511,7 +537,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, r, 0, {}});
       return;
     }
-    missOrWait(r, now_ - dOff() + 1);
+    missOrWait(r, now_ - dOff() + 1, late || r.reread);
     return;
   }
   entLeave(b, r, hit_ret);
@@ -630,7 +656,10 @@ void Core::serve(const Acc &a, uint64_t born) {
       // CHECK (DI-37): a fill writes within K + gap + 1 of ready (a store
       // write booked just before its hold began can still go first), so its
       // buffer's ccv_mlc_dcu_rsp credit returns inside the channel's bound.
-      if (now_ > a.ready + kFillHold + c_.gap + 1)
+      // In the RTL's form a snapshot that waited past the hold (DI-43) moves
+      // the bound to its way's write: held at once, so within gap + 1.
+      const uint64_t from = c_.victim_at >= 2 ? std::max(a.ready + kFillHold, a.born + 2) : a.ready + kFillHold;
+      if (now_ > from + c_.gap + 1)
         h_.fail(fmt("dcu: fill buffer %llu wrote its line %llu cycles after ready (DI-37: K + gap + 1)", a.fb,
                     now_ - a.ready));
       fillWrite(a.fb);
@@ -721,9 +750,20 @@ void Core::schedule() {
         h_.fail(fmt("dcu: %llu lookups due in bank %llu at cycle %llu; MIU's A2 drops all but one (MA-27)",
                     in.size(), b, now_));
     }
-    size_t old = bq_[b].size();
+    // The RTL's fill form (CCV_DCU_VICTIM_AT >= 2; dcu_bctl, DI-39): a fill's
+    // write is no ordinary waiter: it goes held (below) or only when no
+    // lookup waiter is eligible, and never ages.
+    const bool rf = c_.victim_at >= 2;
+    size_t old = bq_[b].size(), oldf = bq_[b].size();
     for (size_t i = 0; i != bq_[b].size(); ++i)
-      if (eligible(b, i)) { old = i; break; }
+      if (eligible(b, i)) {
+        if (rf && bq_[b][i].k == Acc::FillW) {
+          if (oldf == bq_[b].size()) oldf = i;
+          continue;
+        }
+        old = i;
+        break;
+      }
     const bool aged = old != bq_[b].size() && now_ - bq_[b][old].born >= c_.age &&
                       c_.brk != "bank-age-ignored";
     // The re-read and the CE rewrite, which go ahead of new lookups.
@@ -791,7 +831,7 @@ void Core::schedule() {
     }
     const bool next_booked = book_[b].count(now_ + 1) != 0;
     if ((bfree_[b] <= now_ && !next_booked) || (both && win != in.size())) {
-      if (hf != bq_[b].size()) {
+      if (hf != bq_[b].size() && !(rf && rr != bq_[b].size())) {
         if (!in.empty()) h_.hit("dcu_fill_held_block");
         h_.hit("dcu_fill_held");
         const Acc a = bq_[b][hf];
@@ -830,9 +870,10 @@ void Core::schedule() {
           claim(b);
           serveLook(x, now_ - dOff());
         }
-      } else if (old != bq_[b].size()) {
-        const Acc a = bq_[b][old];
-        bq_[b].erase(bq_[b].begin() + long(old));
+      } else if (old != bq_[b].size() || oldf != bq_[b].size()) {
+        const size_t i = old != bq_[b].size() ? old : oldf;
+        const Acc a = bq_[b][i];
+        bq_[b].erase(bq_[b].begin() + long(i));
         claim(b);
         serve(a, a.born);
       }
@@ -858,8 +899,8 @@ void Core::schedule() {
       // only hits join the queue (DI-48). One that waits for order (a held
       // line, an older lookup of its line, its writeback, an earlier lookup
       // of its line now) keeps the queue's order. dcu-loser-miss-late, the
-      // control, decides it at its access instead, so a slot's two misses
-      // can reach its port in one cycle (the id CHECK in startMiss).
+      // control, decides it at its access instead, a late miss that retries
+      // on port 0 (MA-33), so it leaves the winner's cycle late.
       if (r.op == Op::Read && !find(r.pa) && !wb && !ord && !earlier &&
           c_.brk != "dcu-loser-miss-late") {
         h_.hit("dcu_loser_miss");
@@ -900,8 +941,20 @@ void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t ti
 /// miss also waits while its bank already holds a waiting one, so a line's
 /// requests stay in arrival order (one line is one bank); dcu-miss-reorder,
 /// the control, lets a new miss pass a waiting one of its line.
-void Core::missOrWait(const Req &r, uint64_t d2) {
+void Core::missOrWait(const Req &r, uint64_t d2, bool late) {
   const unsigned b = bankOf(r.pa);
+  // A late lookup's miss (MA-33): a waiter, or a re-read, decides its miss
+  // at its access, cycles past its D; its slot's port belongs to the slot's
+  // on-time lookups then, so it waits and retries on port 0 (dcu_mshr's
+  // ids leave only by a port pick). dcu-late-miss-port, the control, puts
+  // it on its slot's port, where it meets the slot's next miss with one
+  // id (the CHECK in startMiss).
+  if (late && c_.brk != "dcu-late-miss-port") {
+    h_.hit("dcu_late_miss_retry");
+    h_.hit("dcu_miss_wait");
+    bq_[b].push_back(Acc{Acc::MissW, now_, d2 + kRetryLag, r.pa, r, 0, {}});
+    return;
+  }
   bool waits = false;
   for (const Acc &x : bq_[b]) {
     if (x.k != Acc::MissW) continue;
@@ -1283,7 +1336,16 @@ void Core::onFill(const Fill &f) {
 bool Core::pickVictim(unsigned id) {
   Miss &m = miss_.at(id);
   Way *s = setOf(m.line);
-  auto free_way = [&](const Way &x) { return x.rsv < 0 && !(x.valid && held(x.line)); };
+  // In the RTL's form a way written this cycle (W) stays reserved: its
+  // write is not yet in the fold table the snapshot reads (DI-43, MA rev
+  // 184). dcu-fill-rsv-grant, the control, releases it, and the CHECK below
+  // must catch the pick.
+  const bool rf = c_.victim_at >= 2;
+  auto wn = [&](const Way &x) {
+    return rf && c_.brk != "dcu-fill-rsv-grant" &&
+           std::count(wnow_.begin(), wnow_.end(), size_t(&x - l1_.data())) != 0;
+  };
+  auto free_way = [&](const Way &x) { return x.rsv < 0 && !wn(x) && !(x.valid && held(x.line)); };
   Way *w = find(m.line);
   if (w && w->rsv >= 0) w = nullptr;
   if (!w)
@@ -1304,13 +1366,26 @@ bool Core::pickVictim(unsigned id) {
   }
   if (!w) {
     h_.hit("dcu_fill_victim_wait");
+    m.vnofree = true;
     return false;
   }
+  // CHECK (DI-43): no fill takes a way another fill writes now, whose line
+  // the snapshot cannot see (two fills on one way, the first one's lost).
+  if (rf && std::count(wnow_.begin(), wnow_.end(), size_t(w - l1_.data())))
+    h_.fail(fmt("dcu: a fill of line %llx took way %llu, which a fill writes this cycle (DI-43)", m.line,
+                unsigned(w - l1_.data()) % c_.ways));
   if (!w->valid) h_.hit("dcu_victim_invalid");
   else if (plru) h_.hit("dcu_victim_plru");
   w->rsv = int(id);
   m.way = int(w - l1_.data());
-  touch(*w);
+  // Made most recently used: at once, or, in the RTL's form, from dcu_bctl's
+  // flops a cycle on (seen two cycles after the pick).
+  if (c_.victim_at >= 2) {
+    w->used = ++tick_;
+    touch_at_.emplace(now_ + 2, size_t(w - l1_.data()));   // after a hit's due the same cycle
+  } else {
+    touch(*w);
+  }
   const unsigned b = bankOf(m.line);
   const uint64_t ready = m.f_at + 2 + c_.victim_at + (m.kst ? m.kst + 2 : 0);   // encode F+1, or F+k+3 (part 3)
   if (w->valid && w->line != m.line) {
@@ -1331,6 +1406,42 @@ bool Core::pickVictim(unsigned id) {
   return true;
 }
 
+/// The RTL's form (CCV_DCU_VICTIM_AT >= 2; DI-43, MA rev 184): after the
+/// bank's access, so that this cycle's write (W) is known. One snapshot a
+/// bank a cycle, to its oldest fill still without a way whose set is
+/// outside the fold table's margin (a fill's fold write this cycle or
+/// last); dcu-fill-nomargin, the control, ignores the margin.
+void Core::pickVictims() {
+  std::vector<char> took(c_.banks, 0);
+  for (size_t k = 0; k != vpend_.size();) {
+    Miss &m = miss_.at(vpend_[k]);
+    const unsigned b = bankOf(m.line);
+    if (m.f_at + c_.victim_at > now_ || took[b]) {
+      ++k;
+      continue;
+    }
+    if (c_.wp_bits && c_.brk != "dcu-fill-nomargin" && inMargin(m.line, now_)) {
+      h_.hit("dcu_fill_snap_margin");
+      ++k;
+      continue;
+    }
+    took[b] = 1;
+    const uint64_t wait = now_ - (m.f_at + c_.victim_at);
+    if (!pickVictim(vpend_[k])) {
+      ++k;
+      continue;
+    }
+    if (wait) h_.hit("dcu_fill_snap_late");
+    h_.peak("dcu_fill_snap_wait_max", wait);
+    // CHECK (DI-43): the snapshot waits at most kSnapWait (unless a pick
+    // found no free way, the model's own held lines, which the RTL has not).
+    if (!m.vnofree && wait > kSnapWait)
+      h_.fail(fmt("dcu: fill of line %llx waited %llu cycles for its victim snapshot, past %llu (DI-43)", m.line,
+                  wait, kSnapWait));
+    vpend_.erase(vpend_.begin() + long(k));
+  }
+}
+
 /// W: the fill's line, tags and fold go into its reserved way together. A
 /// dirty victim's entry becomes its writeback (part 2); requests that need
 /// ownership the fill did not bring look up again now.
@@ -1339,6 +1450,13 @@ void Core::fillWrite(unsigned id) {
   Way &w = l1_[size_t(m.way)];
   if (m.vdirty && !m.vread)
     h_.fail(fmt("dcu: the fill of line %llx wrote over dirty victim %llx before its read", m.line, m.vline));
+  // DI-42: the fill's fold write, when it changes the way's entry (dcu_bctl
+  // skips an unchanged one), opens the set's read-after-write margin.
+  if (!w.fvalid || fold(w.line) != fold(m.line)) {
+    auto &e = ftw_.try_emplace(size_t((m.line / kLineBytes) % c_.sets), ~0ull, ~0ull).first->second;
+    e = {now_, e.first};
+  }
+  wnow_.push_back(size_t(m.way));
   w.valid = true;
   w.fvalid = true;
   w.flip = -1;   // a fill writes good check bits
@@ -1636,10 +1754,12 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   fill_release_ = 0;
   // Victims for the fills that landed before now (F+1), oldest first; a
   // fill whose set has no free way waits in its buffer (its credit held).
-  for (size_t k = 0; k != vpend_.size();) {
-    if (miss_.at(vpend_[k]).f_at + c_.victim_at <= now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
-    else ++k;
-  }
+  wnow_.clear();
+  if (c_.victim_at < 2)
+    for (size_t k = 0; k != vpend_.size();) {
+      if (miss_.at(vpend_[k]).f_at + c_.victim_at <= now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
+      else ++k;
+    }
   while (!wb_ack_due_.empty() && wb_ack_due_.begin()->first <= now_) {
     wbAcked(wb_ack_due_.begin()->second);
     wb_ack_due_.erase(wb_ack_due_.begin());
@@ -1671,6 +1791,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   }
   for (const Req &r : in) arrive(r, t);
   schedule();
+  if (c_.victim_at >= 2) pickVictims();
   // ccv_dcu_mlc_req, one a cycle (slice 2, part 2): writebacks first,
   // oldest first, each on its fill's entry (it frees a writeback buffer, so
   // lets a fill write); then misses. drop-writeback (dcu-wb-drop), the
