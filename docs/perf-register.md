@@ -107,7 +107,7 @@ CCV_DCU_WAYS=8`, as AR rev 360's runs) at 4e3dda64 (before) and 77f7849e
 | PF-51 | L1 hit latency that follows the configured L1 size | DCU, MIU, OOE, params | deferred (DA, 2026-11-15) |
 | PF-52 | An L1 hit at 7 by reading every way in parallel | DCU, MIU, params | deferred (DA rev 128, 2026-11-19) |
 | PF-53 | Rotating bank arbitration in the DCU | DCU | deferred (MA-24, 2026-11-19) |
-| PF-54 | Read-path depth for a full read at the DRAM latency | MIU, DCU, MLC, params | target (DA, 2026-11-23) |
+| PF-54 | Read-path depth for a full read at the DRAM latency | MIU, DCU, MLC, params | decided: B, 128 lines (DA, 2026-11-24) |
 
 ## Entries
 
@@ -1690,12 +1690,33 @@ CCV_DCU_WAYS=8`, as AR rev 360's runs) at 4e3dda64 (before) and 77f7849e
   req_ids (about 2 B/cycle, 8x short), MIU to DCU 64 ids and MLC to EXB 64
   ids (2x short), MIU's 40-entry memop queue (a coalesced warp load is one
   line, so about 3x short).
-- **Alternative:** size the path to 160 or 192 lines. MA's candidates are
-  160 DCU MSHRs, bank queues of 24, an MIU park table in place of a larger
-  memop queue, and 8-bit DCU to MLC ids. The MLC stub carries 256 MLC to
-  EXB ids (`CCV_P_W_REQ_MLC_EXB` 8, AR 417) so that it is not the cap.
-- **Cost:** MA's Phase 1 resource model prices the area, for Daniel. The
-  wider DCU to MLC ids leave the demotion threshold where it is (PF-39,
+- **Alternative:** size the path for 64, 128 or 192 lines (MA-31, on
+  MA's p1 model at `CCV_TB_LATENCY=1000`, cold MLC). The S1 read class
+  gains 10.4% from 16 to 64 lines and is flat past it; cm128priv gains
+  1.3% at 64 and 1.0% at 128-192; cm32priv is flat. Only streaming reads
+  (gtr4, gtw8/16/32) keep gaining: at 64 they run +62 to +140% over 192,
+  at 128 +4 to +30%. What binds, in order: DCU's 16 miss buffers, MIU to
+  DCU ids, MLC to EXB ids, and MIU's memops in flight (4; 8 is enough).
+  MIU's memop credits (10) and DCU's bank queues (16) never bind.
+- **Decided (DA, 2026-11-24, after MA-31 and AR 419):** B, 128 lines.
+  - 16 miss buffers per L1 bank, so a lookup still compares 16 lines.
+  - `CCV_P_W_REQ_DCU_MLC` 7 and `CCV_P_W_REQ_MIU_DCU` 8 (160 ids).
+  - A new MIU parameter sets memops in flight at 8. `CCV_MIU_PIPES`
+    stays 4: it is the AGU count, tied to `CCV_SECTIONS`.
+  - MLC gets a 132-entry miss table split by bank, inside
+    `CCV_P_W_REQ_MLC_EXB` 8 (AR 417).
+  - A was about half the area and missed the target. C was about 1.5x,
+    for 2-15% on streams only.
+- **Cost:** about 41 kbit:
+  - DCU miss buffers, +13 kbit;
+  - MIU return state, about +19 kbit;
+  - MLC miss table, about +8 kbit;
+  - MIU id table, +0.8k flops;
+  - MIU memops in flight at 8 (`CCV_MIU_MEMOPS_INFLIGHT`), about +0.8k
+    flops (MA's estimate, for MI to measure).
+  MIU's return state is 32 kbit in all at B, +19.2 kbit over today's
+  12.8 kbit (MA rev 219).
+  `CCV_LAT_MLC_HIT_MAX` stays 28: its queue term is FET's ids (PF-39,
   AR 413).
 - **Signal:** the read class (AR 412 (3)): a streaming read at
   `CCV_TB_LATENCY=1000` reports sustained B/cycle and each read-path
