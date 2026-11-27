@@ -37,7 +37,10 @@
 // --control cred gives the receiver one credit fewer than CCV_CREDIT_DEPTH;
 // --control wake checks the wake WL + 1 cycles before each valid;
 // --control stall2 shows the module each stall a cycle late, so two rows
-// follow it.
+// follow it; --control credlate returns every demotion credit a cycle
+// later than channel.h's receiver, and the full-rate check must miss.
+// Full rate (RA-160): one demotion, R idle, no stall, credits at channel.h's
+// default timing: its 17 rows go one a cycle at CCV_CREDIT_DEPTH.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_mig.h"
 #include "verilated.h"
@@ -126,11 +129,12 @@ struct Samp {   // one cycle's outputs
   std::array<uint32_t, kNP> gdat{};
 };
 
-enum class Ctl { none, rlie, cred, wake, stall2 };
+enum class Ctl { none, rlie, cred, wake, stall2, credlate };
 
 struct Cfg {
   double pnew = 0.3, psend = 0.6, pr = 0.5, pr2 = 0.6, prw = 0.6, pstall = 0.1, pkill = 0.004;
   unsigned cdelay = 6;   // the receiver's credit delay, 1..cdelay
+  unsigned cfix = 0;     // > 0: every credit exactly this many cycles after its valid
   int rpattern = -1;     // >= 0: the M5 R pattern at this phase (busy 3 of 4, R2 and RW held)
   bool junk = true;      // drive junk on idle payload inputs
   unsigned pca_delay = 2;   // PCA's first row of a restore, cycles after its command may go
@@ -162,6 +166,8 @@ struct Bench {
   unsigned ppay_row = 0;
   std::deque<uint64_t> ocr_due;
   int cur_dm = -1;
+  uint64_t ov_last = 0, dm_gap = 0;   // full rate: the largest gap between one demotion's rows
+  unsigned cur_rows = 0;
   // A kill: K, its mask, whether quiet has risen since K + 2.
   bool kpend = false, kquiet = true;
   uint64_t kK = 0, last_kill = 0;
@@ -590,7 +596,11 @@ struct Bench {
       ++checked;
       if (!ocred) err("demotion row past the receiver's credits");
       else --ocred;
-      ocr_due.push_back(t + 1 + pick(cfg.cdelay));
+      ocr_due.push_back(t + (cfg.cfix ? cfg.cfix : 1 + pick(cfg.cdelay)));
+      // Full rate: the gap from this demotion's previous row.
+      if (ov_last && cur_rows) dm_gap = std::max(dm_gap, t - ov_last);
+      ov_last = t;
+      ++cur_rows;
       // The stall is flopped in RCU (RI-22 (7)): at most one row follows it,
       // so no valid two cycles after a stall (RA rev 110).
       if (stall[(t + 6) % 8]) err("demotion valid two cycles after a stall");
@@ -767,6 +777,26 @@ M5 measure(Ctl ctl) {
 }
 
 
+// Full rate (RA-160): one demotion, R idle, no stall, every credit back
+// exactly cfix cycles after its valid: the largest gap between its rows.
+uint64_t fullrate_gap(Ctl ctl, unsigned cfix) {
+  Bench b(nullptr, 0x6672u, ctl);
+  b.cfg.pnew = 0;
+  b.cfg.pkill = 0;
+  b.cfg.pstall = 0;
+  b.cfg.psend = 1;
+  b.cfg.cfix = cfix;
+  b.cfg.pr = 0;
+  b.cfg.rpattern = -1;
+  b.reset();
+  const int id = b.new_mig(0);
+  b.ready[id] = b.t;
+  for (unsigned i = 0; i < 400 && !b.migs[id].done; ++i) b.step();
+  b.drain(200);
+  if (!b.migs[id].done || b.fails) return ~0ull;
+  return b.dm_gap;
+}
+
 int run(const std::string &scenario, const char *vcd, Ctl ctl, const char *cname) {
   unsigned fails = 0;
   uint64_t checked = 0;
@@ -784,6 +814,15 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl, const char *cname
     std::printf("mig %s\n", buf);
     fails += r.fails + !ok;
     checked += r.checked;
+    // Full rate (RA-160): at CCV_CREDIT_DEPTH, with the receiver crediting
+    // as channel.h's default does (valid at t, payload at t+1, credit at
+    // t+2), a demotion's rows go one a cycle. --control credlate returns
+    // each credit a cycle later, as one more flop in series on the credit
+    // path would (the REG form at this depth), and must open a gap.
+    const uint64_t gap = fullrate_gap(ctl, ctl == Ctl::credlate ? 3 : 2);
+    std::printf("mig full rate: demotion rows' largest gap %lld cycle(s) at depth %u: %s\n",
+                (long long)gap, kCD, gap == 1 ? "met" : "MISSED");
+    fails += gap != 1;
   }
   Bench b(vcd, g_seed, ctl);
   if (scenario == "idle") {
@@ -831,6 +870,7 @@ int main(int argc, char **argv) {
       else if (!std::strcmp(cname, "cred")) ctl = Ctl::cred;
       else if (!std::strcmp(cname, "wake")) ctl = Ctl::wake;
       else if (!std::strcmp(cname, "stall2")) ctl = Ctl::stall2;
+      else if (!std::strcmp(cname, "credlate")) ctl = Ctl::credlate;
       else {
         std::fprintf(stderr, "mig: unknown control %s\n", cname);
         return 2;
