@@ -142,7 +142,7 @@ module ccv_mlc_w #(
 
   // ccv_dcu_mlc_req, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MLC_REQ > 0) begin : g_rpt_dcu_mlc_req
-    ccv_common_rpt #(.STAGES(RPT_DCU_MLC_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_dcu_mlc_req (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MLC_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1085)) u_rpt_dcu_mlc_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_mlc_req_valid}), .src_payload({dcu_mlc_req_payload}),
       .src_wake(dcu_mlc_req_wake), .src_credit({dcu_mlc_req_credit}), .src_stall({dcu_mlc_req_stall}),
@@ -164,7 +164,7 @@ module ccv_mlc_w #(
   end
   // ccv_mlc_dcu_rsp, source end, no-flop (params/links.json no_flop)
   if (RPT_MLC_DCU_RSP > 0) begin : g_rpt_mlc_dcu_rsp
-    ccv_common_rpt #(.STAGES(RPT_MLC_DCU_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1030)) u_rpt_mlc_dcu_rsp (
+    ccv_common_rpt #(.STAGES(RPT_MLC_DCU_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1033)) u_rpt_mlc_dcu_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_mlc_dcu_rsp_valid}), .src_payload({b_mlc_dcu_rsp_payload}),
       .src_wake(b_mlc_dcu_rsp_wake), .src_credit({b_mlc_dcu_rsp_credit}), .src_stall({b_mlc_dcu_rsp_stall}),
@@ -274,7 +274,7 @@ module ccv_mlc_w #(
   end
   // ccv_mlc_exb_req, source end, no-flop (params/links.json no_flop)
   if (RPT_MLC_EXB_REQ > 0) begin : g_rpt_mlc_exb_req
-    ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1090)) u_rpt_mlc_exb_req (
+    ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1092)) u_rpt_mlc_exb_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_mlc_exb_req_valid}), .src_payload({b_mlc_exb_req_payload}),
       .src_wake(b_mlc_exb_req_wake), .src_credit({b_mlc_exb_req_credit}), .src_stall({b_mlc_exb_req_stall}),
@@ -296,7 +296,7 @@ module ccv_mlc_w #(
   end
   // ccv_exb_mlc_rsp, destination end, no-flop (params/links.json no_flop)
   if (RPT_EXB_MLC_RSP > 0) begin : g_rpt_exb_mlc_rsp
-    ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_exb_mlc_rsp (
+    ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1084)) u_rpt_exb_mlc_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({exb_mlc_rsp_valid}), .src_payload({exb_mlc_rsp_payload}),
       .src_wake(exb_mlc_rsp_wake), .src_credit({exb_mlc_rsp_credit}), .src_stall({exb_mlc_rsp_stall}),

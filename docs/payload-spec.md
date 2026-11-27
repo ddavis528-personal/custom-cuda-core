@@ -76,8 +76,9 @@ because those are the ones where a skeleton that reads the field
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_L_W_TL_IN` | 1176 | **HIGH** | TL-C inbound, B + D plus a valid bit per TL channel: B 641 (as A), D 533 (opcode 3, param 2, size 4, source 6, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe. |
-| `CCV_L_W_TL_OUT` | 1225 | **HIGH** | TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, 6-bit source, 4-bit sink: A 641 (opcode 3, param 3, size 4, source 6, address 48, mask 64, data 512, corrupt 1), C 577 (A without mask), E 4 (sink), valids 3. |
+| `CCV_L_W_TL_IN` | 1180 | **HIGH** | TL-C inbound, B + D plus a valid bit per TL channel: B 635 + source (as A), D 527 + source (opcode 3, param 2, size 4, source CCV_L_W_TL_SOURCE, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe. |
+| `CCV_L_W_TL_OUT` | 1229 | **HIGH** | TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, CCV_L_W_TL_SOURCE-bit source (8), 4-bit sink: A 635 + source (opcode 3, param 3, size 4, source, address 48, mask 64, data 512, corrupt 1), C 571 + source (A without mask), E 4 (sink), valids 3. |
+| `CCV_L_W_TL_SOURCE` | 8 | **HIGH** | TL-C source id width on A, B, C and D: MLC's req_id to EXB, which EXB maps to the link without translation (AR 422; was 6, the tilelink_tlc sizing's). CCV_L_W_TL_OUT and CCV_L_W_TL_IN are derived from it. |
 
 ### ISA opcode census, then DEC/OOE/RCU agree the hops
 
@@ -553,13 +554,13 @@ dcu → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 8 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
 | `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `hit` | `1` | 1 | literal |
 | `ownership_granted` | `1` | 1 | literal |
 | `mlc_miss` | `1` | 1 | literal |
 | `check_bits` | `CCV_DCU_ECC_CHECK_W` | 72 | CCV_DCU_ECC_CHECK_W (arch) |
-| **total** | | **1105** | ⚠️ 6 provisional |
+| **total** | | **1107** | ⚠️ 8 provisional |
 
 ### `ccv_mlc_dcu_rsp`
 
@@ -569,11 +570,11 @@ mlc → dcu · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_DCU_MLC` | 4 ⚠️ | CCV_P_W_REQ_DCU_MLC (provisional) |
+| `req_id` | `CCV_P_W_REQ_DCU_MLC` | 7 ⚠️ | CCV_P_W_REQ_DCU_MLC (provisional) |
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | `ownership` | `1` | 1 | literal |
 | `miss` | `1` | 1 | literal |
-| **total** | | **1030** | ⚠️ 1028 provisional |
+| **total** | | **1033** | ⚠️ 1031 provisional |
 
 ### `ccv_mlc_dcu_probe`
 
@@ -783,8 +784,8 @@ dcu → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
-| **total** | | **6** | ⚠️ 6 provisional |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 8 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| **total** | | **8** | ⚠️ 8 provisional |
 
 ### `ccv_miu_ooe_cmpl_hint`
 
@@ -985,7 +986,7 @@ miu → dcu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 8 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `size` | `CCV_W_ACCESS_SIZE` | 3 | CCV_W_ACCESS_SIZE (arch) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
@@ -995,7 +996,7 @@ miu → dcu · rate 4 · memory
 | `lead_set_index` | `CCV_W_DCU_SET` | 9 ⚠️ | CCV_W_DCU_SET (tunable) |
 | `drop` | `1` | 1 | literal |
 | `pa_fold` | `CCV_W_PA_FOLD` | 4 ⚠️ | CCV_W_PA_FOLD (tunable) |
-| **total** | | **1228** | ⛔ 4 preliminary, ⚠️ 67 provisional |
+| **total** | | **1230** | ⛔ 4 preliminary, ⚠️ 69 provisional |
 
 Lead fields (driven with valid, a cycle ahead of the rest): `lead_set_index`.
 
@@ -1007,12 +1008,12 @@ dcu → mlc · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_DCU_MLC` | 4 ⚠️ | CCV_P_W_REQ_DCU_MLC (provisional) |
+| `req_id` | `CCV_P_W_REQ_DCU_MLC` | 7 ⚠️ | CCV_P_W_REQ_DCU_MLC (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `core_id` | `CCV_W_CORE_ID` | 2 | CCV_W_CORE_ID (arch) |
 | `writeback_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
-| **total** | | **1082** | ⛔ 4 preliminary, ⚠️ 1076 provisional |
+| **total** | | **1085** | ⛔ 4 preliminary, ⚠️ 1079 provisional |
 
 ### `ccv_miu_fet_itlb`
 
@@ -1033,14 +1034,14 @@ mlc → exb · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MLC_EXB` | 6 ⚠️ | CCV_P_W_REQ_MLC_EXB (provisional) |
+| `req_id` | `CCV_P_W_REQ_MLC_EXB` | 8 ⚠️ | CCV_P_W_REQ_MLC_EXB (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `size` | `CCV_W_ACCESS_SIZE` | 3 | CCV_W_ACCESS_SIZE (arch) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `ownership_class` | `CCV_L_W_OWNERSHIP` | 3 ⛔ | CCV_L_W_OWNERSHIP (preliminary, churn med) |
 | `core_id` | `CCV_W_CORE_ID` | 2 | CCV_W_CORE_ID (arch) |
 | `writeback_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
-| **total** | | **1090** | ⛔ 7 preliminary, ⚠️ 1078 provisional |
+| **total** | | **1092** | ⛔ 7 preliminary, ⚠️ 1080 provisional |
 
 ### `ccv_exb_mlc_rsp`
 
@@ -1050,13 +1051,13 @@ exb → mlc · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MLC_EXB` | 6 ⚠️ | CCV_P_W_REQ_MLC_EXB (provisional) |
+| `req_id` | `CCV_P_W_REQ_MLC_EXB` | 8 ⚠️ | CCV_P_W_REQ_MLC_EXB (provisional) |
 | `probe_type` | `CCV_L_W_PROBE_TYPE` | 2 ⛔ | CCV_L_W_PROBE_TYPE (preliminary, churn med) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | `ownership_grant` | `1` | 1 | literal |
 | `miss` | `1` | 1 | literal |
-| **total** | | **1082** | ⛔ 2 preliminary, ⚠️ 1078 provisional |
+| **total** | | **1084** | ⛔ 2 preliminary, ⚠️ 1080 provisional |
 
 ### `ccv_exb_ext_out`
 
@@ -1066,8 +1067,8 @@ exb → EXTERNAL · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `tl_out` | `CCV_L_W_TL_OUT` | 1225 ⛔ | CCV_L_W_TL_OUT (preliminary, churn **HIGH**) |
-| **total** | | **1225** | ⛔ 1225 preliminary |
+| `tl_out` | `CCV_L_W_TL_OUT` | 1229 ⛔ | CCV_L_W_TL_OUT (preliminary, churn **HIGH**) |
+| **total** | | **1229** | ⛔ 1229 preliminary |
 
 ### `ccv_cru_rau_cfg`
 
@@ -1092,5 +1093,5 @@ EXTERNAL → exb · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `tl_in` | `CCV_L_W_TL_IN` | 1176 ⛔ | CCV_L_W_TL_IN (preliminary, churn **HIGH**) |
-| **total** | | **1176** | ⛔ 1176 preliminary |
+| `tl_in` | `CCV_L_W_TL_IN` | 1180 ⛔ | CCV_L_W_TL_IN (preliminary, churn **HIGH**) |
+| **total** | | **1180** | ⛔ 1180 preliminary |
