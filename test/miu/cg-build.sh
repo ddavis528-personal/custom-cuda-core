@@ -28,5 +28,7 @@ case "$unit" in
     vl miu_form "" "" "$PWD/rtl/miu/miu_form.sv" "$PWD/test/miu/form_tb.cpp" ;;
   miu_ids)
     vl miu_ids "" "" "$PWD/rtl/miu/miu_ids.sv" "$PWD/test/miu/ids_tb.cpp" ;;
+  miu_rcap)
+    vl miu_rcap "" "" "$PWD/rtl/miu/miu_rcap.sv" "$PWD/test/miu/rcap_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

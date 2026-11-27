@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 #include "miu_res.h"
+#include "miu_ids.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -41,7 +42,9 @@ inline uint64_t indexLeadSet(uint64_t pa) {
 class MiuModel : public Stub {
 public:
   MiuModel(int inst, Kernel &k)
-      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {}
+      : Stub(inst, k), ids_(field(ch().miu_dcu, "req_id").width, kChans[ch().miu_dcu].rate, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {
+    ids_.borrow = envOn("CCV_MIU_IDS_BORROW");
+  }
   const char *kind() const override { return "miu"; }
 
 private:
@@ -299,7 +302,17 @@ private:
   std::list<Job> jobs_;
   uint64_t serial_ = 0;
   bool dropped_ = false;
-  IdPool ids_;
+  /// DCU's req_ids, as rtl/miu/miu_ids.sv: slot s takes from quarter s
+  /// (MI-28). Knobs for pricing: CCV_MIU_IDS_BORROW lets a slot borrow
+  /// another quarter's id; CCV_MIU_IDS_DROPFREE launches a drop with no id.
+  ccv_miu::MiuIds ids_;
+  const bool ids_dropfree_ = envOn("CCV_MIU_IDS_DROPFREE");
+  /// A take that slot s cannot make: MA's two bins (MI-28).
+  void idStall(unsigned s) {
+    if (!ids_.quarterEmpty(s)) return;
+    if (ids_.anyFree()) k_.hit("dcu_id_quarter_empty");
+    if (ids_.dropHeld(s)) k_.hit("dcu_id_drop_held");
+  }
   /// The job and line of each request to DCU, by req_id.
   std::map<unsigned, std::pair<uint64_t, uint64_t>> outstanding_;
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
@@ -764,6 +777,7 @@ private:
     drain(to_dcu_, c.miu_dcu);
     drain(to_rau_, c.miu_ready);
     a1GateFlop();
+    ids_.tick();
   }
 
   /// Whether rob_tag lies in a bulk discard's circular range (branch, tail]
@@ -1163,11 +1177,12 @@ private:
       }
       const uint32_t owned = firstPassSlots();
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
-        if ((owned >> s & 1u) || !free(c.miu_dcu, s) || !ids_.any()) continue;
+        if ((owned >> s & 1u) || !free(c.miu_dcu, s)) continue;
+        if (!ids_.any(s)) { idStall(s); continue; }
         bankTake(bankOf(line), false);
         if (fill_held_.erase(tag)) k_.hit("credit_hold_then_sent");
         Bits r = msgOf(c.miu_dcu);
-        const unsigned id = ids_.take();
+        const unsigned id = ids_.take(s);
         put(r, c.miu_dcu, "req_id", id);
         put(r, c.miu_dcu, "phys_addr", line);
         putIndexLead(r, line);
@@ -2018,7 +2033,7 @@ private:
     // atomics' passes, the oldest job's first, one lookup a bank a cycle.
     bool want = false;
     for (const Job &j : jobs_) want = want || j.next != j.lines.size();
-    if (want && !ids_.any()) k_.hit("dcu_id_wait");
+    if (want && !ids_.anyFree()) k_.hit("dcu_id_wait");
     uint32_t used = 0;
     std::set<unsigned> banks;
     auto request = [&](Job &job_, unsigned idx, unsigned s) {
@@ -2028,7 +2043,7 @@ private:
       used |= 1u << s;
       banks.insert(bankOf(lr.line));
       Bits r = msgOf(c.miu_dcu);
-      const unsigned id = ids_.take();
+      const unsigned id = ids_.take(s);
       put(r, c.miu_dcu, "req_id", id);
       put(r, c.miu_dcu, "phys_addr", lr.line);
       putIndexLead(r, lr.line);
@@ -2085,12 +2100,23 @@ private:
           !bankCan(fb, false) || !can(c.miu_dcu, s) || (used >> s & 1u)) {
         return;   // held at A1: nothing launches
       }
+      // The launch takes slot s's id (miu_lead's launch flop, the take) and
+      // the drop gives it back three cycles on (MI-28); held at A1 if the
+      // quarter holds none.
+      unsigned rid = 0;
+      if (!ids_dropfree_) {
+        if (!ids_.any(s)) {
+          idStall(s);
+          return;
+        }
+        rid = ids_.take(s, /*drop=*/true);
+      }
       a1_used_now_ |= 1u << fb;
       bankTake(fb, false);
       a1_refund_.push_back(fb);
       used |= 1u << s;
       Bits r = msgOf(c.miu_dcu);
-      put(r, c.miu_dcu, "req_id", 0);
+      put(r, c.miu_dcu, "req_id", rid);
       put(r, c.miu_dcu, "phys_addr", d.line);
       putIndexLead(r, d.line);
       put(r, c.miu_dcu, "size", kSizeLine);
@@ -2118,7 +2144,12 @@ private:
         loseFirstPass(j, "l1_first_held");
         continue;
       }
-      if (!can(c.miu_dcu, s) || !ids_.any()) { loseFirstPass(j, "l1_first_held"); continue; }
+      if (!can(c.miu_dcu, s)) { loseFirstPass(j, "l1_first_held"); continue; }
+      if (!ids_.any(s)) {
+        idStall(s);
+        loseFirstPass(j, "l1_first_held");
+        continue;
+      }
       // A2 (H+1): the valid launched from A1 and spent its bank's credit;
       // a bank-conflict loser is dropped (MA-27, AR 400) and miu_cred
       // refunds the credit from A2's flopped drop a cycle on (a1_refund_).
@@ -2151,9 +2182,15 @@ private:
           k_.hit("credit_hold");
           continue;   // its other lines, to other lines and banks, may go
         }
-        unsigned s = 0;
-        while (s != rate && ((used >> s & 1u) || !can(c.miu_dcu, s))) ++s;
-        if (s == rate || !ids_.any()) break;
+        unsigned s = 0, open = rate;
+        while (s != rate && ((used >> s & 1u) || !can(c.miu_dcu, s) || !ids_.any(s))) {
+          if (open == rate && !(used >> s & 1u) && can(c.miu_dcu, s)) open = s;
+          ++s;
+        }
+        if (s == rate) {
+          if (open != rate) idStall(open);
+          break;
+        }
         request(j, idx, s);
       }
     }
