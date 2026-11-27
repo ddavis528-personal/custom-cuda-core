@@ -136,11 +136,39 @@ static void walker() {
   CHECK(x.wantRead(a));
 }
 
+// F-SHARED (MI-46, MA rev 221): a negative .shared sum faults. The
+// negative: the sum read signed (a region offset of -4 taken as before the
+// region's start and so inside nothing past its end) must miss at least
+// one of these faults, which the real check takes.
+template <class F> static unsigned sharedCases(F fault) {
+  const uint64_t size = 0xC000;                       // 48 KiB
+  const uint64_t neg4 = uint64_t(0) - 4;              // base 0, disp -4
+  unsigned wrong = 0;
+  wrong += fault(0, 4, size);                         // the first word: no fault
+  wrong += fault(0xBFFC, 4, size);                    // the last word: no fault
+  wrong += !fault(0xBFFD, 4, size);                   // across the end
+  wrong += !fault(0xC000, 1, size);                   // past the end
+  wrong += !fault(neg4, 4, size);                     // negative: faults
+  wrong += !fault(neg4 & 0xffffffffu, 1, size);       // the same, already wrapped
+  wrong += !fault(uint64_t(0) - 0x10000, 4, size);    // far negative
+  return wrong;
+}
+static void sharedFaults() {
+  CHECK(sharedCases(sharedFault) == 0);
+  CHECK(sharedNegative(uint64_t(0) - 4) && !sharedNegative(0xBFFC));
+  // The control: the signed reading, which takes -4 as inside the region.
+  auto signedRead = [](uint64_t sum, unsigned bytes, uint64_t size) {
+    return int64_t(int32_t(uint32_t(sum))) + int64_t(bytes) > int64_t(size);
+  };
+  CHECK(sharedCases(signedRead) != 0);
+}
+
 int main() {
   memopCredits();
   bankCredits();
   tlb();
   walker();
+  sharedFaults();
   std::printf("miu unit: %d checks, %d failed\n", checks, fails);
   return fails ? 1 : 0;
 }
