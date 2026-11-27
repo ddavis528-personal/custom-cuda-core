@@ -45,8 +45,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    MSHRs 8x16) landing on a working branch; TI-rp's gate waits on MI's
    miu_ids bench (TI-590 (1)). DI's interim (80071ac5, NE = per-bank 16) and
    bench width fix 79203045 (gate-scratch/DI-rp) ride TI's gate. Merge at once.
-2. OA-505 (OA rev 505): measure dcu_bctl unit's cold peak (CCACHE_DISABLE=1)
-   via tools/rss-run.py, never beside a gate; answer in the DI tab.
+2. OA-505 answered (DI-60, rev 99): dcu_bctl cold check-cg peak 371 MiB.
 3. TI-590 (TI rev 592), low: re-measure dcu=model IMPL_PINS rows on ti-rp's
    params (held-wait demote dcu=model 862, pair 876; UE rows); the vadd4-swap
    rows are gone. Answer in the DI tab.
@@ -70,6 +69,6 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   11-27, incl. TI's heavy-units miu_form. MA-33 closed (DI-57).
 
 ## Register bookmarks
-Conventions 20, DI 98, MI 70, MA 220, AR 423, OA 505, TI 592, OI 427, DA 136,
-RA 159, RI 92, IS 201, CP 160 (sweep 2026-11-26). DI tab last row DI-59 (id m8yvbw8rqgz.115602).
+Conventions 20, DI 99, MI 70, MA 220, AR 423, OA 505, TI 592, OI 427, DA 136,
+RA 159, RI 92, IS 201, CP 160 (sweep 2026-11-26). DI tab last row DI-60 (id m8yvbw8rqgz.116565).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
