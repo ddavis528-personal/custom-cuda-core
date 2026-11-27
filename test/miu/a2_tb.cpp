@@ -12,8 +12,10 @@
 // MA rev 199): the leader's VPN by its form (local C[47:16], interleaved
 // {l6[6] ? R1 : R0, l6[5:0]}, else S[47:16]), its offset (local C[15:0] |
 // lane << 2, interleaved {S[10:2], lane, S[1:0]}, else S[15:0]), the L0's
-// AND-OR on the matches; drop = !la | miss | F-ADDR (an ordinary leader's
-// S[49:48]) | a lower launching slot on the same bank | !ge; the miss
+// AND-OR on the matches; drop = !la | miss | a faulting lane of the memop
+// (F-ALIGN; S[49:48] not 0; miu_agu8's window compare we true on an
+// ordinary .global lane, false on an interleaved one) | a lower launching
+// slot on the same bank | !ge; the miss
 // asked of miu_tlb only for a launched lookup with its leader active; the
 // no-hit per address slot, any launched lookup it leads dropped. Checks, a
 // cycle on: with a memop in A2 every output; without one the payload held
@@ -24,7 +26,9 @@
 // a memop on about a third of the cycles; high nearly every cycle. Controls,
 // each must fail: carry (the model's interleaved VPN reads R0 alone), bank
 // (the model ignores a lower slot's launch on the same bank), addr (the
-// model drops no F-ADDR).
+// model drops no S[49:48] F-ADDR), win (an ordinary lane in the run's
+// windows not caught), iblk (an interleaved lane off W's block not caught),
+// align (no F-ALIGN).
 //===----------------------------------------------------------------------===//
 #include "Vmiu_a2.h"
 #include "verilated.h"
@@ -74,6 +78,9 @@ struct In {
   std::array<uint32_t, kNS> r0{}, r1{};       // 26 bits each
   std::array<uint64_t, kNS * kNQ> va{};
   std::array<uint64_t, kNS> c{};
+  std::array<unsigned, kNS> af{};             // its form: 0 ordinary .global, 1 local, 2 interleaved, 3 .shared
+  std::array<uint32_t, kNS> fal{};            // its lanes' F-ALIGN (active lanes only)
+  std::array<uint32_t, kNS> we{};             // its lanes' S[47:16+k] == W >> k (miu_agu8's)
   std::array<bool, kNS * kN0> l0v{};
   std::array<uint32_t, kNS * kN0> l0vpn{}, l0ppn{}, l0fold{}, l0pm{};
 };
@@ -95,7 +102,8 @@ struct Bench {
   unsigned v1 = 0, v2 = 0;   // the valids one and two cycles ago
   Out held;                  // the payload flops' last write
   unsigned cov_hit = 0, cov_miss = 0, cov_fa = 0, cov_bank = 0, cov_c1 = 0, cov_ilv = 0,
-           cov_loc = 0, cov_ord = 0, cov_nh = 0, cov_skip = 0, cov_ge = 0, cov_hold = 0;
+           cov_loc = 0, cov_ord = 0, cov_nh = 0, cov_skip = 0, cov_ge = 0, cov_hold = 0,
+           cov_al = 0, cov_win = 0, cov_ib = 0;
   std::array<unsigned, 3> cov_gok{}, cov_gdr{};   // the group check passed, failed: F 1, 2, 4
 
   Bench(const char *vcd_path, const std::string &c) : ctl(c) {
@@ -153,7 +161,15 @@ struct Bench {
       putBits(dut->c_cm06h, k * kVW, kVW, x.c[k]);
     }
     for (unsigned i = 0; i < kNS * kNQ; ++i) putBits(dut->va_cm06h, i * kVW, kVW, x.va[i]);
+    dut->ilv_cm06h = 0;
+    dut->ow_cm06h = 0;
     for (unsigned a = 0; a < kNS; ++a) {
+      putBits(dut->fal_cm06h, a * 32, 32, x.fal[a]);
+      putBits(dut->we_cm06h, a * 32, 32, x.we[a]);
+      for (unsigned u = 0; u < kNQ; ++u) {
+        putS(dut->ilv_cm06h, a * kNQ + u, 1, x.af[a] == 2);
+        putS(dut->ow_cm06h, a * kNQ + u, 1, x.af[a] == 0);
+      }
       putBits(dut->am_cm06h, a * 32, 32, x.am[a]);
       for (unsigned l = 0; l < 32; ++l) putBits(dut->lv_cm06h, (a * 32 + l) * kVW, kVW, x.lv[a][l]);
       // miu_agu8's keep copies: lanes 0's and 16's lines.
@@ -204,10 +220,30 @@ struct Bench {
     }
     return ok;
   }
+  /// Address slot a's lanes' faults: F-ALIGN; F-ADDR, an ordinary .global or
+  /// interleaved lane's S[49:48] not 0; the window check on miu_agu8's
+  /// compare we: an ordinary lane in the run's windows, an interleaved
+  /// lane's b outside [0, L). Controls: align, addr, win (the
+  /// ordinary lane in the windows), iblk (the interleaved lane off its block). f: 1 align, 2 addr, 4 window, 8 interleaved.
+  unsigned faults(const In &x, unsigned a) const {
+    unsigned f = 0;
+    const bool iv = x.af[a] == 2, ov = x.af[a] == 0;
+    for (unsigned l = 0; l < 32; ++l) {
+      if (!(x.am[a] >> l & 1u)) continue;
+      const uint64_t v = x.lv[a][l];
+      const bool hi = (v >> 48) != 0, eq = x.we[a] >> l & 1u;
+      if (ctl != "align" && (x.fal[a] >> l & 1u)) f |= 1;
+      if (ctl != "addr" && hi && (iv || ov)) f |= 2;
+      if (ctl != "win" && ov && eq && !hi) f |= 4;
+      if (ctl != "iblk" && iv && !eq && !hi) f |= 8;
+    }
+    return f;
+  }
   Out model(const In &x) {
     Out o;
     std::array<bool, kNS> gok{};
-    for (unsigned a = 0; a < kNS; ++a) gok[a] = x.f[a] != 0 && grpOk(x, a);
+    std::array<unsigned, kNS> ft{};
+    for (unsigned a = 0; a < kNS; ++a) gok[a] = x.f[a] != 0 && grpOk(x, a), ft[a] = faults(x, a);
     for (unsigned k = 0; k < kNS; ++k) {
       const uint64_t s = x.lead[k] ? x.va[x.a[k] * kNQ + x.q[k]] : 0, c = x.lead[k] ? x.c[x.a[k]] : 0;
       const unsigned ln = x.lead[k] ? 8u * x.q[k] : 0u;
@@ -226,7 +262,8 @@ struct Bench {
         fo |= x.l0fold[i];
         pg |= x.l0pm[i];
       }
-      const bool fa = ctl != "addr" && !lc && !il && (s >> 48) != 0;
+      const unsigned fk = x.lead[k] ? ft[x.a[k]] : 0u;
+      const bool fa = fk != 0;
       bool bl = false;
       if (ctl != "bank")
         for (unsigned j = 0; j < k; ++j)
@@ -243,7 +280,12 @@ struct Bench {
       if (rv) {
         cov_hit += hit && !dr;
         cov_miss += la && !hit;
-        cov_fa += fa && la && hit;
+        if (la && hit) {
+          cov_fa += fk == 2;
+          cov_al += fk == 1;
+          cov_win += fk == 4;
+          cov_ib += fk == 8;
+        }
         cov_bank += bl && la && hit && !fa;
         cov_c1 += il && (x.l6[k] >> 6 & 1u) && x.r0[k] != x.r1[k];
         cov_ilv += il && !lc;
@@ -368,12 +410,21 @@ struct Gen {
       if (below(6)) x.va[i] &= (uint64_t(1) << 48) - 1u;   // F-ADDR now and then
     }
     leaders(x);
+    for (unsigned a = 0; a < kNS; ++a) {
+      x.af[a] = below(4);
+      // In the run's windows: most interleaved memops' lanes, few ordinary
+      // ones'; now and then one lane the other way.
+      const bool in = below(8) < (x.af[a] == 2 ? 6u : 1u);
+      x.we[a] = in ? ~0u : 0u;
+      if (below(4) == 0) x.we[a] ^= 1u << below(32);
+    }
     for (unsigned a = 0; a < kNS; ++a)
       if (x.f[a]) lanes(x, a);
     for (unsigned k = 0; k < kNS; ++k) {
       x.c[k] = r() & ((uint64_t(1) << 48) - 1u);
       x.lsi[k] = below(1u << kSW);
-      x.fm[k] = below(3);
+      // The form miu_lead flops for its leader: its memop's ({il, lc}).
+      x.fm[k] = !x.lead[k] ? below(3) : x.af[x.a[k]] == 1 ? 1u : x.af[x.a[k]] == 2 ? 2u : 0u;
       x.l6[k] = below(128);
       x.r0[k] = uint32_t(r()) & 0x3ffffffu;
       x.r1[k] = below(4) ? (x.r0[k] + 1u) & 0x3ffffffu : uint32_t(r()) & 0x3ffffffu;
@@ -398,6 +449,8 @@ struct Gen {
         x.l0vpn[i] = b.vpnOf(x, k, false);
       }
     }
+    for (unsigned a = 0; a < kNS; ++a)   // F-ALIGN on an active lane now and then
+      x.fal[a] = below(8) == 0 ? x.am[a] & (1u << below(32)) : 0u;
   }
 };
 
@@ -422,7 +475,8 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
   bool cov = true;
   if (rnd) {
     cov = b.cov_hit && b.cov_miss && b.cov_fa && b.cov_bank && b.cov_c1 && b.cov_ilv && b.cov_loc &&
-          b.cov_ord && b.cov_nh && b.cov_skip && b.cov_ge && b.cov_hold;
+          b.cov_ord && b.cov_nh && b.cov_skip && b.cov_ge && b.cov_hold && b.cov_al && b.cov_win &&
+          b.cov_ib;
     for (unsigned i = 0; i < 3; ++i) cov = cov && b.cov_gok[i] && b.cov_gdr[i];
     if (!cov) {
       std::fprintf(stderr,
@@ -430,6 +484,8 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl) {
                    "no-hit %u inactive %u ge %u hold %u\n",
                    b.cov_hit, b.cov_miss, b.cov_fa, b.cov_bank, b.cov_c1, b.cov_ilv, b.cov_loc, b.cov_ord,
                    b.cov_nh, b.cov_skip, b.cov_ge, b.cov_hold);
+      std::fprintf(stderr, "a2: coverage: faults align %u window %u interleaved %u\n", b.cov_al,
+                   b.cov_win, b.cov_ib);
       std::fprintf(stderr, "a2: coverage: group ok F1 %u F2 %u F4 %u, dropped %u %u %u\n", b.cov_gok[0],
                    b.cov_gok[1], b.cov_gok[2], b.cov_gdr[0], b.cov_gdr[1], b.cov_gdr[2]);
       ++b.fails;
@@ -452,7 +508,7 @@ int main(int argc, char **argv) {
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
       if (ctl != "carry" && ctl != "bank" && ctl != "addr" && ctl != "line" && ctl != "split" &&
-          ctl != "fone") {
+          ctl != "fone" && ctl != "win" && ctl != "iblk" && ctl != "align") {
         std::fprintf(stderr, "a2: unknown control %s\n", ctl.c_str());
         return 2;
       }
