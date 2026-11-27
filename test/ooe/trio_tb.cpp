@@ -43,7 +43,9 @@
 // reaches ooe_sched, so RA-17's force never holds R), no-force (the bench
 // clears the force register after each edge, the lead kept: ooe_sched's
 // idle_r assertion must name it), no-c9h (the model's completions and hint
-// acting as they land, without C9h's capture: OA rev 372).
+// acting as they land, without C9h's capture: OA rev 372), regrant
+// (select's mask of last cycle's grants removed, CCV_CHECK_SCHED's
+// ctl_regrant: ooe_sched's no_regrant assertion must name it; OA 509).
 //
 // ooe_sched's idle-R force (RA-17): the runs above have no migration
 // under idle_r_k, so testIdleR's (three warps keeping R busy beside warp
@@ -478,6 +480,7 @@ void hook(const Core &c) {
   forced += sw.sel_mig && ((sw.sel_busy >> 4) & 1u);
   dut->block_cq03h = sw.sel_block;
   dut->ctl = control <= 7 ? control : 0;   // 8 is the bench's alone
+  dut->ctl_regrant = control == 13;
   if (const char *tr = std::getenv("TRIO_ROWAT")) {
     // One row of ooe_sched's matrix inputs before this edge: "core,cycle,entry".
     unsigned long long cc = 0, cy = 0;
@@ -717,7 +720,7 @@ int main(int argc, char **argv) {
     control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4
             : n == "no-ret-hold" ? 5 : n == "no-rep-lead" ? 6 : n == "no-idle-r" ? 7 : n == "no-force" ? 8
             : n == "pay-port" ? 9 : n == "no-home" ? 10 : n == "pay-with-valid" ? 11
-            : n == "no-c9h" ? 12 : 0;
+            : n == "no-c9h" ? 12 : n == "regrant" ? 13 : 0;
     if (!control) { std::fprintf(stderr, "trio_tb: unknown control %s\n", c); return 2; }
   }
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;

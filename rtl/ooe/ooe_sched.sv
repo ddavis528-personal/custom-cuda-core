@@ -134,6 +134,12 @@ module ooe_sched #(
   output logic [N-1:0]      grant_cq04h,
   output logic [N-1:0]      grant_w_cq04h, // the same, for ooe_wake's timers
   output logic              gnt_l_cq04h    // the grant register is clocked at the next edge (ooe_rs's issue register)
+`ifdef CCV_CHECK_SCHED
+  // trio_tb's control regrant (OA 509): select's mask of last cycle's
+  // grants removed, so an entry granted then may be granted again.
+  ,
+  input  logic              ctl_regrant
+`endif
 );
 
   logic rst_r01h;
@@ -314,8 +320,17 @@ module ooe_sched #(
         ccnt_cq04h[s] <= rst_r01h ? MCW'(ccv_prov_pkg::CCV_MEMOP_CREDITS) : cnx_cq03h[s];
         cok_cq03h[s]  <= rst_r01h ? 1'b1 : cok_nx_cq02h[s];
       end
+  // Select's mask of last cycle's grants, a cross-module loop through the
+  // grant register (OA 509): no entry it granted is granted again at the
+  // next edge (no_regrant).
+  logic [N-1:0] gmask_cq04h;
+`ifdef CCV_CHECK_SCHED
+  assign gmask_cq04h = ctl_regrant ? '0 : gnt_cq04h;
+`else
+  assign gmask_cq04h = gnt_cq04h;
+`endif
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
-    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(fcp_cq04h),
+    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gmask_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(fcp_cq04h),
     .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
@@ -348,6 +363,7 @@ module ooe_sched #(
   (* keep *) logic          force_l_cq04h;
   (* keep *) logic [RW-1:0] rrun_l_cq04h;
   assign gnt_l_cq04h = rq_l_cq03h != '0 || gnt_out_cq04h != '0 || force_l_cq04h || rrun_l_cq04h != '0;
+  `CCV_ASSERT(no_regrant, (grant_cq03h & gnt_cq04h) == '0)
   `CCV_ASSERT(gnt_l_covers, gnt_l_cq04h || !((rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0 || force_cq04h || rrun_cq04h != '0))
 
   // -- Registers --------------------------------------------------------------

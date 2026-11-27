@@ -850,7 +850,7 @@ mkdir -p "$dir"
 cdly=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_CMPL_DLY=//p')
 lmiss=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
 if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw --trace -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      -Wno-PINCONNECTEMPTY ${wake_g//,/ } -GNR="$n_rcu" -GA="$width" -GS="$slots" -GFB="$pick_fb" \
+      -Wno-PINCONNECTEMPTY -DCCV_CHECK_SCHED ${wake_g//,/ } -GNR="$n_rcu" -GA="$width" -GS="$slots" -GFB="$pick_fb" \
       --top-module ooe_trio --Mdir "$dir" -o trio_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_rsread.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
@@ -881,5 +881,13 @@ if grep -q 'CCV idle_r failed' <<<"$nf_out"; then
   say "  control no-force (trio, idle_r assertion)" "caught"
 else
   say "  control no-force (trio, idle_r assertion)" "MISSED"; fail=1
+fi
+# regrant: select's mask of last cycle's grants removed (OA 509, u_select's
+# grant loop); ooe_sched's no_regrant assertion must fire, by name.
+rg_out=$(TRIO_CONTROL=regrant "$dir/trio_tb" 3 2>&1)
+if grep -q 'CCV no_regrant failed' <<<"$rg_out"; then
+  say "  control regrant (trio, no_regrant assertion)" "caught"
+else
+  say "  control regrant (trio, no_regrant assertion)" "MISSED"; fail=1
 fi
 exit $fail
