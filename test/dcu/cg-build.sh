@@ -32,6 +32,10 @@ case "$unit" in
       "$PWD/test/dcu/bctl_tb.cpp" ;;
   dcu_mshr)
     vl dcu_mshr "" "" "$PWD/rtl/dcu/dcu_mshr.sv" "$PWD/test/dcu/mshr_tb.cpp" ;;
+  dcu_mshr_bk5)   # bank 5's instance (MA-34): the bank in its ids and lines
+    vl dcu_mshr "-GBK=5" "-DMSHR_BK=5" "$PWD/rtl/dcu/dcu_mshr.sv" "$PWD/test/dcu/mshr_tb.cpp" ;;
+  dcu_mpick)
+    vl dcu_mpick "" "" "$PWD/rtl/dcu/dcu_mpick.sv" "$PWD/test/dcu/mpick_tb.cpp" ;;
   dcu_fill)
     vl dcu_fill "" "" "$PWD/rtl/common/ccv_common_secded_enc.sv" "$PWD/rtl/dcu/dcu_fill.sv" \
       "$PWD/test/dcu/fill_tb.cpp" ;;

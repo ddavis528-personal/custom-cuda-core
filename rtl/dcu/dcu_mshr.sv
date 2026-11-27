@@ -318,17 +318,19 @@ module dcu_mshr #(
   (* keep *) logic  owi_q_cc05h;
   logic             oany_q_cc05h;
 
-  // Captured every cycle: the fill's lead and the free (CG-5; a lead and a
-  // 1-flop event under the module's allowance).
+  // Captured every cycle: the fill's lead and this bank's free (CG-5; a
+  // lead and a 1-flop event under the module's allowance). The free's id is
+  // captured only while an entry is filled (below): a free of another bank's
+  // entry must not open it, or it would name a stale id here.
   logic          xv_q_cc05h;
-  logic [WE-1:0] xid_q_cc05h;
+  logic [WEB-1:0] xid_q_cc05h;
   logic          fv_q_cc04h;
   always_ff @(posedge dcu_core_clk) begin
     if (rst_r01h) begin
       xv_q_cc05h <= 1'b0;
       fv_q_cc04h <= 1'b0;
     end else begin
-      xv_q_cc05h <= xv_cc04h;
+      xv_q_cc05h <= xv_cc04h && xid_cc04h[WE-1:WEB] == BKW;
       fv_q_cc04h <= fv_cc03h;
     end
   end
@@ -352,7 +354,7 @@ module dcu_mshr #(
     for (int e = 0; e < NE; e++) begin
       pd_cc05h[e]   = rcal_q_cc05h && rcio_q_cc05h[e];
       pdm_cc05h[e]  = rcmg_q_cc05h && rcmt_q_cc05h[e];
-      xhit_cc05h[e] = xv_q_cc05h && xid_q_cc05h == {BKW, WEB'(e)};
+      xhit_cc05h[e] = xv_q_cc05h && xid_q_cc05h[WEB-1:0] == WEB'(e);
       fhit_cc04h[e] = fv_q_cc04h && fmine_cc04h && fe_cc04h == WEB'(e);
       shit_cc05h[e] = snt_cc05h && ofh_q_cc05h[e];
     end
@@ -665,7 +667,7 @@ module dcu_mshr #(
       xid_en_cc05h = xid_en_cc05h || (ev_q_cc05h[e] && est_q_cc05h[e] == ST_FILLED);
   end
   always_ff @(posedge dcu_core_clk) begin
-    if (xid_en_cc05h) xid_q_cc05h <= xid_cc04h;
+    if (xid_en_cc05h) xid_q_cc05h <= xid_cc04h[WEB-1:0];
   end
 
   // ---- F: the fill's entry read ------------------------------------------
@@ -745,9 +747,8 @@ module dcu_mshr #(
   `CCV_ASSERT(mshr_fill_in_flight, !(fv_q_cc04h && fmine_cc04h) ||
               (ev_q_cc05h[fe_cc04h] && !pd_cc05h[fe_cc04h] &&
                est_q_cc05h[fe_cc04h] == ST_SENT))
-  `CCV_ASSERT(mshr_free_filled, !(xv_q_cc05h && xid_q_cc05h[WE-1:WEB] == BKW) ||
-              (ev_q_cc05h[xid_q_cc05h[WEB-1:0]] &&
-               est_q_cc05h[xid_q_cc05h[WEB-1:0]] == ST_FILLED))
+  `CCV_ASSERT(mshr_free_filled, !xv_q_cc05h ||
+              (ev_q_cc05h[xid_q_cc05h] && est_q_cc05h[xid_q_cc05h] == ST_FILLED))
   `CCV_ASSERT(mshr_pending_free, !(|(pd_cc05h & ev_q_cc05h)))
   `CCV_ASSERT(mshr_sent_offered, !snt_cc05h || ofv_q_cc05h)
   `CCV_ASSERT(mshr_sent_unsent, !snt_cc05h || |(ofh_q_cc05h & (pd_cc05h |
