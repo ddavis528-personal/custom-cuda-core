@@ -344,6 +344,10 @@ private:
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
+        // A dropped lookup (MA-27, AR 400; DI-63): no read, no queue entry,
+        // no credit return (MIU refunds its own, DI-12), no answer.
+        // dcu-drop-answers serves it anyway, as the stub and DCU model do.
+        if (get(m.payload, c.miu_dcu, "drop") && k_.brk != "dcu-drop-answers") continue;
         checkIndexLead(s, m.payload);
         {
           const unsigned b = miuBank(get(m.payload, c.miu_dcu, "phys_addr"));
