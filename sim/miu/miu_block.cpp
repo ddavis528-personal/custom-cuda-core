@@ -1603,6 +1603,7 @@ private:
         if (!have) {
           have = true;
           lead = line;
+          if (lead_pos_ && l != g * per && !why) why = "drop_lead_pos";
           if (std::find(leads.begin(), leads.end(), line) == leads.end()) leads.push_back(line);
         } else if (line != lead && !why) {
           why = "drop_line";
@@ -2399,9 +2400,25 @@ private:
   }();
   std::vector<unsigned> a1_refund_;                // dropped first passes' banks, refunded next cycle
   bool a1Gate(unsigned b) const {
+    if (gate_all_) {   // MI-27 (1): every bank's gate, whatever the leader's
+      for (unsigned x = 0; x != ccv::kDcuBanks; ++x)
+        if (!((a1_used_prev_ >> x & 1u) ? ge2_b_[x] : ge1_b_[x])) return false;
+      return true;
+    }
     const bool used = a1_used_prev_ >> b & 1u;
     return used ? ge2_b_[b] : ge1_b_[b];
   }
+  /// MI-27 pricing aids (model-only knobs, default off). CCV_MIU_GATE_ALL=1:
+  /// A1's credit gate holds a first pass when any bank is short, not only
+  /// its leader's. CCV_MIU_LEAD_POS=1: a group's leader is its first lane by
+  /// position; a group with active lanes whose first lane is inactive loses
+  /// the contract at A2 (drop_lead_pos).
+  static bool envOn(const char *n) {
+    const char *v = std::getenv(n);
+    return v && std::strtoul(v, nullptr, 0) != 0;
+  }
+  const bool gate_all_ = envOn("CCV_MIU_GATE_ALL");
+  const bool lead_pos_ = envOn("CCV_MIU_LEAD_POS");
   void a1GateFlop() {
     ge1_b_ = ge1_a_;
     ge2_b_ = ge2_a_;

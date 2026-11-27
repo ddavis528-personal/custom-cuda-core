@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
-  MA 195, MI 51, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MA 195, MI 53, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
   MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
   deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
@@ -83,6 +83,18 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    until it lands, then swaps. MI rev 42 told TI miu_cred's needs; TI-538/539 full form, ccv_common_cr_cnt (DEPTH, SPEND_W, REFUND_W,
    THRESH list); TI-541 (DA, AR 415 (5)): link credits keep the cr_go exception at a flopped sender, depths 4+2N (FYI).
    MI rev 43: no same-cycle return, capture stays in miu_cred. TI posts the port list after AR/OA/RA/MA.
+0b'''''. MI-28 (MI rev 53, MA rung): miu_ids built on local branch mi-ids-wip 89c24f05 (not on mi-dev):
+   556 flops, CG clean; NGD 18.0 inside but qid 20.8 / rid 12.5 need arrival 0 (asked MA for miu_ids.ngd.json).
+   tk = miu_lead's launch flop (sv_cm06h); drop dp_cm06h from miu_a2's flop a cycle on, id free 2 cycles later;
+   leads lv_cm05h (A1 lookup) and rs_cm05h (response captured). On MA's ruling: write the ngd.json, merge to
+   mi-dev, then align the model's IdPool (quarter pick, drop delay). Bench controls noskip/relnow/nodrop.
+0b''''. MI-27 (MI rev 52, MA rung): miu_lead measured on local branch mi-lead-wip (a94e83f8, not on mi-dev):
+   as specified 49.1/39.6 NGD; narrow path (per-lane 2-input (idx<<sc)+disp low 16 bits, gate on every bank,
+   form field picked after the route) 27.9 (23.2 no fanout), 270 flops; leader's whole sum 37.4. Asked MA:
+   (1) gate every bank? (2) leader sum: A2 pick from agu8 flops, or first-lane-by-position leader + no-hit;
+   (3) per-quarter disp/sh copies from miu_pair. Variants in scratchpad lead.v*.sv (v10 best narrow).
+   Pricing run: model knobs CCV_MIU_GATE_ALL / CCV_MIU_LEAD_POS (uncommitted in sim/miu/miu_block.cpp),
+   scratchpad price27.sh -> scratchpad/price27/{base,gate,lead}.txt, job log ~/ccv-logs/price27.log.
 0b'''. MI-26 (MI rev 51, MA rung): MA ruled MI-22..25; (D) built. MA rev 195: local b unsigned 17-bit, C once per
    slot, agu8 out 0 / A2 in 0. Pushed e0a29c01 (agu8 (D), form). mi-dev c642ce7b (unpushed): C formed at A1 from
    H flops (ctx, local region, disp 17), c_cm06h, form 24.3 NGD / 6,851 flops, CG clean; bench C-carry bins.
