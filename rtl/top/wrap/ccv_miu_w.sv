@@ -735,7 +735,7 @@ module ccv_miu_w #(
   end
   // ccv_miu_dcu_req, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_DCU_REQ > 0) begin : g_rpt_miu_dcu_req
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1228), .LEAD_MASK(1228'h3fe0)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1230), .LEAD_MASK(1230'h3fe0)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_dcu_req_s3_valid, b_miu_dcu_req_s2_valid, b_miu_dcu_req_s1_valid, b_miu_dcu_req_s0_valid}), .src_payload({b_miu_dcu_req_s3_payload, b_miu_dcu_req_s2_payload, b_miu_dcu_req_s1_payload, b_miu_dcu_req_s0_payload}),
       .src_wake(b_miu_dcu_req_wake), .src_credit({b_miu_dcu_req_s3_credit, b_miu_dcu_req_s2_credit, b_miu_dcu_req_s1_credit, b_miu_dcu_req_s0_credit}), .src_stall({b_miu_dcu_req_s3_stall, b_miu_dcu_req_s2_stall, b_miu_dcu_req_s1_stall, b_miu_dcu_req_s0_stall}),
@@ -757,7 +757,7 @@ module ccv_miu_w #(
   end
   // ccv_dcu_miu_rsp, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MIU_RSP > 0) begin : g_rpt_dcu_miu_rsp
-    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_RSP), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1105)) u_rpt_dcu_miu_rsp (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_RSP), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1107)) u_rpt_dcu_miu_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_miu_rsp_s3_valid, dcu_miu_rsp_s2_valid, dcu_miu_rsp_s1_valid, dcu_miu_rsp_s0_valid}), .src_payload({dcu_miu_rsp_s3_payload, dcu_miu_rsp_s2_payload, dcu_miu_rsp_s1_payload, dcu_miu_rsp_s0_payload}),
       .src_wake(dcu_miu_rsp_wake), .src_credit({dcu_miu_rsp_s3_credit, dcu_miu_rsp_s2_credit, dcu_miu_rsp_s1_credit, dcu_miu_rsp_s0_credit}), .src_stall({dcu_miu_rsp_s3_stall, dcu_miu_rsp_s2_stall, dcu_miu_rsp_s1_stall, dcu_miu_rsp_s0_stall}),
@@ -867,7 +867,7 @@ module ccv_miu_w #(
   end
   // ccv_dcu_miu_fill_ntc, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MIU_FILL_NTC > 0) begin : g_rpt_dcu_miu_fill_ntc
-    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_FILL_NTC), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(6)) u_rpt_dcu_miu_fill_ntc (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_FILL_NTC), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(8)) u_rpt_dcu_miu_fill_ntc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_miu_fill_ntc_s3_valid, dcu_miu_fill_ntc_s2_valid, dcu_miu_fill_ntc_s1_valid, dcu_miu_fill_ntc_s0_valid}), .src_payload({dcu_miu_fill_ntc_s3_payload, dcu_miu_fill_ntc_s2_payload, dcu_miu_fill_ntc_s1_payload, dcu_miu_fill_ntc_s0_payload}),
       .src_wake(dcu_miu_fill_ntc_wake), .src_credit({dcu_miu_fill_ntc_s3_credit, dcu_miu_fill_ntc_s2_credit, dcu_miu_fill_ntc_s1_credit, dcu_miu_fill_ntc_s0_credit}), .src_stall({dcu_miu_fill_ntc_s3_stall, dcu_miu_fill_ntc_s2_stall, dcu_miu_fill_ntc_s1_stall, dcu_miu_fill_ntc_s0_stall}),

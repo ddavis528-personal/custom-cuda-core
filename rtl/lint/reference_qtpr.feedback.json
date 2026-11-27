@@ -1,0 +1,15 @@
+{
+  "_comment": "bad_tport2.sv's reference_qtpr.",
+  "tables": {
+    "rd_cy04h": {
+      "reader": "hd_cy03h",
+      "ahead": 1,
+      "writer": "u_w.tab_cy03h",
+      "assert": "hd_read_not_written",
+      "control": "tport-dup",
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "rob_w's hold words read by redir's waiting pick a stage early, never as they are written (OA-492 (3))"
+    }
+  }
+}
