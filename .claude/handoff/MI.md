@@ -44,7 +44,7 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
 ## Register bookmarks (sweep of Fri 11-27)
-AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 221, MI 76, DI 99, DA 136,
+AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 231, MI 76, DI 99, DA 136,
 Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27; all 11 ponged ok, and
 every agent's ping to MI answered.
 - Sweep merges: ort on many criss-cross bases can run hours. Use scratchpad/sweep2.sh: merge-tree
@@ -59,15 +59,24 @@ every agent's ping to MI answered.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. Gate-push of ef9bb022 + handoff (scoped) in flight: wait with tools/gate-wait.sh on the newest
-   job-gate-push log; on killed, rerun with CCV_RESUME=1.
-   MI tab rev 76: MI-52 (MA: which module launches window fills/later passes/drains, slice 2;
-   bank arbitration vs first pass; naming by req_id), MI-53 (TI: option B in model 0c891315,
-   kernel suite 406 PASS so IMPL_PINS hold, TI-590; add bin miu_memop_rec_full to kernel.h;
-   merge 0c891315 + ef9bb022). Both rung. MI-51 (OI-225 = dcu_p1 ignores drop): nothing owed.
+0. Pushed 285eaef0 (SCOPED PASS). MI tab rev 76: MI-52 (ruled, below), MI-53 (TI: bin + merge).
+   MA tab rev 224: MI-52 ruled. New miu_pass (1 inst, stage H-1): picks every MQ-sourced lookup
+   (later passes, window fills, drains incl st.pred RMW and atomic A1/A3, walker reads); TLB lookup
+   (its one port, RR with L0 refills) before offering; flops per-lookup-slot candidate at H-1
+   {valid, PA line, set, bank, pa_fold, kind, MQ entry}. Order: walker, N_drain-fired drain, fills +
+   later passes oldest MQ first, other drains. miu_lead gains a flop-selected 2:1 before req valid
+   and lead flops: slot k takes the candidate only when no first pass owns k by footprint (miu_pair
+   H-1 flops), never on the late credit-gated valid. Pass spends bank credit via miu_cred; used[b]
+   counts it. miu_a2 muxes payload by flopped pass bit (PA from candidate, no L0). A2 ranks every
+   first pass ahead of every pass; loser dropped like a first-pass loser, re-offered later.
+   Bins pass_bank_lost, pass_slot_busy; controls pass-wins-bank, pass-on-owned-slot. Responses by
+   req_id (miu_ids), never hitq. Partition row comes with slice 2's notice (wait for it).
+   MA-35: MA changed MI's miu_a2.sv (DS param, lofold), a2_tb, cg-build, run-rtl (bench
+   miu_a2_s64, control lofold). Merge MA's branch at next sweep; answer MA-35 (shape OK?).
+   MA rev 231: MI-51 fixed (669cfdde pushed: p1 skips dropped lookups, 0 CHECKs cm32priv model+p1; control dcu-drop-answers). Mark MI-51 closed in MI tab; merge at sweep.
 1. Option B done in the model (0c891315): IdPool(width, slots, ids=kMiuDcuIds) interleaved
    id%4 = slot; record gate recs_ = CCV_MIU_MEMOPS_INFLIGHT (env lowers it), bin miu_memop_rec_full.
-2. miu_grp remaining: window fill RTL blocked on MI-52; lines + lost flag (OA-486 assertion +
+2. miu_pass (MI-52) once MA's slice-2 notice brings its partition row. miu_grp remaining: lines + lost flag (OA-486 assertion +
    control); drop_held; predicate-transfer faults.
 3. miu_hitq landed (ef9bb022; 253 flops, 22 gates). Next: miu_rsp (fill assertion + orphan
    control, MA rev 187; reads hitq's hv/he/hs at R1), miu_ext, miu_ecc (K=128, syndrome R2,
@@ -78,4 +87,5 @@ every agent's ping to MI answered.
 
 ## Pushed
 - ccr-58815650-0ch1hh at 208e4c46: SCOPED PASS (miu_form clang++, handoff); RI and TI rung.
+- ccr-58815650-0ch1hh at 285eaef0: SCOPED PASS (option B model, miu_hitq, handoff).
 - ccr-58815650-0ch1hh at 8719d88b: full PASS (sweep merge of 8 branches incl. TI's c0883a36).
