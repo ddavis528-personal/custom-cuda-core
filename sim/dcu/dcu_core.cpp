@@ -96,9 +96,13 @@ unsigned Core::bankOf(uint64_t pa) const {
   return unsigned(b);
 }
 
-/// The way predictor's fold of pa's tag, PA[47:16] in k-bit chunks XORed:
-/// MIU's pa_fold and the fold table's entry, one function (TI-518, AR 405 (3)).
-unsigned Core::fold(uint64_t pa) const { return ccv::skel::wayFold(pa, c_.wp_bits); }
+/// The way predictor's fold of pa's tag, PA[47:7+log2 sets]: the page's
+/// PA[47:16] and the offset's PA[15:7+log2 sets], each in k-bit chunks
+/// XORed: MIU's pa_fold and the fold table's entry, one function (TI-518,
+/// AR 405 (3), MA-33 (3)).
+unsigned Core::fold(uint64_t pa) const {
+  return ccv::skel::wayFold(pa, c_.wp_bits, ccv::skel::wayFoldSetBits(c_.sets));
+}
 
 /// Pipe C's predictor (MA-23 (C), MA-26): among the valid ways whose fold
 /// matches pa's, CCV_DCU_WAYPRED_SEL picks the lowest way (index) or the most
