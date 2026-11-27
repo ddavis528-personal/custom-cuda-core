@@ -1,0 +1,13 @@
+{
+  "_comment": "Timing units for MI's combinational MIU modules, for tools/check-ngd.py. miu_grp is an inner helper of miu_a2 (rtl/miu/miu_grp.ngd.json; MA revs 209, 211), one per address slot, at the full 32 lanes, timed in miu_a2's unit.",
+  "units": [
+    {
+      "name": "miu_grp",
+      "module": "miu_grp",
+      "files": [
+        "rtl/miu/miu_grp.sv"
+      ],
+      "params": {}
+    }
+  ]
+}

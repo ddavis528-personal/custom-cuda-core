@@ -55,9 +55,34 @@ control dcu_btag wbr
 for seed in 1 2 3; do
   bench "dcu_bctl seed $seed" test/dcu/cg-build.sh dcu_bctl "$B/dcu_bctl" -- "$B/dcu_bctl/tb" --seed $seed
 done
+for seed in 1 2; do
+  bench "dcu_bctl flood seed $seed" true -- "$B/dcu_bctl/tb" --seed $seed --flood
+done
 control dcu_bctl flat
 control dcu_bctl nofree
 control dcu_bctl order
+control dcu_bctl unheld
+control dcu_bctl nomargin
+# A control build or option the bench must fail with an assertion's name.
+asserts() {   # name, unit, assertion, bench options...
+  local n=$1 u=$2 a=$3; shift 3
+  if test/dcu/cg-build.sh "$u" "$B/$u" >"$B/$u.build.log" 2>&1 &&
+     ! "$B/$u/tb" "$@" >"$B/$u.$n.log" 2>&1 &&
+     grep -q "$a failed" "$B/$u.$n.log"; then
+    say "dcu_bctl control $n" "caught"
+  else
+    say "dcu_bctl control $n" "NOT CAUGHT ($B/$u.$n.log)"; fail=1
+  fi
+}
+# The reservation held through W (DI-43): released at the grant instead, two
+# fills take one way.
+asserts rel_at_grant dcu_bctl_rel bctl_one_fill_per_way --seed 1
+# The fold table's port (DI-46): its head written over a fill's write; a held
+# fill that yields every time (starved under a flood of port writes); a
+# credit the queue has no entry for.
+asserts port_nowait dcu_bctl_pnw bctl_ft_one_writer --seed 1
+asserts always_yield dcu_bctl_ayl bctl_fill_held_wait --seed 1 --flood
+asserts credit_plus dcu_bctl bctl_port_overflow --seed 1 --flood --control credit_plus
 for seed in 1 2 3; do
   bench "dcu_mshr seed $seed" test/dcu/cg-build.sh dcu_mshr "$B/dcu_mshr" -- "$B/dcu_mshr/tb" --seed $seed
 done

@@ -19,6 +19,37 @@ entries from the cross-agent register and the compiler's measurements. Each entr
 alternative, what the alternative costs, and the signal that would justify
 it.
 
+## Testbench re-baseline (2026-11-24)
+
+TI's b780f324 changed the stub memory behind MLC (AR 410, AR 412, DA
+2026-11-23): the slow regions end at 1 MiB (from 4 GB), and the default
+latency is 20 cycles drawn per request from 15 to 25 by a seeded generator
+(`CCV_TB_SEED`, default 1; `CCV_TB_JITTER`, default 5), where it was a
+fixed 10. RH re-ran this register's standard recipe (-priv, parameter
+defaults, `CCV_FET_PERFECT=1 CCV_MLC_WARM=1 CCV_DCU_SETS=128
+CCV_DCU_WAYS=8`, as AR rev 360's runs) at 4e3dda64 (before) and 77f7849e
+(after). All 49 runs are exact.
+
+| Workload | Before (fixed 10) | After, seed 1 | Seeds 1-3 | Jitter 0 (fixed 20) |
+|---|---|---|---|---|
+| S1 (sweep.sh's ten kernels) | 1,640 | 1,640 | 1,640 all | |
+| coremark32 -priv | 1,177,935 | 1,177,935 | 1,177,935 all | |
+| coremark128 -priv | 1,977,489 | 1,978,481 (+0.050%) | +0.050% to +0.141% | 1,978,700 (+0.061%) |
+
+- **The figures in this register stand.** With MLC warm, S1 and
+  coremark32 never pay the stub's latency, and coremark128 pays it only on
+  the few accesses that miss MLC (page walks among them). So the slow
+  region that reached 0xC0000 and above from 2026-11-13 did not touch the
+  entries measured under this recipe (AR 411 (2) is corrected by AR 418).
+  It did move default-run kernels, which start cold: localsp, privwin,
+  slotform and waypred fall 80 to 89% (TI-553).
+- **Seed noise:** coremark128's seed-to-seed spread is 0.091% of its
+  cycles, the same size as the 10-to-20 mean shift. S1 does not move with
+  the seed. A comparison takes both sides on the same seed, and a delta
+  within 0.5% is confirmed on two more seeds (AR 412 (1)).
+- **What this recipe cannot see:** DRAM latency and read-path depth. Those
+  are the swap class (vadd6 at 1,000 cycles) and the read class (PF-54).
+
 ## Summary
 
 | ID | Feature | Area | Status |
@@ -76,6 +107,7 @@ it.
 | PF-51 | L1 hit latency that follows the configured L1 size | DCU, MIU, OOE, params | deferred (DA, 2026-11-15) |
 | PF-52 | An L1 hit at 7 by reading every way in parallel | DCU, MIU, params | deferred (DA rev 128, 2026-11-19) |
 | PF-53 | Rotating bank arbitration in the DCU | DCU | deferred (MA-24, 2026-11-19) |
+| PF-54 | Read-path depth for a full read at the DRAM latency | MIU, DCU, MLC, params | target (DA, 2026-11-23) |
 
 ## Entries
 
@@ -949,7 +981,10 @@ it.
   build's MLC-miss trigger is time-based: the head is a load that missed L1
   (no completion at `CCV_LAT_L1_CMPL`) and has blocked longer than
   `CCV_DEMOTION_THRESHOLD_MLC`, which gen-params requires to exceed
-  `CCV_LAT_MLC_HIT_MAX`, MLC's worst hit latency at DCU's boundary.
+  `CCV_LAT_MLC_HIT_MAX`, MLC's worst hit latency at DCU's boundary: 28
+  cycles since AR 413, whose queue term counts FET's ifills ahead of a DCU
+  request at MLC's pick, not DCU's misses in flight, which are past the
+  port.
 - **Alternative:** MLC reports a miss at its tag lookup, and the notice
   travels DCU to MIU to OOE, mapped at each hop to the requests it serves.
   A head load whose notice has arrived demotes at once.
@@ -1645,3 +1680,24 @@ it.
   its wait (`wmax`), grow while the others' do not, which would show fixed
   order starving a slot. Owner: MA.
 
+### PF-54 Read-path depth for a full read at the DRAM latency
+
+- **Now:** the read path holds too few lines in flight for the true DRAM
+  latency. Daniel set that latency at 1,000 cycles and the read target at
+  one 128 B line every 8 cycles, 16 B/cycle a core (DA, 2026-11-23). By
+  Little's law that is 1,000 x 16 / 128 = 125 lines in flight, about 130 at
+  MA's 1,030-cycle round trip (MA rev 178). Today's caps: DCU to MLC 16
+  req_ids (about 2 B/cycle, 8x short), MIU to DCU 64 ids and MLC to EXB 64
+  ids (2x short), MIU's 40-entry memop queue (a coalesced warp load is one
+  line, so about 3x short).
+- **Alternative:** size the path to 160 or 192 lines. MA's candidates are
+  160 DCU MSHRs, bank queues of 24, an MIU park table in place of a larger
+  memop queue, and 8-bit DCU to MLC ids. The MLC stub carries 256 MLC to
+  EXB ids (`CCV_P_W_REQ_MLC_EXB` 8, AR 417) so that it is not the cap.
+- **Cost:** MA's Phase 1 resource model prices the area, for Daniel. The
+  wider DCU to MLC ids leave the demotion threshold where it is (PF-39,
+  AR 413).
+- **Signal:** the read class (AR 412 (3)): a streaming read at
+  `CCV_TB_LATENCY=1000` reports sustained B/cycle and each read-path
+  queue's peak against its cap. Below 16 B/cycle it is a tracked target,
+  not a gate failure. Owners: MA (MIU, DCU), AR (MLC).

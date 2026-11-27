@@ -58,6 +58,7 @@ module miu_pair #(
                        ccv_prelim_pkg::CCV_L_W_MEM_OP + ccv_params_pkg::CCV_W_CHWIDTH +
                        ccv_params_pkg::CCV_MIU_PIPES + ccv_params_pkg::CCV_W_DISP + 1 +
                        ccv_params_pkg::CCV_L_W_SPACE + ccv_params_pkg::CCV_L_W_ORDERING + 1 + 4 + 1 + 2 + 1,
+  localparam int NQ  = ccv_params_pkg::CCV_W_LANE_MASK / 8,    // lane quarters (miu_lead's copies), 4
   localparam int EW  = $clog2(NE),
   localparam int PW  = (LAG > 1) ? $clog2(LAG) : 1
 ) (
@@ -73,7 +74,17 @@ module miu_pair #(
   // A1: address slot k's memop, held from H until the next pairing.
   output logic [NS-1:0]    a1v_cm05h,
   output logic [NS*FW-1:0] a1f_cm05h,
-  output logic [NS*EW-1:0] a1e_cm05h
+  output logic [NS*EW-1:0] a1e_cm05h,
+  // A1: slot k's transfer, decoded here for miu_agu8 and miu_lead (whose
+  // adders take the whole stage): {b2, b4, sh2, sh1} at [k*4 +: 4]. b4/b2 a
+  // 4- or 2-byte transfer (else 1): xfer_size's (1 or 2 bytes, O-80), or
+  // else chwidth's span; sh2/sh1 the index's scale, when scale_en.
+  output logic [NS*4-1:0]  a1x_cm05h,
+  // A1: slot k's {sh2, sh1, disp[15:0]} once per lane quarter q, at
+  // [(k*NQ + q)*18 +: 18], each its own (* keep *) flops: miu_lead's
+  // fixed-leader adder for quarter q reads its copy (MI-27 (3), MA rev
+  // 196; one per quarter since the fixed leader, MA rev 203).
+  output logic [NS*NQ*18-1:0] a1q_cm05h
 );
 
   if (LAG < 2) begin : g_lag
@@ -188,6 +199,31 @@ module miu_pair #(
             ({FW{pe_q_cm04h[k*EW +: EW] == EW'(e)}} & mqa_cm02h[e*FW +: FW]);
   end
 
+  // The transfer's decode, from the A1 view's fields (the memop payload's
+  // low FW bits, LSB first: xfer_signed, xfer_size, local_form, arg_slot,
+  // slot_form, ordering, space, scale_en, disp, pipes, chwidth, ...).
+  localparam int XS_L = 1;
+  localparam int SE_L = 9 + ccv_params_pkg::CCV_L_W_ORDERING + ccv_params_pkg::CCV_L_W_SPACE;
+  localparam int CW_L = SE_L + 1 + ccv_params_pkg::CCV_W_DISP + ccv_params_pkg::CCV_MIU_PIPES;
+  localparam int CW   = ccv_params_pkg::CCV_W_CHWIDTH;
+  logic [NS*4-1:0] xd_cm04h;
+  always_comb begin
+    for (int k = 0; k < NS; k++) begin
+      logic [1:0]    xs;
+      logic [CW-1:0] cw;
+      logic          se, rd, b4, b2;
+      xs = fld_cm04h[k*FW + XS_L +: 2];
+      cw = fld_cm04h[k*FW + CW_L +: CW];
+      se = fld_cm04h[k*FW + SE_L];
+      // rd: rdata's width sets the transfer, xfer_size 0 (and the reserved
+      // 3, as the model reads it).
+      rd = (xs == 2'd0) || (xs == 2'd3);
+      b4 = rd && (cw == CW'(0));
+      b2 = (xs == 2'd2) || (rd && (cw == CW'(1)));
+      xd_cm04h[k*4 +: 4] = {b2, b4, se & b4, se & b2};
+    end
+  end
+
   // ---- H: slot k's A1 fields, from the entry miu_mq read ------------------
   // Each slot one clock gate: clocked when it pairs, and the cycle after its
   // last pairing, to clear its valid (CG-4: no valid flop clocked idle).
@@ -196,8 +232,12 @@ module miu_pair #(
     // The fields are a guarded payload: read only under a1v, so a clearing
     // cycle may load whatever miu_mq answers.
     wire a1_en_cm04h = pv_q_cm04h[k] | a1v_q_cm05h[k];
-    logic [FW-1:0] a1f_q_cm05h;
+    // a1f and a1x keep too: else synthesis merges a copy of disp or the
+    // scale into them, and the merged flop drives both.
+    (* keep *) logic [FW-1:0] a1f_q_cm05h;
     logic [EW-1:0] a1e_q_cm05h;
+    (* keep *) logic [3:0]    a1x_q_cm05h;
+    (* keep *) logic [NQ*18-1:0] a1q_q_cm05h;
     always_ff @(posedge miu_core_clk) begin
       if (rst_r01h)         a1v_q_cm05h[k] <= 1'b0;
       else if (a1_en_cm04h) a1v_q_cm05h[k] <= pv_q_cm04h[k];
@@ -206,10 +246,15 @@ module miu_pair #(
       if (a1_en_cm04h) begin
         a1f_q_cm05h <= fld_cm04h[k*FW +: FW];
         a1e_q_cm05h <= pe_q_cm04h[k*EW +: EW];
+        a1x_q_cm05h <= xd_cm04h[k*4 +: 4];
+        for (int q = 0; q < NQ; q++)
+          a1q_q_cm05h[q*18 +: 18] <= {xd_cm04h[k*4 +: 2], fld_cm04h[k*FW + SE_L + 1 +: 16]};
       end
     end
     assign a1f_cm05h[k*FW +: FW] = a1f_q_cm05h;
     assign a1e_cm05h[k*EW +: EW] = a1e_q_cm05h;
+    assign a1x_cm05h[k*4 +: 4]   = a1x_q_cm05h;
+    assign a1q_cm05h[k*NQ*18 +: NQ*18] = a1q_q_cm05h;
   end
   assign a1v_cm05h = a1v_q_cm05h;
 
