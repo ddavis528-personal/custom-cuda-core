@@ -100,6 +100,7 @@ so this is a build artifact rather than something to remember.
 | `test/dcu/mshr_tb.cpp` | — | — |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
+| `test/miu/ids_tb.cpp` | — | — |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/ooe/ooe_pl_tb.sv` | — | `CCV_P_W_RS_IDX` |
 | `test/ooe/ooe_trio.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
