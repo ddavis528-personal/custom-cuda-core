@@ -37,13 +37,14 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
 - Single-unit checks: tools/bg-run.sh <name> python3 tools/check-ngd.py --unit <u> (or check-cg.py);
   check-cg --unit exit 0 does not apply the module budget: read ungated vs max(2%, 7).
   Lint: python3 tools/lint-rtl.py. Benches + controls: test/miu/run-rtl.sh.
-- RTL lessons: CCV-L23 no self-feeding shift array; a comb net read by more than its own state's
+- RTL lessons: CCV-L23 no self-feeding shift array; a hold enable (prev || self valid) must be
+  `logic x_en_cmNNh; assign ...` (the D-side exemption skips `wire x = ...`), named <what>_en; a comb net read by more than its own state's
   flops goes inline in always_ff; no package-to-package params; one assert label per module;
   tags _cmNNh; RST-1; CG-5; (* keep *) output copies; payload no-flop end: compute both, mux last.
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
 ## Register bookmarks (sweep of Fri 11-27)
-AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 221, MI 75, DI 99, DA 136,
+AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 221, MI 76, DI 99, DA 136,
 Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27; all 11 ponged ok, and
 every agent's ping to MI answered.
 - Sweep merges: ort on many criss-cross bases can run hours. Use scratchpad/sweep2.sh: merge-tree
@@ -58,17 +59,19 @@ every agent's ping to MI answered.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. MI-51 (rev 75, rung MA+OI): OI-225's model+p1 CHECKs are dcu_p1.cpp (MA's) ignoring drop; model
-   with dcu=stub or dcu=model is clean. Nothing owed unless MA answers.
-   TI landed c0883a36 (TI-592) with MI's 1ed1800b; merged into mi-dev (28b755f4, sweep). TI takes the
-   miu_form clang++ fix (104678de, pushed in 208e4c46; MI-49/50, RI-64) in its next push and drops
-   miu_form from heavy-units. Now: re-measure MI's IMPL_PINS rows on option-B params (held-wait
-   875/876, privwin priv_form 10, UE rows; TI-590), then answer TI-590 in an MI row.
-1. Option B rest: model IdPool cap at ccv::kMiuDcuIds (TI-584), 8-bit req_id, memops 8 (after ti-rp lands).
-2. miu_grp remaining: window fill RTL (same-bank fill-vs-pass case + control in lead_tb, MA rev 213);
-   lines + lost flag (OA-486 assertion + control); drop_held; predicate-transfer faults.
-3. Then: miu_hitq, miu_rsp (fill assertion + orphan control, MA rev 187), miu_ext, miu_ecc (K=128,
-   syndrome R2, budget 17), miu_out, ccv_miu top (+ feedback.json); miu_cred -> TI's common counter.
+0. Gate-push of ef9bb022 + handoff (scoped) in flight: wait with tools/gate-wait.sh on the newest
+   job-gate-push log; on killed, rerun with CCV_RESUME=1.
+   MI tab rev 76: MI-52 (MA: which module launches window fills/later passes/drains, slice 2;
+   bank arbitration vs first pass; naming by req_id), MI-53 (TI: option B in model 0c891315,
+   kernel suite 406 PASS so IMPL_PINS hold, TI-590; add bin miu_memop_rec_full to kernel.h;
+   merge 0c891315 + ef9bb022). Both rung. MI-51 (OI-225 = dcu_p1 ignores drop): nothing owed.
+1. Option B done in the model (0c891315): IdPool(width, slots, ids=kMiuDcuIds) interleaved
+   id%4 = slot; record gate recs_ = CCV_MIU_MEMOPS_INFLIGHT (env lowers it), bin miu_memop_rec_full.
+2. miu_grp remaining: window fill RTL blocked on MI-52; lines + lost flag (OA-486 assertion +
+   control); drop_held; predicate-transfer faults.
+3. miu_hitq landed (ef9bb022; 253 flops, 22 gates). Next: miu_rsp (fill assertion + orphan
+   control, MA rev 187; reads hitq's hv/he/hs at R1), miu_ext, miu_ecc (K=128, syndrome R2,
+   budget 17), miu_out, ccv_miu top (+ feedback.json); miu_cred -> TI's common counter.
 4. Model: UE on a clean line keeps req_id live (AR 403); mispredict late answer at due+2 (AR 405);
    MI-11 (2); way-mispredict path (AR 390). Awaiting TI: MI-4, MI-8, MI-9 (3), MI-13. M0 report.
 - Scratch: scratchpad/wt-tr worktree (its sim/miu/miu_block.cpp has an L0T debug trace; never carry).
