@@ -23,6 +23,7 @@
 #include "verilated_vcd_c.h"
 
 #include "secded.h"
+#include "../../sim/generated/ccv_params.h"   // the MIU req_id width
 
 #include <array>
 #include <cstdint>
@@ -36,7 +37,7 @@
 
 namespace {
 
-constexpr unsigned kNfb = 4, kBanks = 8, kLd = 4, kWle = 13, kLb = 1024, kNw = 8, kKw = 128,
+constexpr unsigned kNfb = 4, kBanks = 8, kLd = 4, kWle = ccv::prov::kWReqMiuDcu + 7, kLb = 1024, kNw = 8, kKw = 128,
                    kR = 9, kCw = kNw * kR, kWfb = 2, kWlc = 3, kCr = 4;
 
 int g_argc;
@@ -51,6 +52,9 @@ template <typename W> uint64_t getBits(const W &w, unsigned lsb, unsigned width)
   uint64_t v = 0;
   for (unsigned i = 0; i < width; ++i) v |= uint64_t(getBit(w, lsb + i)) << i;
   return v;
+}
+template <typename W> void setBits(W &w, unsigned lsb, unsigned width, uint64_t v) {
+  for (unsigned i = 0; i < width; ++i) setBit(w, lsb + i, (v >> i) & 1);
 }
 
 using Line = std::array<uint32_t, kLb / 32>;
@@ -318,8 +322,12 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     const unsigned fcnt = readNow ? below(kLd + 1) : below(8);
     uint64_t flist = 0;
     for (unsigned k = 0; k < kLd; ++k) flist |= uint64_t(below(1u << kWle)) << (k * kWle);
-    d.fcnt_cc05h = fcnt;
-    d.flist_cc05h = flist;
+    // Each bank's dcu_mshr's read: one bank's carries it, the rest zero.
+    const unsigned rbk = below(kBanks);
+    d.fcnt_cc05h = fcnt << (rbk * 3);
+    for (unsigned k = 0; k < kBanks; ++k) {
+      setBits(d.flist_cc05h, k * kLd * kWle, kLd * kWle, k == rbk ? flist : 0);
+    }
     // Banks' writes: a listed buffer not yet written, now and then.
     std::array<std::optional<unsigned>, kBanks> wd{};
     unsigned wdv = 0, wdb = 0;

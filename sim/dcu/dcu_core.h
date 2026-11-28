@@ -138,8 +138,9 @@ struct Config {
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
-  unsigned ids = ccv::kDcuMshrPerBank;   ///< miss buffers: MLC req_ids (one bank's 16 until MA-34's split)
+  unsigned ids = ccv::kDcuMshrPerBank;   ///< miss buffers a bank (MA-34): MLC req_id = {bank, entry}
   unsigned wb = 2;               ///< the writeback buffer's entries
+  unsigned fills = 4;            ///< fill buffers: ccv_mlc_dcu_rsp's credits (DCU tab, part 1)
   bool hash = false;             ///< CCV_DCU_BANK_HASH (MA-20), off
   bool no_cycle_conflict = false;///< refuse two lookups due in one bank in one cycle (MIU model: DI-25 (4))
   unsigned ue_every = 0;         ///< CCV_DCU_UE_INJECT: every Nth read hit a UE
@@ -374,24 +375,27 @@ private:
   }
   std::map<unsigned, Miss> miss_;
   std::set<unsigned> free_ids_;
-  /// Miss buffer ids are offered a cycle ahead (spec DCU tab rev 110; the
-  /// RTL's rule, rtl/dcu/dcu_mshr.sv): each MSHR port (0 the retry, 1 + slot
-  /// a slot's new miss) holds an offer, the id it allocates. A requesting
-  /// port's offer is taken whatever it did; it, and a port with none, takes
-  /// the next of last cycle's picks in port order. Picks (lowest, highest,
-  /// second lowest, second highest, third lowest) come from the free ids,
-  /// one freed now too, less the offers, the picks and the offers taken
-  /// last cycle; so an id freed or left unused is offered two cycles on.
-  static constexpr unsigned kNfIds = 5;   ///< MSHR ports
-  std::array<std::optional<unsigned>, kNfIds> nf_;
-  std::vector<unsigned> pk_;
+  /// Miss buffer ids are offered a cycle ahead (spec DCU tab rev 110; MA-34,
+  /// DCU tab rev 147: one dcu_mshr a bank, 16 entries, req_id {bank, entry}).
+  /// Each bank holds one offer, the id its next miss allocates (a retry or a
+  /// slot's: a bank takes at most one new miss a cycle). A requesting bank's
+  /// offer is taken whatever it did; it, and a bank with none, takes last
+  /// cycle's pick for it, the lowest of its bank's free ids, one freed now
+  /// too, less its offer, its pick and the offer taken last cycle; so an id
+  /// freed or left unused is offered two cycles on.
+  std::vector<std::optional<unsigned>> nf_;   ///< a bank's offer
+  std::vector<std::optional<unsigned>> pk_;   ///< a bank's next pick
   std::set<unsigned> ua_;      ///< offers taken last cycle
   std::set<unsigned> freed_;   ///< ids freed this cycle
-  unsigned nf_pq_ = 0;         ///< this cycle's requesting ports (a mask)
+  unsigned nf_pq_ = 0;         ///< this cycle's requesting banks (a mask)
+  std::set<std::pair<unsigned, uint64_t>> nm_;   ///< (bank, D2) of misses started (CHECK: one a bank a cycle)
+  unsigned idBank(unsigned id) const { return id / c_.ids; }
+  std::optional<unsigned> pickFree(unsigned b, const std::set<unsigned> &out) const;
   void nfNext();
   void freeId(unsigned id);
-  static std::vector<unsigned> offerOrder(const std::vector<unsigned> &av);
   std::deque<std::pair<uint64_t, MlcReq>> to_mlc_;   ///< (its D2, the request), oldest first
+  uint64_t mlc_last_t_ = ~uint64_t(0) - 1;   ///< the last miss request's launch
+  unsigned mlc_last_bank_ = 0;               ///< and its bank (DI-65)
   std::set<uint64_t> wb_lines_;        ///< lines written back, not yet acked
   unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
   std::deque<unsigned> wbsend_;        ///< writeback entries unsent, oldest first
