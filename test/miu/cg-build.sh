@@ -32,11 +32,15 @@ case "$unit" in
     vl miu_ids "" "" "$PWD/rtl/miu/miu_ids.sv" "$PWD/test/miu/ids_tb.cpp" ;;
   miu_rcap)
     vl miu_rcap "" "" "$PWD/rtl/miu/miu_rcap.sv" "$PWD/test/miu/rcap_tb.cpp" ;;
+  miu_hitq)
+    vl miu_hitq "" "" "$PWD/rtl/miu/miu_hitq.sv" "$PWD/test/miu/hitq_tb.cpp" ;;
   miu_lead)
     vl miu_lead "" "" "$PWD/rtl/miu/miu_lead.sv" "$PWD/test/miu/lead_tb.cpp" ;;
   miu_tlb)
     vl miu_tlb "-DCCV_CHECK" "" "$PWD/rtl/miu/miu_tlb.sv" "$PWD/test/miu/tlb_tb.cpp" ;;
   miu_a2)
     vl miu_a2 "--trace-max-width 8192" "" "$PWD/rtl/miu/miu_grp.sv" "$PWD/rtl/miu/miu_a2.sv" "$PWD/test/miu/a2_tb.cpp" ;;
+  miu_a2_s64)   # MA-33 (3): 64 sets, the page offset's tag bits PA[15:13] in pa_fold
+    vl miu_a2 "--trace-max-width 8192 -GDS=64" "-DCCV_A2_SETS=64" "$PWD/rtl/miu/miu_grp.sv" "$PWD/rtl/miu/miu_a2.sv" "$PWD/test/miu/a2_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac
