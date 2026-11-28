@@ -42,6 +42,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_conn.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn2.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_tport.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_conn3.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_conn4.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -158,13 +159,14 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_rd.sv rtl/lint/reference_wr.sv \
          rtl/lint/reference_pp.sv rtl/lint/reference_pc.sv rtl/lint/reference_ph.sv \
          rtl/lint/reference_tpp.sv rtl/lint/reference_tpr.sv rtl/lint/reference_tpw.sv \
-         rtl/lint/reference_hp.sv rtl/lint/reference_xp.sv rtl/lint/reference_xc.sv; do
+         rtl/lint/reference_hp.sv rtl/lint/reference_xp.sv rtl/lint/reference_xc.sv \
+         rtl/lint/reference_cnp.sv rtl/lint/reference_rhp.sv rtl/lint/reference_dc.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (23 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (26 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -259,6 +261,11 @@ a row's own read not listed|table otab_cy03h is refused: its loop writer lookup 
 ...and the refused port's stage skip reported|upe_cy02h is at stage 02 but combinational logic over stage(s) 02,04,05 gives 05
 WANT
 
+# reference_cnp.sv: a "from" cone over two listed parent registers (OA-495
+# (a)), and reference_rhp.sv: a hop through a child's register named
+# "u_d.a_cy02h>r_cy03h>y_cy03h" (OA-495 (c)), pass; bad_conn4.sv's cone
+# leaving a register out and hop naming a register its input does not reach
+# are refused.
 # reference_hp.sv: a register loop whose hop crosses a register-free helper,
 # traced as the parent's logic (OI-213), passes; reference_xp.sv names a
 # crossing of a child's combinational path, "u_x.a_cy02h>y_cy02h" (OA-494),
@@ -291,6 +298,8 @@ no stale-read assertion|cross-module loop u_rd.l0_cy02h is refused: no assertion
 a port table's wrong ahead|table rd_cy04h (an input port) is refused: ahead is 2, but rd_cy04h lies 1 stage(s) past its reader's (03)
 a port table fed through logic|table rd_cy04h (an input port) is refused: in reference_gtpp, rd_cy04h is not fed directly by u_w's register rd_cy04h
 a port table with no assertion|table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_stpr
+a cone missing a register|cross-module loop u_c.v_cy01h is refused: register(s) kk_cy04h reach u_c.v_cy01h through the cone but are not listed
+a registered hop its input does not reach|cross-module loop u_c.v_cy01h is refused: hop u_d.a_cy02h>s_cy03h>y_cy03h: reference_sdc's input a_cy02h does not reach s_cy03h's next value or enable
 a registered crossing|cross-module loop u_c.v_cy01h is refused: crossing u_q.a_cy02h>y_cy03h: reference_qqreg has no combinational path from a_cy02h to y_cy03h
 a register loop's untraced hop|cross-module loop u_c.v_cy01h is refused: the loop's hop rm_cy03h -> rm_cy04h is not traced
 a helper whose output feeds another register|reference_hpp's u_h (reference_hph): output y (its stage none, the parent's 02) depends on input a (its stage none, fed at 03) combinationally
