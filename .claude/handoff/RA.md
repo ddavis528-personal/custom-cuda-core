@@ -1,6 +1,6 @@
 # RA handoff (RCU block architect)
 
-Updated 2026-11-14. Keep this current at every task's end; it is what
+Updated 2026-11-27. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules (written for TI);
 docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
@@ -361,7 +361,7 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 503, RA 159, RI 92, TI 585, AR 423, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 219, MI 70, DI 96.
+Bookmarks: OA 506, RA 164, RI 100, TI 600, AR 433, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 221, MI 74, DI 99.
 RA 158 (11-23): OA 469 / AR 406 (3) misrouted RAU's pc_kept to RA; RAU is TI's stub. OA 472, AR 407-408, TI-526 agree;
 closed. Sweep 11-23: nothing for RA. Watch AR 410 / TI-531: CCV_P_TIMEOUT_MEMOP derived, slow memory regions end at
 1 MiB, perf-register cycles move above 0xC0000 (AR re-baselines). Merged 183cc441 (173, carried OI's 57eff422),
@@ -378,6 +378,31 @@ flops the returned credit a cycle before it counts (RI-63), so REG/LATE (+1) unl
 RA row Needs TI. OA 484: RA signs "by" on RCU parent-level CCV-L23 declarations. DA 133 (AR owns MLC spec) and
 DA 134 (OOE ratchet paths may rise to 30 NGD; not RCU). AR 415: at a flopped end the wrapper holds the flops;
 rcu_kill's credit waiver goes on migration.
+RA 164 (re OI-234, gtw32 hang): RAU place deadlock at 32/32 (4 slots + 28 places): RAU takes a PCA place at
+drained (kernel.cpp:6093), never reserves at demote; swap A->B cycles. rcu_map timeout = consequence (OI to confirm
+CHECK first). Fix TI (stub: reserve at demote, keep CHECK, brk control, bin); AR: RAU spec rule + optional 29th place.
+RI-71: COMB demotion check done (3 and 4 full rate; credlate2@4, credlate@3 caught).
+RA 163 (re RI-69): COMB full rate at 3 and 4 (one slack). Controls under COMB: credlate2 at 4 fails, credlate at 3
+fails; positives at 3 and 4. REG controls (before the move): credlate at 4 fails.
+RA 162 (re TI-597) + AR 428: SETTLED. Forms: REG (in-cycle spend, 4+2N), REG_LATE (LATE_COUNT, OOE cok, 4+2N+1),
+COMB (4+2N); missing entry = REG_LATE (AR's default). AR 428 corrects AR 416 (1) under Daniel's option A, no
+DA ruling needed. rcu_pca_mig: REG now, COMB with RI's cr_go move, 4+2N either way; COMB at 3+2N is a slack record.
+RA 161 (re RI-67): RI's bench shows the flopped RCU credit (used the cycle after arrival = channel.h,
+CCV_CREDIT_TURNAROUND) full rate at 4+2N; the +1 fits only first use 2 cycles after arrival. RA 160 (5) control
+corrected to RI's credlate. RI to run COMB at depth 3 for AR. AR 416 (1) (Daniel's "REG one more credit")
+is AR's to settle; RCU stays COMB at 4+2N, waits on nothing.
+RA 160 (11-27, re RI-66 (a)): AR 416 DISCHARGED. rcu_pca_mig goes COMB on cr_go (ocrq goes, depth 4+2N, no +1);
+TI enters COMB in the form list with RI's move, never before. Credit in timed at 0, default 12 NGD: RA sets
+rcu_mig/ccv_rcu budgets for the pair only if check-ngd says over 12 on RI's move. RI adds a full-rate demotion
+check with a REG (flopped credit at 4+2N) negative control. AR 425 (b) answered: RA's merges keep the newer RA.md.
+Sweep 11-27 (Friday): nothing for RA. The 11-26 gate went red on a miu_form check-cg compile OOM; TI's a24cf95c
+(heavy-units lists miu_form) was CHERRY-PICKED (-x, a5027c8f: TI's branch had 10 bases) and the regate passed and
+pushed a5027c8f. MI-49 (3826f9cf, clang++) is the real fix; keep miu_form listed until TI carries it. AR 416 still
+waits on TI's credit-form list. Merged 9eb50716 (1), c22116ce (1), 3868632d (108, carried 183cc441 and infra),
+5e4d6c70 (32, resolve), 58815650 (15). 10-BASE MERGES: ort ran 40 min without finishing and resolve refuses over
+8 trees. When the tips differ in few files, build the tree by hand: per differing file, take the side whose
+latest commit on it contains the other's (git merge-base --is-ancestor); if neither does, stop and raise a row.
+Then git commit-tree -p HEAD -p theirs, and ff to it. Pings 11-27: all 10 ponged ok (AR OA MA CP TI OI RI IS DI MI).
 Sweep 11-26 (11-25's missed: session down): nothing for RA. DA-135: a block's architect signs its CCV-L23 loop
 declarations; RA signs rtl/rcu's (none yet); cross-block loops list both ("by": [..]). DA-136: read path sized for
 128 lines (MIU/DCU/MLC; not RCU). Merged all 9 branches; trust-report.md conflicts (generated) took theirs.
