@@ -12,10 +12,19 @@
 #            controls flat (the model puts a new lookup ahead of the re-read),
 #            order (a miss presented past its bank's waiter)
 #            and nofree (a dropped access keeps its entry), which must fail
-#   dcu_mshr: test/dcu/mshr_tb.cpp, the miss buffers (merge, allocate, wait,
-#            bank order, the request to MLC, a fill's entry read), and its
-#            controls nomerge (dcu-mshr-nomerge), order (dcu-miss-reorder), credit and retry,
-#            which must fail
+#   dcu_mshr: test/dcu/mshr_tb.cpp, one bank's miss buffers (merge, allocate,
+#            wait, bank order, the MLC offers and their payload, a fill's
+#            entry read, other banks' fills and frees), built at banks 0 and
+#            5 (MA-34), and its controls nomerge (dcu-mshr-nomerge), order
+#            (dcu-miss-reorder) and early (a miss offered at its own D2, not
+#            a cycle on: DI-66), which must fail, and twolook (two live lookups to
+#            the bank, MIU's pass-wins-bank), which must fail mshr_one_lookup
+#   dcu_fill_mpick: test/dcu/mpick_tb.cpp, dcu_fill's cross-bank picks
+#            (g_mpick, folded in from dcu_mpick: DI-67) (the retry grant
+#            and its D2 port, the MLC send, its credits and payload), and its
+#            controls retry (the lowest offering bank granted), age (the
+#            lowest bank's head sent), pass (last cycle's bank not passed
+#            over) and credit (last cycle's send not counted), which must fail
 #   dcu_fill: test/dcu/fill_tb.cpp, the fill buffers (capture, encode, the
 #            write request, answers owed, the free's credit and entry), and its
 #            controls nowait (freed with answers owed) and highest (the
@@ -69,9 +78,9 @@ asserts() {   # name, unit, assertion, bench options...
   if test/dcu/cg-build.sh "$u" "$B/$u" >"$B/$u.build.log" 2>&1 &&
      ! "$B/$u/tb" "$@" >"$B/$u.$n.log" 2>&1 &&
      grep -q "$a failed" "$B/$u.$n.log"; then
-    say "dcu_bctl control $n" "caught"
+    say "$u control $n" "caught"
   else
-    say "dcu_bctl control $n" "NOT CAUGHT ($B/$u.$n.log)"; fail=1
+    say "$u control $n" "NOT CAUGHT ($B/$u.$n.log)"; fail=1
   fi
 }
 # The reservation held through W (DI-43): released at the grant instead, two
@@ -86,10 +95,21 @@ asserts credit_plus dcu_bctl bctl_port_overflow --seed 1 --flood --control credi
 for seed in 1 2 3; do
   bench "dcu_mshr seed $seed" test/dcu/cg-build.sh dcu_mshr "$B/dcu_mshr" -- "$B/dcu_mshr/tb" --seed $seed
 done
+for seed in 1 2; do
+  bench "dcu_mshr bank 5 seed $seed" test/dcu/cg-build.sh dcu_mshr_bk5 "$B/dcu_mshr_bk5" -- \
+    "$B/dcu_mshr_bk5/tb" --seed $seed
+done
 control dcu_mshr nomerge
 control dcu_mshr order
-control dcu_mshr credit
-control dcu_mshr retry
+control dcu_mshr early
+asserts twolook dcu_mshr mshr_one_lookup --control twolook
+for seed in 1 2 3; do
+  bench "dcu_fill_mpick seed $seed" test/dcu/cg-build.sh dcu_fill_mpick "$B/dcu_fill_mpick" -- "$B/dcu_fill_mpick/tb" --seed $seed
+done
+control dcu_fill_mpick retry
+control dcu_fill_mpick age
+control dcu_fill_mpick pass
+control dcu_fill_mpick credit
 for seed in 1 2 3; do
   bench "dcu_fill seed $seed" test/dcu/cg-build.sh dcu_fill "$B/dcu_fill" -- "$B/dcu_fill/tb" --seed $seed
 done

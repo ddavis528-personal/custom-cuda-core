@@ -696,20 +696,21 @@ int main(int argc, char **argv) {
   // ---- Slice 2, parts 1-2 -------------------------------------------------
 
   // The request to MLC: a miss's tag result is flopped at D2 (H+4 = P+1)
-  // under every pipe, and a request picked straight from D2 launches its
-  // valid at H+5 (P+2). A second miss the same cycle, in another bank, is
+  // under every pipe, and its bank offers it from its head flops a cycle
+  // on, so its valid launches at H+6 (P+3) at the earliest (DI-66, MA rev
+  // 227: no straight offer). A second miss the same cycle, in another bank, is
   // the oldest unsent one next cycle: one a cycle.
   for (unsigned hit : {7u, 8u, 9u})
-    test(hit == 7 ? "mlc-h5-A" : hit == 8 ? "mlc-h5-C" : "mlc-h5-B", [&] {
+    test(hit == 7 ? "mlc-h6-A" : hit == 8 ? "mlc-h6-C" : "mlc-h6-B", [&] {
       Bench b(cfg(hit));
       b.reqs[3] = {rd(0, 1, 0x2000), rd(1, 2, 0x2080)};
       b.run(60);
       EXPECT(b.mlc.size() == 2, "two requests");
-      EXPECT(b.mlc.size() == 2 && b.mlc[0].first == 5 && b.mlc[1].first == 6,
-             "valids at P+%lld and P+%lld, want P+2 and P+3",
+      EXPECT(b.mlc.size() == 2 && b.mlc[0].first == 6 && b.mlc[1].first == 7,
+             "valids at P+%lld and P+%lld, want P+3 and P+4",
              (long long)(b.mlc.empty() ? 0 : b.mlc[0].first - 3),
              (long long)(b.mlc.size() < 2 ? 0 : b.mlc[1].first - 3));
-      EXPECT(b.h.bins["dcu_mlc_straight"] == 1, "one straight from D2");
+      EXPECT(b.h.bins["dcu_mlc_earliest"] == 1, "one at D2 + 2");
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 
@@ -753,21 +754,30 @@ int main(int argc, char **argv) {
   // A full merge list makes the fifth request to its line wait in its
   // bank's queue; a sixth to the line waits behind it, in order.
   // A bank loser that misses (DI-48): its tag result is known at its D2,
-  // so its miss goes to the MSHR then, on its slot's port, and its slot's
-  // next miss (another bank, a cycle or more later) has the port to itself.
-  // dcu-loser-miss-late decides the loser's miss at its access, a late
-  // miss that retries on port 0 (MA-33), so it leaves after the winner's.
-  for (bool ctl : {false, true})
-    test(ctl ? "dcu-loser-miss-late-control" : "loser-miss-at-d2", [&] {
-      unsigned caught = 0, early = 0;
+  // which is its bank's winner's D2; one dcu_mshr a bank takes one new miss
+  // a cycle (MA-34), so the loser's miss waits in its bank's queue and
+  // retries on port 0, after the winner's, and its slot's next miss
+  // (another bank, a cycle or more later) is unaffected.
+  // dcu-bank-two-miss lets the loser's miss in beside the winner's, which
+  // the CHECK in startMiss refuses. dcu-loser-miss-late decides the loser's
+  // miss at its access, a late miss that retries on port 0 (MA-33): the
+  // same outcome, no id reused.
+  for (const char *brk : {"", "dcu-bank-two-miss", "dcu-loser-miss-late"})
+    test(!*brk ? "loser-miss-retry" : std::string(brk) == "dcu-bank-two-miss" ? "dcu-bank-two-miss-control"
+                                                                               : "dcu-loser-miss-late-control",
+         [&] {
+      const std::string k = brk;
+      unsigned caught = 0, two = 0, late = 0, busy = 0;
       for (unsigned d = 1; d != 5; ++d) {
         Config c = cfg(9);
-        if (ctl) c.brk = "dcu-loser-miss-late";
+        c.brk = k;
         Bench b(c);
         b.reqs[0] = {rd(0, 1, bank0(1)), rd(3, 2, bank0(2))};   // slot 3 loses bank 0
         b.reqs[d] = {rd(3, 3, bank0(3) + kLineBytes)};          // its next miss, bank 1
         b.run(120);
         if (refused(b, "offered while in use")) ++caught;
+        if (refused(b, "started two misses")) ++two;
+        busy += b.h.bins["dcu_bank_miss_busy"] != 0;
         uint64_t t1 = ~uint64_t(0), t2 = ~uint64_t(0);
         for (const auto &m : b.mlc) {
           if (m.second.pa == bank0(1)) t1 = m.first;
@@ -775,18 +785,19 @@ int main(int argc, char **argv) {
         }
         if (g_verbose) std::fprintf(stderr, "  d %u: winner's MLC request at %llu, loser's at %llu\n", d,
                                     (unsigned long long)t1, (unsigned long long)t2);
-        if (t2 <= t1 + 1) ++early;
-        if (!ctl) {
+        if (t2 > t1 + 1 && t2 != ~uint64_t(0)) ++late;
+        if (k != "dcu-bank-two-miss") {
           EXPECT(b.h.fails.empty(), "d %u: %s", d, b.h.fails.empty() ? "" : b.h.fails[0].c_str());
           EXPECT(b.rsp(1) && b.rsp(2) && b.rsp(3), "d %u: every read answered", d);
         }
       }
-      if (ctl) {
-        EXPECT(early != 4 && caught == 0, "the control's miss leaves late (%u of 4 early), no id reused (%u)",
-               early, caught);
+      if (k == "dcu-bank-two-miss") {
+        EXPECT(two == 4, "the control's second miss in bank 0 is refused (%u of 4)", two);
         return;
       }
-      EXPECT(early == 4, "the loser's miss leaves with the winner's (its D2): %u of 4", early);
+      EXPECT(late == 4 && caught == 0, "the loser's miss leaves after the winner's (%u of 4), no id reused (%u)",
+             late, caught);
+      if (k.empty()) EXPECT(busy == 4, "the loser waits for its bank's port (%u of 4)", busy);
     });
 
   // dcu-miss-reorder lets the sixth pass, which the CHECK refuses.
@@ -824,7 +835,7 @@ int main(int argc, char **argv) {
       warm(b, o, 61);
       const uint64_t P = b.t;
       b.reqs[P] = {rd(0, 1, n)};
-      b.run(P + 3);
+      b.run(P + 4);   // its request launched (H+6)
       const uint64_t F = b.mlc.back().first + b.mlc_lat;
       // Under B, D = P + 1: both lookups' D is F + 2, after the victim's
       // choice (F + 1); the victim's lookup loses the bank to o's.
@@ -845,40 +856,56 @@ int main(int argc, char **argv) {
 
   // A late lookup's miss (MA-33): tag-stale's relook misses at its access,
   // cycles past its D, so it waits and retries on port 0, and its slot's
-  // next miss (another bank) has the slot's port and its id to itself.
-  // dcu-late-miss-port places the late miss on its slot's port, where the
-  // two meet with one id at some spacing (the id CHECK in startMiss).
-  for (bool ctl : {false, true})
-    test(ctl ? "dcu-late-miss-port-control" : "late-miss-retry", [&] {
-      unsigned caught = 0, retried = 0;
+  // next miss (its bank's, MA-34) has the bank's offer to itself.
+  // (dcu-late-miss-port, its control, is retired: per bank the two never
+  // share a D2; DCU tab rev 148, DI-61.)
+  // MA-34 (DI-58): a miss buffer id's bank is its line's bank, checked at
+  // allocation and on MLC's answer. dcu-miss-other-bank, the control, takes
+  // another bank's offered id: refused at the miss and at its fill.
+  for (const char *brk : {"", "dcu-miss-other-bank"})
+    test(*brk ? "dcu-miss-other-bank-control" : "miss-id-bank", [brk] {
+      Config c = cfg(9);
+      c.brk = brk;
+      Bench b(c);
+      b.reqs[0].push_back(rd(0, 7, 0x2000));
+      b.run(100);
+      size_t alloc = 0, ans = 0;
+      for (const auto &f : b.h.fails) {
+        alloc += f.find("miss buffer id") != std::string::npos;
+        ans += f.find("MLC answered req_id") != std::string::npos;
+      }
+      if (*brk) {
+        EXPECT(alloc == 1 && ans == 1, "the control is caught at allocation (%zu) and fill (%zu)", alloc, ans);
+      } else {
+        EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+        EXPECT(b.rsp(7) && !b.rsp(7)->hit, "the miss is answered");
+      }
+    });
+
+  test("late-miss-retry", [&] {
+      unsigned retried = 0;
       for (unsigned d = 0; d != 8; ++d) {
         Config c = cfg(9);
         c.ways = 1;
-        if (ctl) c.brk = "dcu-late-miss-port";
         Bench b(c);
         const uint64_t v = bank0(1), n = v + uint64_t(c.sets) * kLineBytes, o = bank0(2);
-        const uint64_t x = bank0(3) + kLineBytes;   // bank 1, its own set
+        const uint64_t x = bank0(3);   // bank 0, its own set
         warm(b, v, 60);
         warm(b, o, 61);
         const uint64_t P = b.t;
         b.reqs[P] = {rd(0, 1, n)};
-        b.run(P + 3);
+        b.run(P + 4);
         const uint64_t F = b.mlc.back().first + b.mlc_lat;
         b.reqs[F + 1] = {rd(0, 2, o), rd(1, 3, v)};
         b.reqs[F + 1 + d].push_back(rd(1, 4, x));
         b.run(F + 120);
-        if (refused(b, "offered while in use")) ++caught;
         retried += b.h.bins["dcu_late_miss_retry"] != 0;
-        if (!ctl) {
+        {
           EXPECT(b.h.fails.empty(), "d %u: %s", d, b.h.fails.empty() ? "" : b.h.fails[0].c_str());
           EXPECT(b.rsp(2) && b.rsp(3) && b.rsp(4), "d %u: every read answered", d);
           const Rsp *r = b.rsp(3);
           EXPECT(r && !r->hit && r->line[0] == pat(v, 0), "d %u: the relook misses, refilled", d);
         }
-      }
-      if (ctl) {
-        EXPECT(caught >= 1, "the control is refused at some spacing");
-        return;
       }
       EXPECT(retried == 8, "the late miss retries on port 0: %u of 8", retried);
     });
@@ -899,7 +926,7 @@ int main(int argc, char **argv) {
       b.reqs[0] = {st(0, 1, 0x6000, 0, 0x11)};
       b.run(60);
       b.reqs[60] = {rd(0, 2, 0x6000 + uint64_t(c.sets) * kLineBytes)};
-      b.run(63);
+      b.run(64);
       F = b.mlc.back().first + b.mlc_lat;
     }
     bool wroteBack() const {
@@ -1151,7 +1178,7 @@ int main(int argc, char **argv) {
     EXPECT(b.h.bins["dcu_prb_ack_sent"] == 1, "against a sent entry");
     const uint64_t F = b.mlc[0].first + b.mlc_lat;
     b.reqs[b.t] = {rd(0, 2, 0x4000)};
-    b.run(b.t + 3);
+    b.run(b.t + 4);
     const uint64_t F2 = b.mlc.back().first + b.mlc_lat;
     b.probes[F2 + 1] = Probe{1, 0x4000, true};
     b.run(F2 + 30);
