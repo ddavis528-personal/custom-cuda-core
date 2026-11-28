@@ -4,6 +4,19 @@ Session `session_01QPk2jyUbWA7fW9YpUwqdxk`, started 2026-11-13. Start doc:
 `docs/miu-arch.md` (AR's handoff). Branch `claude/miu-dcu-microarch-spec-664pgr`
 in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
+## Now (2026-11-27 night)
+
+- Pushed cd94f843 (MA-35 fold fix f4952819 + handoff), SCOPED PASS.
+- DI-63/MI-51: p1 ignored the drop bit; fixed in sim/dcu/dcu_p1.cpp (skip drop unless brk dcu-drop-answers).
+  cm32priv model+p1 seed 1: 588 -> 0 CHECKs; control 588. Committed with this handoff; after push: response rows
+  DI-63 and MI-51 in MA tab + notices to DI, MI, OI (OI-225: rerun mem mismatches and gtw32 hang).
+- MA-35 figures row still owed: missrun/plog identical at 64/128/512. cm128 runs OOM'd (3 at once); old binary
+  diverges on cm128 model/model (miss id reuse), so no old baseline. Rerun new binary one set count at a time.
+- Ruled today: MI-52 (new miu_pass at H-1; pass always loses bank/line at A2; responses by req_id; MA rev 224;
+  MIU tab partition row due with slice 2's notice), DI-64 (mpick stamp, rev 225), DI-65 (rev 226),
+  DI-66 (A: straight D2 offer dropped, miss at H+6, +0.7% max; budgets; rev 227), DI-67 (mpick folded into
+  dcu_fill, rev 228/229), DI-68 (snv/sbk split accepted, rev 230). DCU tab rev 152.
+
 ## Now (2026-11-27 late)
 
 - MA-35 / MA-33 (3) DONE at Daniel's direction: fold = fold(PA[47:16]) ^ fold(PA[15:7+log2 sets]). Commit f4952819
