@@ -43,7 +43,7 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
 ## Register bookmarks (sweep of Fri 11-27)
-AR 426, OA 506, IS 201, TI 594, OI 427, CP 160, RA 159, RI 93, MA 221, MI 74, DI 99, DA 136,
+AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 221, MI 75, DI 99, DA 136,
 Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27; all 11 ponged ok, and
 every agent's ping to MI answered.
 - Sweep merges: ort on many criss-cross bases can run hours. Use scratchpad/sweep2.sh: merge-tree
@@ -58,7 +58,9 @@ every agent's ping to MI answered.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. TI landed c0883a36 (TI-592) with MI's 1ed1800b; merged into mi-dev (28b755f4, sweep). TI takes the
+0. MI-51 (rev 75, rung MA+OI): OI-225's model+p1 CHECKs are dcu_p1.cpp (MA's) ignoring drop; model
+   with dcu=stub or dcu=model is clean. Nothing owed unless MA answers.
+   TI landed c0883a36 (TI-592) with MI's 1ed1800b; merged into mi-dev (28b755f4, sweep). TI takes the
    miu_form clang++ fix (104678de, pushed in 208e4c46; MI-49/50, RI-64) in its next push and drops
    miu_form from heavy-units. Now: re-measure MI's IMPL_PINS rows on option-B params (held-wait
    875/876, privwin priv_form 10, UE rows; TI-590), then answer TI-590 in an MI row.
