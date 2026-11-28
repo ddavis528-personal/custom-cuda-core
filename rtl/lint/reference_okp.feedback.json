@@ -4,7 +4,8 @@
     "u_c.v_cy01h": {
       "from": {
         "cone": [
-          "om_cy04h"
+          "om_cy04h",
+          "u_x.a_cy02h>y_cy02h"
         ],
         "ahead": {
           "om_cy04h": 3
@@ -23,7 +24,7 @@
       ],
       "by": "OA",
       "date": "2026-11-24",
-      "why": "a cone over a parent register and a sibling's output, as u_gfree's leads over u_ren1 (OI-218)"
+      "why": "a cone over a parent register and a crossing of a sibling traced to a listed register (OA-498)"
     }
   }
 }

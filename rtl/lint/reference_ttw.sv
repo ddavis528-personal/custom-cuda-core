@@ -14,8 +14,11 @@ module reference_ttw (
   input  logic       ref_rst_r00h,
   input  logic [3:0] d_cy01h,
   input  logic       en_cy01h,
+  output logic [3:0] pk_cy01h,
   output logic [3:0] rd_cy02h
 );
+  assign pk_cy01h = d_cy01h;
+
   logic [3:0] tab_cy02h;
   always_ff @(posedge reference_core_clk) begin
     if (en_cy01h) tab_cy02h <= d_cy01h;

@@ -634,7 +634,8 @@ table, as u_map's read by u_dep; `reference_mtpp.sv` passes,
 stages: its inputs whose every path to an output passes through the table
 register are its table's write, excused at the connection (OI-217): only
 where the input's cone inside the writer ends solely at the declared
-registers' next value or enable, no other register or output, and only
+registers' next value or enable, no other register or output the parent
+connects (an output left unconnected reaches nothing, OI-219), and only
 while the table verifies in the same run (OA-497; `reference_ttp.sv`). An
 input reaching anything else, or a writer whose table does not verify,
 keeps its back edge (`bad_conn5.sv`).
@@ -682,9 +683,11 @@ n}}`, when the input reads combinational logic over several parent
 registers. Every register that reaches the input through the parent's
 combinational nets and crossings must be listed, and every listed one
 must reach it, each `ahead` matching its tags; the loop's last hop is one
-of them (`reference_cnp.sv`). A cone may list a sibling's output,
-`"<inst>.<output>"`, held to the same terms, its `ahead` from its net's tag
-(OI-218; `reference_kp.sv`, `bad_conn6.sv`). And a hop may cross a child through one of
+of them (`reference_cnp.sv`). A cone may also name a crossing of a sibling,
+`"<inst>.<input>><output>"`, whose output it reads and whose input traces
+back, through the parent's combinational nets, only to listed registers;
+every sibling output the cone reads must be so named (OA-498;
+`reference_kp.sv`, `bad_conn6.sv`). And a hop may cross a child through one of
 its registers, `"<inst>.<input>><register>><output>"`, where the input
 reaches that register's next value or enable and the register reaches the
 output, each combinationally (`reference_rhp.sv`); `bad_conn4.sv` holds

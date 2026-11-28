@@ -1,15 +1,16 @@
 {
-  "_comment": "OI-218's cone with a sibling output for reference_kp.sv.",
+  "_comment": "OA-498's cone with a traced crossing for reference_kp.sv.",
   "reads": {
     "u_c.v_cy01h": {
       "from": {
         "cone": [
           "m_cy04h",
-          "u_k.y_cy04h"
+          "q_cy04h",
+          "u_x.a_cy02h>y_cy02h"
         ],
         "ahead": {
           "m_cy04h": 3,
-          "u_k.y_cy04h": 3
+          "q_cy04h": 3
         }
       },
       "loop": [
@@ -25,7 +26,7 @@
       ],
       "by": "OA",
       "date": "2026-11-24",
-      "why": "a cone over a parent register and a sibling's output, as u_gfree's leads over u_ren1 (OI-218)"
+      "why": "a cone over a parent register and a crossing of a sibling traced to a listed register (OA-498)"
     }
   }
 }

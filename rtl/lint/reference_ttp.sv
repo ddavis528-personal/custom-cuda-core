@@ -6,7 +6,8 @@
 // parent's dd_cy04h, three stages past, and reaches u_w's output only
 // through its table register tab_cy02h, which u_r reads as a declared table
 // (reference_ttr.feedback.json). The back edge at u_w's input is the
-// table's write, excused by the verified table.
+// table's write, excused by the verified table. u_w's output pk_cy01h also
+// carries d but is left unconnected, so it reaches nothing (OI-219).
 // tools/check-1d.sh fails if ANY finding is reported here.
 //===----------------------------------------------------------------------===//
 
@@ -29,7 +30,7 @@ module reference_ttp (
     ee_cy04h <= en_cy03h;
   end
   reference_ttw u_w (.reference_core_clk, .ref_rst_r00h, .d_cy01h(dd_cy04h), .en_cy01h(ee_cy04h),
-    .rd_cy02h(rd_cy02h));
+    .pk_cy01h(), .rd_cy02h(rd_cy02h));
   reference_ttr u_r (.reference_core_clk, .ref_rst_r00h, .rd_cy02h(rd_cy02h), .pw_cy01h(pw_cy01h),
     .wr_cy01h(en_cy03h), .o_cy02h(o_cy02h));
 endmodule
