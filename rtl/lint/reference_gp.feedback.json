@@ -1,0 +1,18 @@
+{
+  "_comment": "OI-227 (e)'s loop through a register-free grandchild for reference_gp.sv.",
+  "reads": {
+    "u_c.a_cy01h": {
+      "from": "m_cy02h",
+      "ahead": 1,
+      "loop": [
+        "u_c.y_cy01h",
+        "m_cy02h"
+      ],
+      "assert": "conn_g_fresh",
+      "control": "conn-g-dup",
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "u_c's input reaches its output through its register-free child u_g, traced as u_c's logic (OI-227 (e)); the loop closes through m_cy02h"
+    }
+  }
+}

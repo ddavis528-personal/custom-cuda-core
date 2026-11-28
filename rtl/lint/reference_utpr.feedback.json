@@ -1,0 +1,15 @@
+{
+  "_comment": "bad_tport3.sv's reference_utpr (OI-226 (c)).",
+  "tables": {
+    "rd_cy04h": {
+      "reader": "hd_cy03h",
+      "ahead": 1,
+      "writer": "urd_cy04h",
+      "assert": "hd_read_not_written",
+      "control": "tport-dup",
+      "by": "OI",
+      "date": "2026-11-24",
+      "why": "the parent's hold words, its own register, read by its child's waiting pick a stage early, never as they are written (OA-492 (3), OI-226 (c))"
+    }
+  }
+}

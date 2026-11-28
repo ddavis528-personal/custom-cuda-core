@@ -1,27 +1,6 @@
 {
   "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-502): u_go.pl (OA-494), u_gfree's section allocations sa_v/sa_row/sa_sec (OA-498) and returns rt_v/rt_row (OA-501) and leads sa_l/rt_l (OA-502), each signed by OA in the register.",
   "reads": {
-    "u_go.pl_cq02h": {
-      "from": "pl_cq03h",
-      "ahead": 1,
-      "loop": [
-        "u_go.lane_c_cq02h",
-        "u_go.lane_v_cq02h",
-        "u_ren1.lane_v_cq02h>l_v",
-        "pl_cq03h"
-      ],
-      "assert": [
-        "no_over_grant_names",
-        "no_over_grant_rs",
-        "no_over_grant_room"
-      ],
-      "control": [
-        "no-take-q"
-      ],
-      "by": "OA",
-      "date": "2026-11-24",
-      "why": "the go's lagged take (OA-490, OI-207, OA-489, OA-494): u_go grants lanes at 02 (lane_v_cq02h, lane_c_cq02h); they cross u_ren1, a register-free helper, combinationally into l_v, whose per-class takes the parent counts into pl_cq03h; u_go's pool correction reads it a cycle later as its pl at 02. u_go.wt_cq02h is no register: ooe_go's always_comb sums wtq_cq02h, combinational on pl; it is listed as it reads pl, and it feeds the free lists' alloc_req, not the takes. A stale take over-grants names, RS rows or a slot's room."
-    },
     "u_gfree.sa_v_cq01h": {
       "from": "u_ren1n.n_sa_v",
       "ahead": 2,
@@ -139,13 +118,11 @@
         "cone": [
           "u_go.lane_v_cq02h",
           "u_go.lane_c_cq02h",
-          "u_go.wb_cq02h",
           "cwt_cq02h"
         ],
         "ahead": {
           "u_go.lane_v_cq02h": 2,
           "u_go.lane_c_cq02h": 2,
-          "u_go.wb_cq02h": 2,
           "cwt_cq02h": 2
         }
       },
@@ -162,7 +139,7 @@
       ],
       "by": "OA",
       "date": "2026-11-24",
-      "why": "u_gfree's return lead (OI-81/82, OA-499): a narrow lane may return its row next cycle, led into the free list a cycle ahead from u_go's grant at 02 (lane_v, lane_c, wb) and the lane's codes (cwt_cq02h); the lead is the free list's 00, two stages ahead by design. The loop closes as sa_l's, through fsp_cq03h, ucg_cq04h and u_go's room_g/fitsw. A late lead leaves a return unled: rt_led catches it (control rtl-late)."
+      "why": "u_gfree's return lead (OI-81/82, OA-499): a narrow lane may return its row next cycle, led into the free list a cycle ahead from u_go's grant at 02 (lane_v, lane_c) and the lane's codes (cwt_cq02h); the lead is the free list's 00, two stages ahead by design. The loop closes as sa_l's, through fsp_cq03h, ucg_cq04h and u_go's room_g/fitsw. A late lead leaves a return unled: rt_led catches it (control rtl-late)."
     }
   }
 }
