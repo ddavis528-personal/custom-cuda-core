@@ -37,7 +37,7 @@ exact-blob history, else exit 3 naming the files). /home/user/ti-ret is
 gone: run the sweep from /home/user/ti-rp.
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-606 (rev 606; TI-603/604 never written). Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-607 (rev 607; TI-603/604 never written). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -71,7 +71,7 @@ background `while pgrep` wait.
   waypred doc) gating: job-gate-push-20261127-232014-28749. On pass: landed
   rows to OI+OA (lint + OI's drafts), RI (RI-70), MA (MA-35), MI (MI-53).
 - Then ONE gate-push from ti-rau: merge ti-rp 986a78e9 (AR 430: sweep-merge
-  signs with commit.gpgsign) + ti-rau 4eb9a3d5 (RA-164: RAU stub reserves a
+  signs with commit.gpgsign) + ti-rau d7a42351 (RA-164 + AR 431/432: CCV_PCA_PLACES 29 spare, RAU stub reserves a
   PCA place at demote; demote-no-place control, vadd6 CCV_RAU_PLACES=2) onto
   the landed tip. Then rows Re AR 430 (AR) and RA-164 landed (RA, OI: OI
   reruns the OA-504 sweep). TI-606 already answered RA-164 as built.
