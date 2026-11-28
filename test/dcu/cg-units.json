@@ -1,5 +1,5 @@
 {
- "_comment": "Clock-gating and logic-depth units for DI's DCU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'; the partition is MA's Phase 2 slice 1, DCU tab rev 82). Each bench is the module's value-model bench (test/dcu/*_tb.cpp) in its --cg mode, built by test/dcu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work nearly every cycle. dcu_cap is one request slot's ccv_miu_dcu_req capture at its one size; dcu_btag is bank 0's tag RFs and compare at full size (64 sets of 8 ways), which is also the RF's smallest legal size; dcu_bctl is bank 0's control (arbitration, queue, fold table, PLRU) at full size.",
+ "_comment": "Clock-gating and logic-depth units for DI's DCU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'; the partition is MA's Phase 2 slice 1, DCU tab rev 82). Each bench is the module's value-model bench (test/dcu/*_tb.cpp) in its --cg mode, built by test/dcu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work nearly every cycle. dcu_cap is one request slot's ccv_miu_dcu_req capture at its one size; dcu_btag is bank 0's tag RFs and compare at full size (64 sets of 8 ways), which is also the RF's smallest legal size; dcu_bctl is bank 0's control (arbitration, queue, fold table, PLRU) at full size; dcu_mshr is bank 0's miss buffers (MA-34: one instance a bank, 16 entries) and dcu_fill the fill buffers, measured twice: under fill_tb (the buffers) and under mpick_tb (dcu_fill_mpick: its cross-bank picks of the retry and the MLC request, g_mpick, folded in from dcu_mpick by DI-67, MA rev 229).",
  "units": [
   {
    "name": "dcu_cap",
@@ -66,6 +66,23 @@
     "build": "test/dcu/cg-build.sh dcu_mshr {dir}",
     "run": "{dir}/tb --cg {scenario} {vcd}",
     "scope": "dcu_mshr"
+   }
+  },
+  {
+   "name": "dcu_fill_mpick",
+   "module": "dcu_fill",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/common/ccv_common_secded_enc.sv",
+    "rtl/dcu/dcu_fill.sv"
+   ],
+   "params": {},
+   "clock": "dcu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/dcu/cg-build.sh dcu_fill_mpick {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "dcu_fill"
    }
   },
   {
