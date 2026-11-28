@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-27. Keep this current at every task's end; it is what
+Updated 2026-11-28. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -37,7 +37,7 @@ exact-blob history, else exit 3 naming the files). /home/user/ti-ret is
 gone: run the sweep from /home/user/ti-rp.
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-607 (rev 607; TI-603/604 never written). Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-613 (rev 609; TI-603/604 never written). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -67,14 +67,14 @@ background `while pgrep` wait.
   coremark128).
 
 ## In flight
-- ti-lint4 (d5903f2b: lint (a)(c)(e)(f)(g)+B, MA-35, MI-53 + bin, RI-70 -O0,
-  waypred doc) gating: job-gate-push-20261127-232014-28749. On pass: landed
-  rows to OI+OA (lint + OI's drafts), RI (RI-70), MA (MA-35), MI (MI-53).
-- Then ONE gate-push from ti-rau: merge ti-rp 986a78e9 (AR 430: sweep-merge
-  signs with commit.gpgsign) + ti-rau d7a42351 (RA-164 + AR 431/432: CCV_PCA_PLACES 29 spare, RAU stub reserves a
-  PCA place at demote; demote-no-place control, vadd6 CCV_RAU_PLACES=2) onto
-  the landed tip. Then rows Re AR 430 (AR) and RA-164 landed (RA, OI: OI
-  reruns the OA-504 sweep). TI-606 already answered RA-164 as built.
+- Nothing gating. Landed 0dcdeab6 on both branches (SCOPED PASS, 11-28):
+  RA-164 + AR 431/432 (PCA spare place 29, RAU reserves at demote) and AR 430
+  (sweep-merge signs); rows TI-612/613 rung to RA, AR, OI, RI. Before it
+  d5903f2b (lint (a)(c)(e)(f)(g)+B, MA-35, MI-53, RI-70; TI-608..611 rung).
+  OI owes the gtw32 acceptance + OA-504 re-sweep.
+- Disk: 11-28 a gate died on a full disk. Stale build/synth-cache dirs in
+  finished worktrees (~2.6 GB each) were the cause: keep one live cache (now
+  ti-rau's) and delete or move the others before a gate.
 - Next: task 90 after the next sweep; then the open work below, plus DI-38 (1) (task 72, needs DI's spec),
   MI 29603c02 held-wait re-pin (task 80), AR 417 swap-class control (task 79),
   task 76 credit modules.
