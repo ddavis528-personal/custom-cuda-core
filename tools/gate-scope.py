@@ -88,6 +88,7 @@ MAP = [
     ("tools/gate-summary.py", []),
     ("tools/bg-run.sh", []),
     ("tools/daily-sweep.sh", []),
+    ("tools/sweep-merge.sh", ["iface"]),      # its selftest runs there
     ("tools/push-lib.sh", []),
     ("tools/make-release.sh", []),
     ("tools/setup-session-home.py", []),

@@ -317,6 +317,11 @@ def signed(by, signers):
 
 
 IDENT_RE = re.compile(r"\b[a-z]\w*\b")
+# The names an expression reads as nets: IDENT_RE less a call's name (a
+# function, declared in the module or a package, called as name(...)): the
+# call is logic, not a net or a register; its arguments still count (OI-226
+# (a)).
+READ_RE = re.compile(r"(?<![$`'])\b[a-z]\w*\b(?!\s*\()")
 
 
 def feedback_decls(dirpath, module):
@@ -408,7 +413,51 @@ def row_index(expr, ctx, loopv):
     return " ".join(sides) if sides else expr
 
 
-ASSERT_RE = re.compile(r"(?:`CCV_ASSERT(?:_AT)?|\bassert\s+property|\bassert)\s*\(")
+ASSERT_RE = re.compile(r"(?:`CCV_ASSERT\w*|\bassert\s+property|\bassert)\s*\(")
+_amacros = {}
+
+
+def assert_macros():
+    """{macro: index of its NAME argument}: every `CCV_ASSERT* macro the
+    repo's assertion header defines (CCV_ASSERT, _AT, _T, _KNOWN, ...;
+    OI-230 (f))."""
+    if not _amacros:
+        p = os.path.join(ROOT, "rtl", "include", "ccv_assert.svh")
+        txt = open(p).read() if os.path.exists(p) else ""
+        for m in re.finditer(r"`define\s+(CCV_ASSERT\w*)\s*\(([^)]*)\)", txt):
+            ps = [x.strip() for x in m.group(2).split(",")]
+            if "NAME" in ps:
+                _amacros.setdefault(m.group(1), ps.index("NAME"))
+        _amacros.setdefault("CCV_ASSERT", 0)
+        _amacros.setdefault("CCV_ASSERT_AT", 2)
+    return _amacros
+
+
+def assertion_args(label, text):
+    """The argument texts of every assertion labelled label in text, by
+    any `CCV_ASSERT* macro, the label read at its NAME position."""
+    out = []
+    mac = assert_macros()
+    for m in re.finditer(r"`(CCV_ASSERT\w*)\s*\(", text):
+        if m.group(1) not in mac:
+            continue
+        inner, _ = balanced(text, m.end() - 1)
+        args, depth, cur = [], 0, ""
+        for ch in inner:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+            if ch == "," and depth == 0:
+                args.append(cur)
+                cur = ""
+            else:
+                cur += ch
+        args.append(cur)
+        i = mac[m.group(1)]
+        if i < len(args) and args[i].strip() == str(label):
+            out.append(inner)
+    return out
 
 
 def array_decl(body, name):
@@ -449,16 +498,80 @@ def index_reads(text, name):
     return idx, bare
 
 
+_funcs = {}
+FUNC_RE = re.compile(r"\b(function|task)\b(.*?)\bend(?:function|task)\b", re.S)
+LOCAL_RE = re.compile(r"\b(?:input|output|inout|ref|logic|bit|int|integer|reg|byte|shortint|"
+                      r"longint|automatic|static|signed|unsigned|genvar)\b"
+                      r"(?:\s+(?:logic|bit|signed|unsigned|int))*\s*(?:\[[^\]]*\]\s*)*"
+                      r"([a-z]\w*)")
+
+
+def module_funcs(src):
+    """{name: the names its body reads from the module's scope}: each
+    function or task declared in src, less its own name, arguments and
+    locals, its calls of the others expanded (OI-226 (a)). A call reads its
+    arguments and these: a function reading a module net directly is logic
+    over that net."""
+    key = hash(src)
+    if key in _funcs:
+        return _funcs[key]
+    raw = {}
+    for m in FUNC_RE.finditer(src):
+        txt = m.group(2)
+        k = re.search(r"(?<![$\w`'])([a-z]\w*)\s*(?=\(|;)", txt)
+        if not k:
+            continue
+        name = txt[k.start(1):k.end(1)]
+        body = txt[k.end(1):]
+        local = {name} | set(re.findall(r"\bfor\s*\(\s*(?:int|integer|genvar)?\s*([a-z]\w*)\s*=", body))
+        # Its arguments and locals: each declaration's names, to its ; or ).
+        for d in LOCAL_RE.finditer(body):
+            j = d.start(1)
+            e = min([x for x in (body.find(";", j), body.find(")", j)) if x >= 0] or [len(body)])
+            decl = re.sub(r"\[[^\]]*\]|=[^,]*", " ", body[j:e])
+            for part in decl.split(","):
+                w = re.findall(r"[a-z]\w*", part)
+                if w:
+                    local.add(w[-1])
+            local.add(d.group(1))
+        calls = set(re.findall(r"(?<![$`'])\b([a-z]\w*)\s*\(", body))
+        kw = SV_KEYWORDS | {"automatic", "static", "integer", "ref", "void", "unique0",
+                            "shortint", "longint", "genvar", "type"}
+        raw[name] = (set(READ_RE.findall(body)) - local - kw, calls - {name})
+    out = {}
+    for f in raw:
+        seen, todo, got = set(), [f], set()
+        while todo:
+            g = todo.pop()
+            if g in seen or g not in raw:
+                continue
+            seen.add(g)
+            got |= raw[g][0]
+            todo.extend(raw[g][1])
+        out[f] = got
+    _funcs[key] = out
+    return out
+
+
+def reads(expr, funcs):
+    """The names an expression reads: READ_RE's, and for each call of a
+    function of the module, the module names its body reads."""
+    out = set(READ_RE.findall(expr))
+    for f in re.findall(r"(?<![$`'])\b([a-z]\w*)\s*\(", expr):
+        out |= funcs.get(f, set())
+    return out
+
+
 def data_graph(src):
     """deps[net]: the names its assignments' right-hand sides read, and no
     condition: the data a register is loaded with, apart from its enable."""
-    deps = {}
+    deps, fn = {}, module_funcs(src)
     for kind, clk, body, ln, pos in always_blocks(src):
         for _, lhs, _, rhs in assignments(body):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+            deps.setdefault(lhs, set()).update(reads(rhs, fn))
     for m in re.finditer(r"\bassign\s+[^;]+;", src):
         for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+            deps.setdefault(lhs, set()).update(reads(rhs, fn))
     return deps
 
 
@@ -488,21 +601,21 @@ def dep_graph(src):
     assignments read, conditions included (an if's or a case's selector
     steers the value as much as its right-hand side does); flops are the
     names an always_ff assigns."""
-    deps, flops = {}, set()
+    deps, flops, fn = {}, set(), module_funcs(src)
     def conds(body):
         out = set()
         for m in re.finditer(r"\b(?:if|case|casez|casex)\s*\(", body):
-            out |= set(IDENT_RE.findall(balanced(body, m.end() - 1)[0]))
+            out |= reads(balanced(body, m.end() - 1)[0], fn)
         return out
     for kind, clk, body, ln, pos in always_blocks(src):
         c = conds(body)
         for _, lhs, _, rhs in assignments(body):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs), c)
+            deps.setdefault(lhs, set()).update(reads(rhs, fn), c)
             if kind == "ff":
                 flops.add(lhs)
     for m in re.finditer(r"\bassign\s+[^;]+;", src):
         for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
-            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+            deps.setdefault(lhs, set()).update(reads(rhs, fn))
     return deps, flops
 
 
@@ -585,8 +698,11 @@ def always_blocks(src):
         em = re.match(r"\s*@\s*\(\s*(pos|neg)edge\s+([\w.]+)", rest)
         if em:
             clk = (em.group(2), em.group(1))
-        nxt = re.search(r"\balways(_ff|_comb|_latch)?\b|\bassign\b|\bendmodule\b",
-                        rest)
+        # A function or task declared after the block ends it too: its body
+        # is no always block's, and its name, assigned there, no register
+        # (OI-226 (a)).
+        nxt = re.search(r"\balways(_ff|_comb|_latch)?\b|\bassign\b|\bendmodule\b|"
+                        r"\bfunction\b|\btask\b", rest)
         body = rest[:nxt.start()] if nxt else rest
         out.append((kind, clk, body, line_of(src, m.start()), m.start()))
     return out
@@ -2161,11 +2277,70 @@ def conn_ids(expr):
             if not UNSTAGED_RE.search(w) and w not in ("rst_n",)]
 
 
-def port_paths(body, ports):
+_mods = {"extra": {}, "dirs": set(), "inl": {}}
+
+
+def known_modules(fbdir=None, local=None):
+    """{module: (ports, body)}: the tree's (module_index), the lint fixtures'
+    beside fbdir, and a file's own, for port_paths to inline children by
+    name. Registered as check_connections reads each file."""
+    if local:
+        for k, v in local.items():
+            _mods["extra"].setdefault(k, v)
+    if fbdir and fbdir not in _mods["dirs"] and os.path.isdir(fbdir):
+        _mods["dirs"].add(fbdir)
+        for fn in sorted(os.listdir(fbdir)):
+            if fn.endswith(".sv"):
+                for k, v in module_headers(strip_comments(
+                        open(os.path.join(fbdir, fn)).read())).items():
+                    _mods["extra"].setdefault(k, v)
+    out = dict((k, v[1:]) for k, v in module_index().items())
+    out.update(_mods["extra"])
+    return out
+
+
+def register_free(name, mods, depth=0):
+    """Whether module name, and every child it instantiates, has no register
+    or latch: its parent's combinational logic (OA 485)."""
+    if name not in mods or depth > 16:
+        return False
+    body = mods[name][1]
+    if dep_graph(body)[1] or re.search(r"\balways_latch\b", body):
+        return False
+    return all(register_free(c, mods, depth + 1)
+               for c, _, _, _ in instances(body, mods, {}).values())
+
+
+def inline_deps(body, depth=0):
+    """dep_graph(body), with each register-free child (recursively) inlined
+    as the module's combinational logic: each output's net reads the nets
+    of the inputs it reaches (OI-227 (e), as verify_regloop does for a
+    parent, OA 485). A child with a register is not inlined: its reach
+    stops there."""
+    key = hash(body)
+    if key in _mods["inl"]:
+        return _mods["inl"][key]
+    deps, flops = dep_graph(body)
+    mods = known_modules()
+    if depth <= 16:
+        deps = {k: set(v) for k, v in deps.items()}
+        for iname, (child, cports, cbody, conns) in instances(body, mods, {}).items():
+            if not register_free(child, mods):
+                continue
+            for o, reach in port_paths(cbody, cports, depth + 1).items():
+                for on in conn_ids(conns.get(o, "")):
+                    for i in reach:
+                        deps.setdefault(on, set()).update(conn_ids(conns.get(i, "")))
+    _mods["inl"][key] = (deps, flops)
+    return deps, flops
+
+
+def port_paths(body, ports, depth=0):
     """({output: {input: comb}}): for each output, the inputs it depends on,
     through the module's nets and registers, and whether some path is
-    combinational (no register on it)."""
-    deps, flops = dep_graph(body)
+    combinational (no register on it). A register-free child is traced as
+    the module's own logic (OI-227 (e))."""
+    deps, flops = inline_deps(body, depth)
     ins = {p for p, d in ports.items() if d == "input"}
     out = {}
     for o, d in ports.items():
@@ -2192,6 +2367,7 @@ def check_connections(src, rel, add, signers, fbdir):
     """CCV-L23 across each instance connection of the file's modules."""
     local = module_headers(src)
     idx = module_index()
+    known_modules(fbdir, local)
     entries = {conn_key(e) for e in conn_ratchet()}
     for parent, (pports, pbody) in local.items():
         _conn["seen"].add(parent)
@@ -2291,7 +2467,8 @@ def check_connections(src, rel, add, signers, fbdir):
                     # feeds only the next value or enable of the register its
                     # input reads, and nothing else.
                     if deficit == 1 and not cseq and \
-                            helper_self_loop(pbody, pt[i][2], pt[o][2], inst):
+                            helper_self_loop(pbody, pt[i][2], pt[o][2], inst, pports,
+                                             pt[o][0]):
                         continue
                     key = "%s.%s" % (inst, i)
                     if key in xdecl:
@@ -2301,6 +2478,12 @@ def check_connections(src, rel, add, signers, fbdir):
                     # sibling's declared table writer, and its input reaches
                     # the output only through the table register.
                     if inst in table_regs and only_into(cbody, cports, i, table_regs[inst], read_outs):
+                        continue
+                    # The child's own verified port table on this input (OA-492
+                    # (3)): the read of a later word is declared safe, within
+                    # its ahead (OI-230 (g): u_keep's rows in ooe_decrx).
+                    pta = port_table_ahead(child, crel, cbody, i)
+                    if pta is not None and deficit <= pta:
                         continue
                     e = (parent, inst, i, None, pt[i][1], si[2], deficit,
                          "combinational" if comb else "register")
@@ -2333,8 +2516,10 @@ def verify_port_table(n, port, d, body, graph, signers, path):
     "assert", "control", "by", ...}}} (OA-492 (3)): by an architect; the
     reader reads the port; ahead is the port's stage less the reader's own;
     in the parent, the port is fed directly by instance <inst>'s output that
-    is its register <reg>; an assertion with that label in this module, that
-    the read never meets a write; and a bench control that breaks it."""
+    is its register <reg>, or with "writer": "<reg>" by the parent's own
+    register <reg>, at the port's stage (OI-226 (c)); an assertion with that
+    label in this module, that the read never meets a write; and a bench
+    control that breaks it."""
     if not signed(d.get("by"), signers):
         return "not an architect's (by %r; it needs %s)" % (d.get("by"), " and ".join(signers))
     reader = d.get("reader")
@@ -2348,9 +2533,11 @@ def verify_port_table(n, port, d, body, graph, signers, path):
         return "ahead is %r, but %s lies %d stage(s) past its reader's (%02d)" % (
             d.get("ahead"), port, sp[2] - at, at)
     w = str(d.get("writer", ""))
-    if "." not in w:
-        return "\"writer\" names no <instance>.<register>"
-    wi, wreg = w.split(".", 1)
+    if not re.fullmatch(r"(?:[a-z]\w*\.)?[a-z]\w*", w):
+        return ("\"writer\" names no <instance>.<register>, nor <register> of the "
+                "parent's own")
+    own = "." not in w
+    wi, wreg = (None, w) if own else w.split(".", 1)
     fbdir = os.path.dirname(path)
     # The parent: a module, in the tree or beside this file, instantiating n.
     cands = dict((k, v[1:]) for k, v in module_index().items())
@@ -2364,9 +2551,26 @@ def verify_port_table(n, port, d, body, graph, signers, path):
             parents.append((pn, pbody))
     if not parents:
         return "no module instantiates %s, so its writer cannot be traced" % n
+    pnets = []
     for pn, pbody in parents:
         insts = instances(pbody, {}, dict((k, (None,) + v) for k, v in cands.items()), fbdir)
         rd = [v for v in insts.values() if v[0] == n]
+        pnets.append((pn, pbody, set(x for _, _, _, cc in rd for x in conn_ids(cc.get(port, "")))
+                      | {wreg}))
+        if own:
+            # The parent's own register (OI-226 (c)): the port is its net
+            # alone, the words arriving as the register holds them, at the
+            # port's own stage.
+            if wreg not in dep_graph(pbody)[1]:
+                return "%s is not a register of %s" % (wreg, pn)
+            sw = stage_of(wreg)
+            if not sw or sw[2] != sp[2]:
+                return ("%s's register %s is not at %s's stage (%02d)"
+                        % (pn, wreg, port, sp[2]))
+            for _, _, _, conns in rd:
+                if conn_ids(conns.get(port, "")) != [wreg]:
+                    return "in %s, %s is not fed directly by its register %s" % (pn, port, wreg)
+            continue
         if wi not in insts:
             return "%s has no instance %s" % (pn, wi)
         wchild, wports, wbody, wconns = insts[wi]
@@ -2394,10 +2598,35 @@ def verify_port_table(n, port, d, body, graph, signers, path):
                         % (pn, port, wi, wreg))
     labs = d.get("assert") or []
     labs = [labs] if isinstance(labs, str) else list(labs)
-    if not labs or any(not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(l)), body)
-                       for l in labs):
+    if not labs:
+        return "no assertion named in %s that the read never meets a write" % n
+    # A register-free module holds no assertion (no clock): its table's is
+    # its parent's, where the writer is, and must name that table, the nets
+    # the parent connects to the port or the register that writes it
+    # (OI-230 (g), OA 514). A module with a register holds its own.
+    mods = dict(cands)
+    if register_free(n, mods):
+        for pn, pbody, tnets in pnets:
+            for l in labs:
+                hits = assertion_args(l, pbody)
+                if not hits:
+                    return ("no assertion %r in %s, the parent of the register-free %s, that "
+                            "the read never meets a write" % (l, pn, n))
+                # Named directly, or through the parent's combinational nets
+                # its expression reads (a check net, as ooe_decrx's
+                # chk_rdwr_cq02h).
+                pdeps, pflops = dep_graph(pbody)
+                def names(h):
+                    ids = set(READ_RE.findall(h))
+                    nets, regs = cone(pdeps, pflops, ids)
+                    return (ids | nets | regs) & tnets
+                if not any(names(h) for h in hits):
+                    return ("assertion %r in %s does not name the table: it reads none of "
+                            "%s, directly or through its combinational nets"
+                            % (l, pn, ", ".join(sorted(tnets))))
+    elif any(not assertion_args(l, body) for l in labs):
         return ("no assertion %s in %s that the read never meets a write"
-                % (", ".join(map(repr, labs)) or "named", n))
+                % (", ".join(map(repr, labs)), n))
     ctls = d.get("control") or []
     ctls = [ctls] if isinstance(ctls, str) else list(ctls)
     blk = os.path.relpath(fbdir, ROOT).replace(os.sep, "/").split("/")
@@ -2407,6 +2636,25 @@ def verify_port_table(n, port, d, body, graph, signers, path):
         return "its control is missing or named nowhere in %s" % " or ".join(
             os.path.relpath(h, ROOT) for h in homes)
     return None
+
+
+_ptab = {}
+
+
+def port_table_ahead(child, crel, cbody, port):
+    """The ahead of child's declared table on input port, if it verifies in
+    this run, else None."""
+    cdir = os.path.join(ROOT, os.path.dirname(crel)) if crel else ROOT
+    key = (child, cdir, port)
+    if key not in _ptab:
+        _ptab[key] = None
+        _, _, _, tbl = feedback_decls(cdir, child)
+        d = tbl.get(port)
+        if isinstance(d, dict) and isinstance(d.get("ahead"), int):
+            if not verify_port_table(child, port, d, cbody, dep_graph(cbody),
+                                     feedback_signers(cdir), os.path.join(cdir, child + ".sv")):
+                _ptab[key] = d["ahead"]
+    return _ptab[key]
 
 
 def sibling_tables(pbody, local, idx, fbdir):
@@ -2492,15 +2740,34 @@ def only_into(body, ports, i, regs, read=None):
     rr, outs = reach(i)
     return (not outs) and bool(rr) and rr <= good
 
-def helper_self_loop(pbody, inets, onets, inst):
+def helper_self_loop(pbody, inets, onets, inst, pports=None, ostage=None):
     """Whether the helper's input reads one parent register R and its
     output's nets feed, through the parent's combinational nets, R's next
     value or enable and nothing else: no other register, no output port, no
-    other instance."""
+    other instance (OA-488 (1)). The input may concatenate R with other
+    nets (OI-226 (b)): its combinational cone's sources are R and nets
+    tagged at or before the output's own stage (ostage), nothing later and
+    nothing untagged. An output whose nets nothing reads reaches nothing
+    (OI-219), so it passes too."""
     deps, flops = dep_graph(pbody)
-    if len(inets) != 1 or inets[0] not in flops:
-        return False
-    reg = inets[0]
+    if len(inets) == 1 and inets[0] in flops:
+        reg = inets[0]
+    else:
+        if ostage is None:
+            return False
+        loopv = loop_vars(pbody)
+        nets, regs = cone(deps, flops, inets)
+        srcs = set(regs) | {n for n in nets if not deps.get(n) and n not in loopv}
+        late = set()
+        for n in srcs:
+            st = stage_of(n)
+            if not st or st[1] == "r":
+                return False
+            if st[2] > ostage:
+                late.add(n)
+        if len(late) != 1 or not late <= flops:
+            return False
+        reg = late.pop()
     users = {}
     for n, ds in deps.items():
         for x in ds:
@@ -2517,7 +2784,9 @@ def helper_self_loop(pbody, inets, onets, inst):
                 sinks.add(u)
             else:
                 todo.append(u)
-    if sinks != {reg}:
+    if not sinks <= {reg}:
+        return False
+    if pports and any(pports.get(n) == "output" for n in seen):
         return False
     # Read anywhere else (another instance's port, an output port's
     # assignment outside an always): not a self-loop.
@@ -2568,7 +2837,7 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
     named = {key.split(".", 1)[0]}
     fr0 = d.get("from")
     srcs = (fr0.get("cone") or []) if isinstance(fr0, dict) else [fr0]
-    for x in list(d.get("loop") or []) + [str(g) for g in srcs if g]:
+    for x in list(d.get("loop") or []) + list(d.get("via") or []) + [str(g) for g in srcs if g]:
         if "." in str(x):
             named.add(str(x).split(".", 1)[0])
         elif str(x) in insts:
@@ -2588,6 +2857,11 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
             d.get("by"), " and ".join(signers))
     ri, rp = key.split(".", 1)
     fr = d.get("from", "")
+    if d.get("readback"):
+        why = verify_readback(ri, rp, d, pbody, insts)
+        if why:
+            return why
+        return verify_stale(d, pbody, insts, ri, fbdir)
     if isinstance(fr, dict) or "." not in str(fr):
         why = verify_regloop(ri, rp, fr, d, pbody, insts)
         if why:
@@ -2640,6 +2914,157 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
             not any(rp in r for r in port_paths(insts[ri][2], insts[ri][1]).values()):
         return "%s's input %s reaches none of its outputs" % (ri, rp)
     return verify_stale(d, pbody, insts, ri, fbdir)
+
+
+def parent_graph(pbody, insts, crossings=(), all_comb=False):
+    """(deps, flops) of a parent with each register-free child's in-to-out
+    paths joined as its logic (OA 485), each named crossing
+    "<inst>.<in>><out>" joined too, and with all_comb every child's
+    combinational in-to-out path."""
+    deps, flops = dep_graph(pbody)
+    deps = {k: set(v) for k, v in deps.items()}
+    for hi, (hchild, hports, hbody, hconns) in insts.items():
+        free = not dep_graph(hbody)[1]
+        if not free and not all_comb:
+            continue
+        for o, reach in port_paths(hbody, hports).items():
+            for on in conn_ids(hconns.get(o, "")):
+                for i, comb in reach.items():
+                    if free or comb:
+                        deps.setdefault(on, set()).update(conn_ids(hconns.get(i, "")))
+    for h in crossings:
+        if h.count(">") == 1 and "." in h:
+            ci, rest = h.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            if ci in insts:
+                for on in conn_ids(insts[ci][3].get(cout, "")):
+                    deps.setdefault(on, set()).update(conn_ids(insts[ci][3].get(cin, "")))
+    return deps, flops
+
+
+def verify_readback(ri, rp, d, pbody, insts):
+    """A register read back a cycle on (OA 513, OI-229 option B):
+    {"<inst>.<input>": {"readback": true, "from": {"cone": [<parent
+    registers>], "ahead": {<register>: n}}, "via": ["<inst>.<in>><out>",
+    ...], "assert", "control", "by", "date", "why"}}, no "loop". (1) The
+    sources of the input's net past the stage the reader's outputs allow it
+    (registers, and sibling outputs), traced through the parent's
+    combinational nets, its register-free children and the named crossings,
+    are exactly the cone, each ahead its stage less the input's tag; each
+    crossing is a combinational path its output's net reaches the input
+    through. (2) No closing path: no output of the reader that the input
+    reaches feeds, through the parent's combinational nets and any child's
+    combinational path, the next value or enable of a cone register."""
+    if ri not in insts:
+        return "%s is no instance of this module" % ri
+    rchild, rports, rbody, rconns = insts[ri]
+    if rports.get(rp) != "input":
+        return "%s is no input of %s" % (rp, ri)
+    if d.get("loop"):
+        return "a read-back names no \"loop\": it is the form for a read with none"
+    fr = d.get("from")
+    listed = [str(x) for x in ((fr or {}).get("cone") or [])] if isinstance(fr, dict) else []
+    aheads = (fr or {}).get("ahead") or {} if isinstance(fr, dict) else {}
+    if not listed:
+        return "a read-back's \"from\" is {\"cone\": [<registers>], \"ahead\": {...}}"
+    via = [str(x) for x in (d.get("via") or [])]
+    deps, flops = parent_graph(pbody, insts, via)
+    for g in listed:
+        if g not in flops:
+            return "cone register %s is no register of this module" % g
+    inet = conn_ids(rconns.get(rp, ""))
+    nets, regs = cone(deps, flops, inet)
+    for h in via:
+        if h.count(">") != 1 or "." not in h:
+            return "via %s is not \"<inst>.<input>><output>\"" % h
+        ci, rest = h.split(".", 1)
+        cin, cout = rest.split(">", 1)
+        if ci not in insts or insts[ci][1].get(cin) != "input" or \
+                insts[ci][1].get(cout) != "output":
+            return "via %s names no input and output of an instance here" % h
+        if not port_paths(insts[ci][2], insts[ci][1]).get(cout, {}).get(cin):
+            return "via %s: %s has no combinational path from %s to %s" % (
+                h, insts[ci][0], cin, cout)
+        if not set(conn_ids(insts[ci][3].get(cout, ""))) & (nets | set(inet)):
+            return "via %s does not reach %s.%s" % (h, ri, rp)
+    # Sibling outputs the cone reads are sources as registers are.
+    outnet = {}
+    for oi, (och, opt, obody, oconns) in insts.items():
+        if oi == ri or not dep_graph(obody)[1]:
+            continue
+        for o, dr in opt.items():
+            if dr == "output":
+                for nn in conn_ids(oconns.get(o, "")):
+                    outnet[nn] = "%s.%s" % (oi, o)
+    srcs = {r: r for r in regs}
+    srcs.update({nn: outnet[nn] for nn in nets if nn in outnet})
+    # The stage the reader's outputs allow the input: the least of P(O)
+    # less the child's own latency S(O) - S(I) over the outputs it reaches.
+    paths = port_paths(rbody, rports)
+    cseq = bool(dep_graph(rbody)[1])
+    sp = stage_of(rp)
+    if not sp:
+        return "%s carries no stage tag" % rp
+    allow = []
+    for o, reach in paths.items():
+        if rp not in reach:
+            continue
+        po = [stage_of(w)[2] for w in conn_ids(rconns.get(o, "")) if stage_of(w)]
+        so = stage_of(o) if cseq else None
+        if po:
+            allow.append(min(po) - ((so[2] - sp[2]) if so else 0))
+    if not allow:
+        return "%s's input %s reaches no output the parent tags" % (ri, rp)
+    late = set()
+    for n, name in srcs.items():
+        st = stage_of(n)
+        if st and st[2] > min(allow):
+            late.add(name)
+    missing = sorted(late - set(listed))
+    extra = sorted(set(listed) - late)
+    if missing:
+        return ("source(s) %s reach %s.%s past its stage but are not listed: a read-back's "
+                "cone lists every late source" % (", ".join(missing), ri, rp))
+    if extra:
+        return ("cone register(s) %s do not reach %s.%s past its stage (%02d)"
+                % (", ".join(extra), ri, rp, min(allow)))
+    for g in listed:
+        sg = stage_of(g)
+        if aheads.get(g) != sg[2] - sp[2]:
+            return "ahead for %s is %r, but it lies %d stage(s) past the input's tag" % (
+                g, aheads.get(g), sg[2] - sp[2])
+    # (2) No closing path, through any child's combinational path too.
+    cdeps, _ = parent_graph(pbody, insts, via, all_comb=True)
+    users = {}
+    for n, ds in cdeps.items():
+        for x in ds:
+            users.setdefault(x, set()).add(n)
+    for o, reach in sorted(paths.items()):
+        if rp not in reach:
+            continue
+        prev, todo = {}, []
+        for on in conn_ids(rconns.get(o, "")):
+            prev[on] = None
+            todo.append(on)
+        while todo:
+            n = todo.pop(0)
+            for u in sorted(users.get(n, ())):
+                if u in prev:
+                    continue
+                prev[u] = n
+                if u in flops:
+                    if u in listed:
+                        chain, x = [], u
+                        while x is not None:
+                            chain.append(x)
+                            x = prev[x]
+                        return ("a closing path exists: %s.%s reaches its output %s, whose "
+                                "net reaches %s's next value or enable (%s): a loop, declared "
+                                "with its \"loop\", not read back"
+                                % (ri, rp, o, u, " -> ".join(reversed(chain))))
+                    continue
+                todo.append(u)
+    return None
 
 
 def verify_regloop(ri, rp, fr, d, pbody, insts):
@@ -2872,7 +3297,7 @@ def verify_stale(d, pbody, insts, ri, fbdir):
     if not labs:
         return "it names no assertion: a declared loop proves its stale read safe (OA 481 (3))"
     for lab in labs:
-        if not re.search(r"`CCV_ASSERT(?:_AT)?\s*\(\s*%s\b" % re.escape(str(lab)), pbody + rbody):
+        if not assertion_args(lab, pbody + rbody):
             return ("no assertion %r in the parent or %s: a declared loop proves its stale "
                     "read safe (OA 481 (3))" % (lab, insts[ri][0]))
     ctls = d.get("control") or []
