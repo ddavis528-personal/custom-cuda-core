@@ -28,11 +28,14 @@
 // (the model ignores a lower slot's launch on the same bank), addr (the
 // model drops no S[49:48] F-ADDR), win (an ordinary lane in the run's
 // windows not caught), iblk (an interleaved lane off W's block not caught),
-// align (no F-ALIGN).
+// align (no F-ALIGN), lofold (the model's pa_fold leaves out the page
+// offset's tag bits, PA[15:7+log2 sets]: caught only below 512 sets, by the
+// miu_a2_s64 build, -GDS=64 and CCV_A2_SETS 64; MA-33 (3)).
 //===----------------------------------------------------------------------===//
 #include "Vmiu_a2.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
+#include "wayfold.h"
 
 #include <array>
 #include <cstdint>
@@ -45,6 +48,10 @@
 namespace {
 
 constexpr unsigned kNS = 4, kNQ = 4, kN0 = 6, kVW = 50, kSW = 9, kFW = 4, kBW = 3;
+#ifndef CCV_A2_SETS
+#define CCV_A2_SETS 512   // miu_a2's DS: the L1's sets, its built 512 unless the build overrides
+#endif
+const unsigned kSetBits = ccv::skel::wayFoldSetBits(CCV_A2_SETS);
 constexpr uint64_t kM50 = (uint64_t(1) << kVW) - 1u;
 constexpr uint64_t kLine = (uint64_t(1) << 41) - 1u;   // VA[47:7]
 
@@ -271,7 +278,8 @@ struct Bench {
       const bool la = x.la >> k & 1u, ge = x.lead[k] && gok[x.a[k]], rv = x.rv >> k & 1u;
       const bool dr = !la || !hit || fa || bl || !ge;
       o.pa[k] = uint64_t(ppn) << 16 | off;
-      o.pf[k] = fo;
+      // MA-33 (3): below 512 sets the offset's tag bits fold in too.
+      o.pf[k] = fo ^ (ctl == "lofold" ? 0u : ccv::skel::wayFoldLow(off, kFW, kSetBits));
       o.pm[k] = pg;
       o.vpn[k] = vpn;
       o.dr |= unsigned(dr) << k;
@@ -508,7 +516,7 @@ int main(int argc, char **argv) {
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
       if (ctl != "carry" && ctl != "bank" && ctl != "addr" && ctl != "line" && ctl != "split" &&
-          ctl != "fone" && ctl != "win" && ctl != "iblk" && ctl != "align") {
+          ctl != "fone" && ctl != "win" && ctl != "iblk" && ctl != "align" && ctl != "lofold") {
         std::fprintf(stderr, "a2: unknown control %s\n", ctl.c_str());
         return 2;
       }
