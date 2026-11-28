@@ -43,13 +43,12 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
   tags _cmNNh; RST-1; CG-5; (* keep *) output copies; payload no-flop end: compute both, mux last.
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
-## Register bookmarks (sweep of Fri 11-27)
-AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 232, MI 77, DI 99, DA 136,
-Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27; all 11 ponged ok, and
-every agent's ping to MI answered.
-- Sweep merges: ort on many criss-cross bases can run hours. Use scratchpad/sweep2.sh: merge-tree
-  against the one base with fewest conflicts, auto-resolving only where one side's blob is in the
-  other's history; anything else stops for a decision.
+## Register bookmarks (sweep of Sat 11-28)
+AR 437, OA 518, IS 201, TI 609, OI 439, CP 160, RA 164, RI 101, MA 233, MI 77, DI 108, DA 136,
+Conventions 20; specs MIU 236, Common 9, DCU 152. Friday pings sent 11-27; all 11 ponged ok.
+- Sweep 11-28: 10 branches merged (0c9dd8f6), full gate PASS, pushed.
+- Sweep merges: use tools/sweep-merge.sh (TI-605: the one procedure; virtual base, history-only
+  resolution, signs the merge). scratchpad/sweep2.sh is retired.
 - MI tab rev 72: MI-47 (8566e6ff to TI; MI-20/29/46 decided), MI-48 (TI-590, OA-505).
 - TI-569/571: ccv_miu.feedback.json lands with the ccv_miu assembly (held at
   scratchpad/ccv_miu.feedback.held.json, "by": "MA" per DA-135).
@@ -59,7 +58,7 @@ every agent's ping to MI answered.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. Pushed 285eaef0 (SCOPED PASS). MI tab rev 77: MI-52 (ruled, below), MI-53 done: TI landed picks + bin at d5903f2b (TI-611, TI rev 608); merge at sweep.
+0. Pushed 285eaef0, 196cd569 (SCOPED PASS) and sweep 0c9dd8f6 (PASS; d5903f2b merged). MI tab rev 77: MI-52 (ruled, below), MI-53 done: TI landed picks + bin at d5903f2b (TI-611, TI rev 608); merge at sweep.
    MA tab rev 224: MI-52 ruled. New miu_pass (1 inst, stage H-1): picks every MQ-sourced lookup
    (later passes, window fills, drains incl st.pred RMW and atomic A1/A3, walker reads); TLB lookup
    (its one port, RR with L0 refills) before offering; flops per-lookup-slot candidate at H-1
