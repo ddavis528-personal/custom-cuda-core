@@ -361,7 +361,7 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 506, RA 163, RI 98, TI 600, AR 433, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 221, MI 74, DI 99.
+Bookmarks: OA 506, RA 164, RI 100, TI 600, AR 433, DA 136, OI 427, Conventions 20, CP 160, IS 201, MA 221, MI 74, DI 99.
 RA 158 (11-23): OA 469 / AR 406 (3) misrouted RAU's pc_kept to RA; RAU is TI's stub. OA 472, AR 407-408, TI-526 agree;
 closed. Sweep 11-23: nothing for RA. Watch AR 410 / TI-531: CCV_P_TIMEOUT_MEMOP derived, slow memory regions end at
 1 MiB, perf-register cycles move above 0xC0000 (AR re-baselines). Merged 183cc441 (173, carried OI's 57eff422),
@@ -378,6 +378,10 @@ flops the returned credit a cycle before it counts (RI-63), so REG/LATE (+1) unl
 RA row Needs TI. OA 484: RA signs "by" on RCU parent-level CCV-L23 declarations. DA 133 (AR owns MLC spec) and
 DA 134 (OOE ratchet paths may rise to 30 NGD; not RCU). AR 415: at a flopped end the wrapper holds the flops;
 rcu_kill's credit waiver goes on migration.
+RA 164 (re OI-234, gtw32 hang): RAU place deadlock at 32/32 (4 slots + 28 places): RAU takes a PCA place at
+drained (kernel.cpp:6093), never reserves at demote; swap A->B cycles. rcu_map timeout = consequence (OI to confirm
+CHECK first). Fix TI (stub: reserve at demote, keep CHECK, brk control, bin); AR: RAU spec rule + optional 29th place.
+RI-71: COMB demotion check done (3 and 4 full rate; credlate2@4, credlate@3 caught).
 RA 163 (re RI-69): COMB full rate at 3 and 4 (one slack). Controls under COMB: credlate2 at 4 fails, credlate at 3
 fails; positives at 3 and 4. REG controls (before the move): credlate at 4 fails.
 RA 162 (re TI-597) + AR 428: SETTLED. Forms: REG (in-cycle spend, 4+2N), REG_LATE (LATE_COUNT, OOE cok, 4+2N+1),
