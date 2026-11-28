@@ -74,7 +74,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
 - OI OA-504: stub seeds 1-3 SENT 00:43Z 11-28 (nothing beats 50; gtw32 PCA hang at m35 3/3 seeds AND m100 on s2/s3). Fix (b) DONE: the hang survives 669cfdde
-  (stub s1 m35, s2/s3 m100). Fix (a) RUNNING from 00:43Z; watcher '[c]hainfix.sh'; trigger 02:50Z. FIX RUN (OI 22:23Z): rh-oi504fix = 57ca7d30 + 669cfdde (MA's OI-225 fix; local merge 6e034acc, never push), MA kernels copied.
+  (stub s1 m35, s2/s3 m100). Fix gtw32 grid DONE+SENT 00:55Z: ARM 50 HANGS at s4 and s5 (base 57ca7d30 too; pre-existing), m75 clean 3/3, m35 3/3 hang, m100 hangs s2/s3.
+  Offered m75 at s4-10. Fix (a) RUNNING from 00:43Z; watcher '[c]hainfix.sh'; trigger 02:50Z. FIX RUN (OI 22:23Z): rh-oi504fix = 57ca7d30 + 669cfdde (MA's OI-225 fix; local merge 6e034acc, never push), MA kernels copied.
   rh-jobs/oi504/prepfix.sh (prep) then chainfix.sh (after chains23): (a) oi504f.sh/oi504fr.sh model+p1 seed 1 all arms; (b) stub gtw32 m35. Logs ~/ccv-logs/oi504fix.
   Report one table (arm × class Δ vs 50) + req_id/credit CHECKs, 75/100 mismatches, hang lines.
 - OI OA-504 MODEL+P1 MIX ABANDONED (OI 19:05Z: not clean; chk at every arm). Seed-1 model+p1 tables sent 19:05Z; logs kept in ~/ccv-logs/oi504 (aborted s2 in aborted-s2/).
