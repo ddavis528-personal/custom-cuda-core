@@ -75,8 +75,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
 - OI OA-504 MODEL+P1 MIX ABANDONED (OI 19:05Z: not clean; chk at every arm). Seed-1 model+p1 tables sent 19:05Z; logs kept in ~/ccv-logs/oi504 (aborted s2 in aborted-s2/).
   Cycle-stamped CHECK head sent to OI for MI/DI: ~/ccv-logs/oi504/rh-cyc.s1.m50.coremark32priv.head (build/skel-rh in rh-oi504 is an experiment binary; source reverted).
-  NOW: STUB-MIU mix (CCV_MIU_IMPL unset, DCU p1), logs ~/ccv-logs/oi504stub. Step 1 gate50.sh CLEAN 19:21Z (73/73, 0 chk; sent). Step 2 RUNNING from 19:22Z (chains1.sh): oi504s.sh 1 + oi504sr.sh 1 for all arms; then seeds 2 and 3 only for arms within 0.5% of 50.
-  Table: table.py <seed> ~/ccv-logs/oi504stub. Watcher bn3wnqg0s; trigger trig_01XKmiGkDDgf8LZDaC4zaxWG 21:30Z. Originally started 17:07Z 11-27: THRESHOLD_MLC re-sweep at 57ca7d30 (origin/ccr-57eff422-5tdecg) in rh-oi504, rh-jobs/oi504/oi504.sh <seed> [arms]
+  NOW: STUB-MIU mix (CCV_MIU_IMPL unset, DCU p1), logs ~/ccv-logs/oi504stub. Step 1 gate50.sh CLEAN 19:21Z (73/73, 0 chk; sent). Step 2 seed 1 DONE+SENT 21:10Z (all clean except gtw32 m35 HANG: 'rau: warp 30 drained, PCA has no free place', the same in model+p1, so it is the arm, not the mix).
+  Seeds 2+3 RUNNING all arms from 21:10Z (chains23.sh, ~4h); then send the seeds-1-3 table. Was: oi504s.sh 1 + oi504sr.sh 1 for all arms; then seeds 2 and 3 only for arms within 0.5% of 50.
+  Table: table.py <seed> ~/ccv-logs/oi504stub. Watcher bg4vy9t7j ('[c]hains23.sh'); trigger trig_01XKmiGkDDgf8LZDaC4zaxWG 23:20Z. Originally started 17:07Z 11-27: THRESHOLD_MLC re-sweep at 57ca7d30 (origin/ccr-57eff422-5tdecg) in rh-oi504, rh-jobs/oi504/oi504.sh <seed> [arms]
   (resumable), logs ~/ccv-logs/oi504 (s<seed>.m<arm>.*). Common env: CCV_RAU_DEMOTE=mlc CCV_MIU_IMPL=model CCV_DCU_IMPL=p1. Arms: demote_mlc_miss=35/50/75/100.
   Class 2: vadd6 at CCV_TB_LATENCY=1000 --cycles 400000. Class 3: S1, cm32p, cm128p at default. Seed 1 first; arms within 0.5% of 50 get seeds 2 and 3.
   Class 1 (read): MA sent gtr4 and gtw8/16/32 (17:10Z; uncommitted in rh-oi504/test/kernels, oracles in build/syn-oracle); rh-jobs/oi504/oi504r.sh <seed> [arms].
