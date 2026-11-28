@@ -130,6 +130,12 @@ module ooe_rendep #(
   // ooe_rs stores with the row (OA, re:OI-104).
   output logic [2*P-1:0]    akind_cq02h,
   output logic [3*P-1:0]    acls_cq02h
+`ifdef CCV_CHECK_RENAME
+  // A check-build control (test/ooe/rename_tb.cpp's no-prv): G-1's hits
+  // dropped from prv_dep, which prv_carries_g1 below must catch (OA-496).
+  ,
+  input  logic              ctl_noprv
+`endif
 );
 
   logic rst_r01h;
@@ -447,10 +453,46 @@ module ooe_rendep #(
                 gc_cq01h[(p * P + q) * 2 +: 2] = gc_cq01h[(p * P + q) * 2 +: 2] | xgc_cq01h[(c * C + d) * 2 +: 2];
               end
         end
+`ifdef CCV_CHECK_RENAME
+    if (ctl_noprv) vd_cq02h = '0;
+`endif
     // A code is payload, read only through its bit (ooe_rs's code register
     // keeps none without one), so it leaves unmasked: the hits stay off the
     // codes' paths.
   end
+
+  // prv_dep carries every in-flight hit (OA-496: ooe_rename's CCV-L23 table
+  // read of u_map, whose entries G-1 has not yet written). Formed apart
+  // from x1/vd: per G-1 port r, each consumer reading r's name, unless an
+  // older uop of this group writes that name (shadowed by r's name, not
+  // the source's), sets port p's bit r.
+  logic [P*P-1:0] ex_prv_cq02h;
+  logic           ex_sh_cq02h;
+  always_comb begin
+    ex_prv_cq02h = '0; ex_sh_cq02h = 1'b0;
+    for (int r = 0; r < P; r++)
+      for (int c = 0; c < C; c++)
+        for (int p = 0; p < P; p++)
+          if (coh_cq01h[c * P + p]) begin
+            for (int s = 0; s < NS; s++)
+              if (g1gv_cq02h[r] && cgs_cq01h[c * NS + s] &&
+                  gsn_cq01h[((c / 2) * NS + s) * LG +: LG] == g1gn_cq02h[r * LG +: LG]) begin
+                ex_sh_cq02h = 1'b0;
+                for (int w = 0; w < c / 2; w++)
+                  if (v_cq01h[w] && gwe_cq01h[w] && gname_cq01h[w * LG +: LG] == g1gn_cq02h[r * LG +: LG]) ex_sh_cq02h = 1'b1;
+                if (!ex_sh_cq02h) ex_prv_cq02h[p * P + r] = 1'b1;
+              end
+            for (int s = 0; s < 4; s++)
+              if (g1pv_cq02h[r] && cps_cq01h[c * 4 + s] &&
+                  psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ] == g1pn_cq02h[r * LQ +: LQ]) begin
+                ex_sh_cq02h = 1'b0;
+                for (int w = 0; w < c / 2; w++)
+                  if (v_cq01h[w] && pwe_cq01h[w] && pname_cq01h[w * LQ +: LQ] == g1pn_cq02h[r * LQ +: LQ]) ex_sh_cq02h = 1'b1;
+                if (!ex_sh_cq02h) ex_prv_cq02h[p * P + r] = 1'b1;
+              end
+          end
+  end
+  `CCV_ASSERT(prv_carries_g1, (ex_prv_cq02h & ~vd_cq02h) == '0)
 
   // -- Rename's stage register, and G-1's ports ----------------------------------------
   // Clocked when a group is in Rename 2 now, and the cycle after, to clear

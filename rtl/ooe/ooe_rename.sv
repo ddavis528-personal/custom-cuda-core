@@ -232,7 +232,8 @@ module ooe_rename #(
   input  logic              ctl_notq,
   input  logic              ctl_notq2,
   input  logic              ctl_unow,
-  input  logic              ctl_nolt
+  input  logic              ctl_nolt,
+  input  logic              ctl_noprv       // ooe_rendep's G-1 hits dropped from prv_dep (OA-496)
 `endif
 );
 
@@ -1108,7 +1109,11 @@ module ooe_rename #(
     .gnt_v_cq01h(gnt_v_cq03h), .gnt_idx_cq01h(gnt_idx_cq03h),
     .row_prod_cq02h(row_prod_cq04h), .row_dep_cq02h(row_dep_cq04h), .row_code_cq02h(row_code_cq04h),
     .grp_dep_cq02h(grp_dep_cq04h), .grp_code_cq02h(grp_code_cq04h), .prv_dep_cq02h(prv_dep_cq04h),
-    .prv_code_cq02h(prv_code_cq04h), .akind_cq02h(akind_cq04h), .acls_cq02h(acls_cq04h));
+    .prv_code_cq02h(prv_code_cq04h), .akind_cq02h(akind_cq04h), .acls_cq02h(acls_cq04h)
+`ifdef CCV_CHECK_RENAME
+    , .ctl_noprv
+`endif
+    );
 
   // The ports a group requests: the RCU ports its mains and copies take,
   // then the MIU ports, each class's from its first.
