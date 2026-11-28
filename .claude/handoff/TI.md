@@ -67,7 +67,9 @@ background `while pgrep` wait.
   coremark128).
 
 ## In flight
-- Nothing gating. Landed 0dcdeab6 on both branches (SCOPED PASS, 11-28):
+- Nothing gating. 11-28 sweep landed 80e2e2b7 (8 branches, 189 commits;
+  release 9ccc0748, snapshot tag local only); it carries MI's 104678de, so
+  task 90 (drop miu_form from heavy-units) is unblocked. Landed 0dcdeab6 on both branches (SCOPED PASS, 11-28):
   RA-164 + AR 431/432 (PCA spare place 29, RAU reserves at demote) and AR 430
   (sweep-merge signs); rows TI-612/613 rung to RA, AR, OI, RI. Before it
   d5903f2b (lint (a)(c)(e)(f)(g)+B, MA-35, MI-53, RI-70; TI-608..611 rung).
@@ -75,7 +77,9 @@ background `while pgrep` wait.
 - Disk: 11-28 a gate died on a full disk. Stale build/synth-cache dirs in
   finished worktrees (~2.6 GB each) were the cause: keep one live cache (now
   ti-rau's) and delete or move the others before a gate.
-- Next: task 90 after the next sweep; then the open work below, plus DI-38 (1) (task 72, needs DI's spec),
+- register-reader: point it at a ti-* worktree's docs/register/roster.json
+  (the /home/user/custom-cuda-core checkout's roster lacks MA/MI/DI tabs).
+- Next: task 90; then the open work below, plus DI-38 (1) (task 72, needs DI's spec),
   MI 29603c02 held-wait re-pin (task 80), AR 417 swap-class control (task 79),
   task 76 credit modules.
 
