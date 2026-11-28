@@ -466,6 +466,8 @@ module ooe_rendep #(
   // from x1/vd: per G-1 port r, each consumer reading r's name, unless an
   // older uop of this group writes that name (shadowed by r's name, not
   // the source's), sets port p's bit r.
+  // Check-only (TI-583): its comparators stay out of synthesis.
+`ifdef CCV_CHECK_RENAME
   logic [P*P-1:0] ex_prv_cq02h;
   logic           ex_sh_cq02h;
   always_comb begin
@@ -493,6 +495,7 @@ module ooe_rendep #(
           end
   end
   `CCV_ASSERT(prv_carries_g1, (ex_prv_cq02h & ~vd_cq02h) == '0)
+`endif
 
   // -- Rename's stage register, and G-1's ports ----------------------------------------
   // Clocked when a group is in Rename 2 now, and the cycle after, to clear
