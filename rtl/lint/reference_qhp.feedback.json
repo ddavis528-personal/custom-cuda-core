@@ -1,0 +1,23 @@
+{
+  "_comment": "bad_conn3.sv's reference_qhp.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "from": "qm_cy04h",
+      "ahead": 3,
+      "loop": [
+        "u_c.e_cy02h",
+        "qm_cy03h",
+        "qm_cy04h"
+      ],
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "a register loop whose first hop crosses a register-free helper, as u_go's pl through u_ren1 (OI-213)"
+    }
+  }
+}

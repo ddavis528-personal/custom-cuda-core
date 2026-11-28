@@ -2456,6 +2456,17 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
     if rp not in insts[ri][1] or insts[ri][1][rp] != "input":
         return "%s is no input of %s" % (rp, ri)
     deps, flops = dep_graph(pbody)
+    # A register-free child is its parent's logic (OA 485): its in-to-out
+    # paths join the parent's combinational graph, so a hop through it
+    # (OI-213, u_ren1) is traced as the parent's own logic would be.
+    deps = {k: set(v) for k, v in deps.items()}
+    for hi, (hchild, hports, hbody, hconns) in insts.items():
+        if dep_graph(hbody)[1]:
+            continue
+        for o, reach in port_paths(hbody, hports).items():
+            for on in conn_ids(hconns.get(o, "")):
+                for i in reach:
+                    deps.setdefault(on, set()).update(conn_ids(hconns.get(i, "")))
     if fr not in flops:
         return "\"from\" %s is neither <instance>.<output> nor a register of this module" % fr
     if conn_ids(insts[ri][3].get(rp, "")) != [fr]:
@@ -2540,6 +2551,31 @@ def control_named(home, name):
             except OSError:
                 pass
     return False
+
+
+def check_orphan_feedback(roots=("rtl",)):
+    """A <module>.feedback.json the lint never reads is a silent pass
+    (MI-44): its module must be defined in a .sv file beside it."""
+    F = []
+    for r in roots:
+        for d, _, fns in os.walk(os.path.join(ROOT, r)):
+            defined = None
+            for fn in sorted(fns):
+                if not fn.endswith(".feedback.json"):
+                    continue
+                if defined is None:
+                    defined = set()
+                    for g in fns:
+                        if g.endswith((".sv", ".v")):
+                            defined |= set(n for _, _, n, _ in module_spans(
+                                strip_comments(open(os.path.join(d, g)).read())))
+                mod = fn[:-len(".feedback.json")]
+                if mod not in defined:
+                    F.append(Finding("CCV-L23", os.path.relpath(os.path.join(d, fn), ROOT), 1,
+                                     "%s is declared for module %s, which no .sv beside it "
+                                     "defines: the lint never reads it, so it is refused "
+                                     "until the module lands with it (MI-44)" % (fn, mod)))
+    return F
 
 
 def check_conn_ratchet():
@@ -2752,6 +2788,11 @@ def main():
     if not args or ratchet_given:
         findings.extend(check_stage_ratchet())
         findings.extend(check_conn_ratchet())
+    if not args:
+        findings.extend(check_orphan_feedback())
+    for a in sys.argv[1:]:
+        if a.startswith("--orphan-root="):
+            findings.extend(check_orphan_feedback((a.split("=", 1)[1],)))
     if names:
         findings.extend(check_module_names((names,)))
     for f in sorted(findings, key=lambda f: (f.path, f.line)):
