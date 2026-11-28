@@ -74,6 +74,9 @@ void Kernel::flushHeld() {
   for (const auto &h : held) {
     const uint32_t seq = uidSeq(h.first.second);
     if (parkedNow(seqWarp(seq)) && seqIndex(seq) >= nret[seqWarp(seq)]) continue;
+    // Likewise for a run cut at its cycle cap (cut_short): an unretired
+    // instruction's replay may simply not have come yet.
+    if (cut_short && seqIndex(seq) >= nret[seqWarp(seq)]) continue;
     // Likewise for a warp the machine check killed (AR 370): an instruction
     // past what it retired never retires, and its operands (a load's data
     // the kill dropped) are moot.
@@ -7114,6 +7117,11 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
              kChans[ci.chan].name, s - ci.slot_base, (unsigned long long)n);
     }
   }
+  k.cut_short = !e.finished;
+  if (k.cut_short)
+    std::fprintf(stderr, "kernel %s: stopped at the cycle cap before it finished; "
+                 "raise --cycles (the default 20000 is short at a high CCV_TB_LATENCY)\n",
+                 k.name.c_str());
   const KernelReport r = compareFinal(k);
   const uint64_t from_fetch =
       k.fetched && e.finish >= k.first_fetch ? e.finish - k.first_fetch : 0;

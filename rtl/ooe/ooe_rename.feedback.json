@@ -1,27 +1,6 @@
 {
-  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-502): u_go.pl (OA-494), u_gfree's section allocations sa_v/sa_row/sa_sec (OA-498) and returns rt_v/rt_row (OA-501) and leads sa_l/rt_l (OA-502), u_go.px and u_go.pool_en (OA 509), each signed by OA in the register.",
+  "_comment": "CCV-L23's cross-module loops of ooe_rename (OA 481-516): u_gfree's section allocations sa_v/sa_row/sa_sec (OA-498), returns rt_v/rt_row (OA-501) and leads sa_l/rt_l (OA-502); u_go's px, pool_en, room_g/p and unmet_g/p (OA 509, OA 516); and the read-backs of u_ren1's c_gk/c_pk and u_ren1nr's pn_gname/pn_pname (OA 509, OA 516); each signed by OA in the register.",
   "reads": {
-    "u_go.pl_cq02h": {
-      "from": "pl_cq03h",
-      "ahead": 1,
-      "loop": [
-        "u_go.lane_c_cq02h",
-        "u_go.lane_v_cq02h",
-        "u_ren1.lane_v_cq02h>l_v",
-        "pl_cq03h"
-      ],
-      "assert": [
-        "no_over_grant_names",
-        "no_over_grant_rs",
-        "no_over_grant_room"
-      ],
-      "control": [
-        "no-take-q"
-      ],
-      "by": "OA",
-      "date": "2026-11-24",
-      "why": "the go's lagged take (OA-490, OI-207, OA-489, OA-494): u_go grants lanes at 02 (lane_v_cq02h, lane_c_cq02h); they cross u_ren1, a register-free helper, combinationally into l_v, whose per-class takes the parent counts into pl_cq03h; u_go's pool correction reads it a cycle later as its pl at 02. u_go.wt_cq02h is no register: ooe_go's always_comb sums wtq_cq02h, combinational on pl; it is listed as it reads pl, and it feeds the free lists' alloc_req, not the takes. A stale take over-grants names, RS rows or a slot's room."
-    },
     "u_gfree.sa_v_cq01h": {
       "from": "u_ren1n.n_sa_v",
       "ahead": 2,
@@ -139,13 +118,11 @@
         "cone": [
           "u_go.lane_v_cq02h",
           "u_go.lane_c_cq02h",
-          "u_go.wb_cq02h",
           "cwt_cq02h"
         ],
         "ahead": {
           "u_go.lane_v_cq02h": 2,
           "u_go.lane_c_cq02h": 2,
-          "u_go.wb_cq02h": 2,
           "cwt_cq02h": 2
         }
       },
@@ -162,7 +139,7 @@
       ],
       "by": "OA",
       "date": "2026-11-24",
-      "why": "u_gfree's return lead (OI-81/82, OA-499): a narrow lane may return its row next cycle, led into the free list a cycle ahead from u_go's grant at 02 (lane_v, lane_c, wb) and the lane's codes (cwt_cq02h); the lead is the free list's 00, two stages ahead by design. The loop closes as sa_l's, through fsp_cq03h, ucg_cq04h and u_go's room_g/fitsw. A late lead leaves a return unled: rt_led catches it (control rtl-late)."
+      "why": "u_gfree's return lead (OI-81/82, OA-499): a narrow lane may return its row next cycle, led into the free list a cycle ahead from u_go's grant at 02 (lane_v, lane_c) and the lane's codes (cwt_cq02h); the lead is the free list's 00, two stages ahead by design. The loop closes as sa_l's, through fsp_cq03h, ucg_cq04h and u_go's room_g/fitsw. A late lead leaves a return unled: rt_led catches it (control rtl-late)."
     },
     "u_go.px_cq01h": {
       "from": {
@@ -236,6 +213,212 @@
       "by": "OA",
       "date": "2026-11-27",
       "why": "the go's pool change lead (OA 509, OI-226): pool_en_cq01h is a net over the parent's registers (sel, the takes, the frees, the unmet register), a superset of every change to a slot's fits, and it only sets u_go's fits enable (chg). A late or narrowed lead leaves the fits stale, which fits_fresh catches (control pool-en-short, 8 seeds). The sel term alone covers every change the bench makes in 25 seeds; a later bench event sel does not cover needs its own control."
+    },
+    "u_ren1.c_gk_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "p_v_cq03h",
+          "p_gkm_cq03h"
+        ],
+        "ahead": {
+          "p_v_cq03h": 2,
+          "p_gkm_cq03h": 2
+        }
+      },
+      "via": [
+        "u_rd.pw_v_cq01h>h_gk_cq01h",
+        "u_rd.pw_gkm_cq01h>h_gk_cq01h"
+      ],
+      "assert": [
+        "pw_seen"
+      ],
+      "control": [
+        "pw-drop"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "Rename 1's head read of the pending group (#35): a later group's lanes read the earlier group's pending-writer masks, registered at 03, two cycles on; no path from the reader's outputs closes back into the cone (OA 513 (2), OA 515). pw_seen checks every pending writer is seen; pw-drop drops the pending valid."
+    },
+    "u_ren1.c_pk_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "p_v_cq03h",
+          "p_pkm_cq03h"
+        ],
+        "ahead": {
+          "p_v_cq03h": 2,
+          "p_pkm_cq03h": 2
+        }
+      },
+      "via": [
+        "u_rd.pw_v_cq01h>h_pk_cq01h",
+        "u_rd.pw_pkm_cq01h>h_pk_cq01h"
+      ],
+      "assert": [
+        "pw_seen"
+      ],
+      "control": [
+        "pw-drop"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "Rename 1's head read of the pending group (#35): a later group's lanes read the earlier group's pending-writer masks, registered at 03, two cycles on; no path from the reader's outputs closes back into the cone (OA 513 (2), OA 515). pw_seen checks every pending writer is seen; pw-drop drops the pending valid."
+    },
+    "u_ren1nr.pn_gname_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "m_gname_cq04h"
+        ],
+        "ahead": {
+          "m_gname_cq04h": 3
+        }
+      },
+      "via": [],
+      "assert": [
+        "pn_bound"
+      ],
+      "control": [
+        "pn-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "Rename 2's pending names (m_gname_cq04h), a register read back three cycles on through a port with no closing path (OA 514, OA 515). pn_bound (pw_seen's Rename 2 half) holds that a read with a pending writer finds Rename 2's register holding the group just ahead of its own, and that the port it names writes the class it reads; pn-late (Rename 2's register skips every other group) breaks it."
+    },
+    "u_ren1nr.pn_pname_cq01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "m_pname_cq04h"
+        ],
+        "ahead": {
+          "m_pname_cq04h": 3
+        }
+      },
+      "via": [],
+      "assert": [
+        "pn_bound"
+      ],
+      "control": [
+        "pn-late"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "Rename 2's pending names (m_pname_cq04h), a register read back three cycles on through a port with no closing path (OA 514, OA 515). pn_bound (pw_seen's Rename 2 half) holds that a read with a pending writer finds Rename 2's register holding the group just ahead of its own, and that the port it names writes the class it reads; pn-late (Rename 2's register skips every other group) breaks it."
+    },
+    "u_go.room_g_cq01h": {
+      "from": {
+        "cone": [
+          "ucg_cq04h",
+          "tq_gs_cq03h"
+        ],
+        "ahead": {
+          "ucg_cq04h": 3,
+          "tq_gs_cq03h": 2
+        }
+      },
+      "loop": [
+        "u_go.lane_c_cq02h",
+        "u_go.lane_v_cq02h",
+        "u_ren1.lane_v_cq02h>l_v",
+        "tq_gs_cq03h"
+      ],
+      "assert": [
+        "no_over_grant_room"
+      ],
+      "control": [
+        "no-take-q2"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "the go's free-room count (OA 509, OA 516; as u_go.px_cq01h and pl_cq02h, OA-494): u_go grants lanes at 02; they cross u_ren1, a register-free helper, into l_v, whose takes the parent counts into tq_gs_cq03h and the free list's unclaimed count ucg_cq04h, read back by u_go as room at 01, two and three cycles on. A stale room is safe while the lagged take corrects it; a missing take over-grants: no_over_grant_room catches it (control no-take-q2)."
+    },
+    "u_go.room_p_cq01h": {
+      "from": {
+        "cone": [
+          "ucp_cq04h",
+          "tq_ps_cq03h"
+        ],
+        "ahead": {
+          "ucp_cq04h": 3,
+          "tq_ps_cq03h": 2
+        }
+      },
+      "loop": [
+        "u_go.lane_c_cq02h",
+        "u_go.lane_v_cq02h",
+        "u_ren1.lane_v_cq02h>l_v",
+        "tq_ps_cq03h"
+      ],
+      "assert": [
+        "no_over_grant_room"
+      ],
+      "control": [
+        "no-take-q2"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "the go's free-room count (OA 509, OA 516; as u_go.px_cq01h and pl_cq02h, OA-494): u_go grants lanes at 02; they cross u_ren1, a register-free helper, into l_v, whose takes the parent counts into tq_ps_cq03h and the free list's unclaimed count ucp_cq04h, read back by u_go as room at 01, two and three cycles on. A stale room is safe while the lagged take corrects it; a missing take over-grants: no_over_grant_room catches it (control no-take-q2)."
+    },
+    "u_go.unmet_g_cq01h": {
+      "from": {
+        "cone": [
+          "ur_g_cq05h",
+          "ufg_cq04h",
+          "tq_gs_cq03h"
+        ],
+        "ahead": {
+          "ur_g_cq05h": 4,
+          "tq_gs_cq03h": 2,
+          "ufg_cq04h": 3
+        }
+      },
+      "loop": [
+        "u_go.lane_c_cq02h",
+        "u_go.lane_v_cq02h",
+        "u_ren1.lane_v_cq02h>l_v",
+        "tq_gs_cq03h"
+      ],
+      "assert": [
+        "no_over_grant_room"
+      ],
+      "control": [
+        "no-last-take"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "the go's unmet-demand count (OA 509, OA 516; OI-114, OI-134): u_go grants lanes at 02; they cross u_ren1 into l_v, whose takes the parent counts into tq_gs_cq03h, the free list's fill ufg_cq04h and the registered unmet ur_g_cq05h, read back by u_go as unmet at 01, two to four cycles on. A stale unmet is safe while the lagged take corrects it; the last take dropped over-grants: no_over_grant_room catches it (control no-last-take)."
+    },
+    "u_go.unmet_p_cq01h": {
+      "from": {
+        "cone": [
+          "ur_p_cq05h",
+          "ufp_cq04h",
+          "tq_ps_cq03h"
+        ],
+        "ahead": {
+          "ur_p_cq05h": 4,
+          "tq_ps_cq03h": 2,
+          "ufp_cq04h": 3
+        }
+      },
+      "loop": [
+        "u_go.lane_c_cq02h",
+        "u_go.lane_v_cq02h",
+        "u_ren1.lane_v_cq02h>l_v",
+        "tq_ps_cq03h"
+      ],
+      "assert": [
+        "no_over_grant_room"
+      ],
+      "control": [
+        "no-last-take"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "the go's unmet-demand count (OA 509, OA 516; OI-114, OI-134): u_go grants lanes at 02; they cross u_ren1 into l_v, whose takes the parent counts into tq_ps_cq03h, the free list's fill ufp_cq04h and the registered unmet ur_p_cq05h, read back by u_go as unmet at 01, two to four cycles on. A stale unmet is safe while the lagged take corrects it; the last take dropped over-grants: no_over_grant_room catches it (control no-last-take)."
     }
   }
 }

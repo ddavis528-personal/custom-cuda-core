@@ -43,25 +43,25 @@ module ooe_decrx_keep #(
 );
   always_comb
     for (int k = 0; k < E; k++) begin
-      logic [S-1:0] hit, ok;
+      logic [S-1:0] hit_cq01h, ok_cq01h;
       logic [LS-1:0] slot;
       for (int s = 0; s < S; s++) begin
-        hit[s] = sv_cq02h[s] && arv_warp_cq01h[k * LW +: LW] == sw_cq02h[s * LW +: LW];
-        ok[s] = adv_cq01h[s] && adn_cq01h[s] ? arv_ep_cq01h[k * EP +: EP] == s2_cq02h[s * EP +: EP]
+        hit_cq01h[s] = sv_cq02h[s] && arv_warp_cq01h[k * LW +: LW] == sw_cq02h[s * LW +: LW];
+        ok_cq01h[s] = adv_cq01h[s] && adn_cq01h[s] ? arv_ep_cq01h[k * EP +: EP] == s2_cq02h[s * EP +: EP]
               : adv_cq01h[s] || adn_cq01h[s] ? arv_ep_cq01h[k * EP +: EP] == sn_cq02h[s * EP +: EP]
                                              : arv_ep_cq01h[k * EP +: EP] == se_cq02h[s * EP +: EP];
         // The walk's keep: the epoch the demotion ends (it opens the walk
         // in this cycle) or the one an open walk holds. wo comes late, so
         // it enters as one AND of its own (a sum of products).
-        ok[s] = ok[s]
+        ok_cq01h[s] = ok_cq01h[s]
              || (wo_cq01h[s] && adv_cq01h[s] && arv_ep_cq01h[k * EP +: EP] == sn_cq02h[s * EP +: EP])
              || (wo_cq01h[s] && !adv_cq01h[s] && arv_ep_cq01h[k * EP +: EP] == se_cq02h[s * EP +: EP])
              || (wq_cq02h[s] && !adn_cq01h[s] && arv_ep_cq01h[k * EP +: EP] == wep_cq02h[s * EP +: EP]);
       end
       slot = '0;
       for (int s = 0; s < S; s++)
-        if (hit[s]) slot = slot | LS'(s);
-      enq_v_cq01h[k] = arv_v_cq01h[k] && (hit & ok) != '0;
+        if (hit_cq01h[s]) slot = slot | LS'(s);
+      enq_v_cq01h[k] = arv_v_cq01h[k] && (hit_cq01h & ok_cq01h) != '0;
       enq_slot_cq01h[k * LS +: LS] = slot;
     end
 endmodule

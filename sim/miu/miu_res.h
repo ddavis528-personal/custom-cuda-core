@@ -316,5 +316,18 @@ private:
   uint64_t walks_ = 0, busy_cycles_ = 0, itlb_waits_ = 0;
 };
 
+/// F-SHARED (section 12.5; MI-46, MA rev 221): a .shared lane's address is
+/// its AGU sum modulo 2^32 (O-79), an offset into its CTA's region of size
+/// bytes, and never taken signed: a negative sum is an offset near 2^32 and
+/// faults as any byte past the region does. A2's window check (miu_a2's ow)
+/// takes no .shared access, so this is the fault a negative .shared sum
+/// raises.
+inline bool sharedFault(uint64_t sum, unsigned bytes, uint64_t size) {
+  return (sum & 0xffffffffu) + bytes > size;
+}
+/// A .shared offset at or above 2^31: a negative sum, since no region is
+/// that large (the MIUBINS bin shared_neg_fault).
+inline bool sharedNegative(uint64_t sum) { return ((sum >> 31) & 1u) != 0; }
+
 } // namespace miu
 } // namespace ccv

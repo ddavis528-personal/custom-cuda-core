@@ -1,0 +1,103 @@
+{
+  "_comment": "CCV-L23's port tables of ooe_decrx_keep: the parent ooe_decrx's per-warp slot table read a stage early (OA 509 (3c), Option A), signed by OA in the register (OA 516).",
+  "tables": {
+    "sv_cq02h": {
+      "reader": "hit_cq01h",
+      "ahead": 1,
+      "writer": "sv_cq02h",
+      "assert": [
+        "keep_row_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "sw_cq02h": {
+      "reader": "hit_cq01h",
+      "ahead": 1,
+      "writer": "swi_cq02h",
+      "assert": [
+        "keep_row_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "se_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "sei_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "sn_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "sni_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "s2_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "s2i_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "wq_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "wq_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    },
+    "wep_cq02h": {
+      "reader": "ok_cq01h",
+      "ahead": 1,
+      "writer": "wep_cq02h",
+      "assert": [
+        "keep_ep_settled"
+      ],
+      "control": [
+        "row-early"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "ooe_decrx's per-warp slot table (OA 509 (3c), Option A): the parent's cq02h registers, written at a release or an allocation for the next cycle (advances bypassed through adv/adn), read by u_keep's enqueue compare at 01; no uop of a warp released or allocated in a cycle arrives in it (keep_row_settled; control row-early)."
+    }
+  }
+}

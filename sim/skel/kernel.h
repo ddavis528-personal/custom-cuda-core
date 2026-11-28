@@ -266,6 +266,9 @@ struct Kernel {
       "ld_pass_held", "fence_hold", "drain_guard", "drain_guard_withheld", "st_wide_hold",
       "tlb_miss", "tlb_walk", "itlb_walk", "tlb_two_page", "walk_reads", "tlb_two_page_lost",
       "hint_slot_taken", "l1_dcu_late", "ue_second_answer",
+      // A memop held at A1 with every in-flight record taken (MA-34,
+      // option B; MI-53).
+      "miu_memop_rec_full",
       // Lookups the MIU model launched and then dropped (drop on
       // ccv_miu_dcu_req; MA-27, AR 400; MI-19), all and by cause.
       "dcu_drops", "drop_tlb", "drop_fault", "drop_split", "drop_line", "drop_bank", "drop_dup", "drop_held",
@@ -348,6 +351,11 @@ struct Kernel {
   void failHeld(const std::string &where, uint64_t tid, const char *fmt, ...);
   void executing(const std::string &where, uint64_t tid);
   void flushHeld();
+  /// The run stopped at its cycle cap, not at KernelEnd's finish: a check
+  /// held for an instruction its warp had not yet retired may still have
+  /// been made moot by its replay, so flushHeld drops it. The run fails on
+  /// finished=0 regardless (colwalk-p1k at CCV_TB_LATENCY 600, 11-27).
+  bool cut_short = false;
   std::map<std::pair<std::string, uint64_t>, std::vector<std::string>> held;
   std::set<std::pair<std::string, uint64_t>> executed;
   std::set<uint64_t> reexecuted;                   ///< tids that ran twice

@@ -4,6 +4,7 @@
 // and each has a negative: the broken behaviour the test must refuse.
 // Run by sim/miu/run-tests.sh (the check-miu-unit job, MI-1).
 //===----------------------------------------------------------------------===//
+#include "miu_ids.h"
 #include "miu_res.h"
 
 #include <cstdio>
@@ -136,11 +137,68 @@ static void walker() {
   CHECK(x.wantRead(a));
 }
 
+// F-SHARED (MI-46, MA rev 221): a negative .shared sum faults. The
+// negative: the sum read signed (a region offset of -4 taken as before the
+// region's start and so inside nothing past its end) must miss at least
+// one of these faults, which the real check takes.
+template <class F> static unsigned sharedCases(F fault) {
+  const uint64_t size = 0xC000;                       // 48 KiB
+  const uint64_t neg4 = uint64_t(0) - 4;              // base 0, disp -4
+  unsigned wrong = 0;
+  wrong += fault(0, 4, size);                         // the first word: no fault
+  wrong += fault(0xBFFC, 4, size);                    // the last word: no fault
+  wrong += !fault(0xBFFD, 4, size);                   // across the end
+  wrong += !fault(0xC000, 1, size);                   // past the end
+  wrong += !fault(neg4, 4, size);                     // negative: faults
+  wrong += !fault(neg4 & 0xffffffffu, 1, size);       // the same, already wrapped
+  wrong += !fault(uint64_t(0) - 0x10000, 4, size);    // far negative
+  return wrong;
+}
+static void sharedFaults() {
+  CHECK(sharedCases(sharedFault) == 0);
+  CHECK(sharedNegative(uint64_t(0) - 4) && !sharedNegative(0xBFFC));
+  // The control: the signed reading, which takes -4 as inside the region.
+  auto signedRead = [](uint64_t sum, unsigned bytes, uint64_t size) {
+    return int64_t(int32_t(uint32_t(sum))) + int64_t(bytes) > int64_t(size);
+  };
+  CHECK(sharedCases(signedRead) != 0);
+}
+
+// MA-34 (option B): 160 req_ids in the 8-bit field, in 4 interleaved
+// quarters of 40 as rtl/miu/miu_ids.sv: slot s takes only ids i * 4 + s,
+// never one at or past 160. Negative: the old blocked quarters (slot 1's
+// first id 40, or 64 at 256 ids) would fail the residue check.
+static void reqIds() {
+  ccv_miu::MiuIds ids(8, 4, 160, nullptr);
+  CHECK(ids.size() == 160 && ids.holds(159) && !ids.holds(160));
+  unsigned seen[4] = {0, 0, 0, 0};
+  bool ok = true;
+  for (unsigned cyc = 0; cyc != 60; ++cyc) {
+    for (unsigned s = 0; s != 4; ++s)
+      if (ids.any(s)) {
+        const unsigned id = ids.take(s);
+        ok = ok && id < 160 && id % 4 == s && id / 4 == seen[s];
+        ++seen[s];
+      }
+    ids.tick();
+  }
+  CHECK(ok);                                           // each quarter in order, interleaved
+  CHECK(seen[0] == 40 && seen[1] == 40 && seen[2] == 40 && seen[3] == 40);
+  CHECK(!ids.any(0) && !ids.any(3));                   // 160 taken: none past the cap
+  ids.release(5);                                      // quarter 1's id 5
+  ids.release(200);                                    // not the pool's: ignored
+  for (unsigned i = 0; i != 4; ++i) ids.tick();
+  CHECK(ids.any(1) && !ids.any(0));
+  CHECK(ids.take(1) == 5);
+}
+
 int main() {
   memopCredits();
   bankCredits();
   tlb();
   walker();
+  sharedFaults();
+  reqIds();
   std::printf("miu unit: %d checks, %d failed\n", checks, fails);
   return fails ? 1 : 0;
 }

@@ -1437,8 +1437,12 @@ class Unit:
                              % (self.name, cxx))
         # Verilator is configured for g++ (gnu++17 and its -fcoroutines);
         # clang++ takes --timing's coroutines from C++20, with no flag.
+        # All -O0 (RI-70): the precompiled header carries __OPTIMIZE__, so
+        # the three levels must agree, and at -O1 the two 16 MB files took
+        # 385 s of rcu_bank_slice_k2's 650 s for a replay -O0 runs in 2-4 s;
+        # every scenario's .obs matched -O1's byte for byte.
         return ["-MAKEFLAGS", "CXX=clang++ CFG_CXXFLAGS_STD=-std=c++20 "
-                "CFG_CXXFLAGS_COROUTINES= OPT_FAST=-O1 OPT_SLOW=-O0 OPT_GLOBAL=-O0"]
+                "CFG_CXXFLAGS_COROUTINES= OPT_FAST=-O0 OPT_SLOW=-O0 OPT_GLOBAL=-O0"]
 
     def harness(self, n):
         """The netlist with every flop's Q and every group's enable brought

@@ -819,7 +819,10 @@ for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-
   # pn-late must fire pn_bound itself (OA 514/515: the assertion the
   # pn_gname/pn_pname read-backs cite), not only a check downstream of it.
   case ",$ctls," in *,pn-late,*)
-    if RENAME_CONTROL=pn-late "$dir/rename_tb" 3 +verilator+error+limit+1000000 2>&1 | grep -q "CCV pn_bound failed"; then
+    # Captured whole: grep -q quits at the first match, and the bench's
+    # SIGPIPE would fail the pipeline under pipefail.
+    pn_out=$(RENAME_CONTROL=pn-late "$dir/rename_tb" 3 +verilator+error+limit+1000000 2>&1)
+    if grep -q "CCV pn_bound failed" <<<"$pn_out"; then
       say "  control pn-late ($name, pn_bound assertion)" "caught"
     else
       say "  control pn-late ($name, pn_bound assertion)" "MISSED"; fail=1

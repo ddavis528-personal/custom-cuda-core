@@ -4,11 +4,12 @@
 //       schema/interfaces.json, ccv_miu_dcu_req's pa_fold.
 //
 // An inner helper (ccv_common_wayfold.ngd.json): combinational, no flops,
-// timed in its parent. The one fold MIU and DCU share: MIU's TLB keeps
-// fold(PFN) beside each PFN, written at the fill, and A2 sends it as
-// pa_fold; DCU's fold table is written with it at a fill. tag is PA[47:16]
-// (W = 32), above the line offset and the set-and-bank index; fold is the
-// XOR of tag's K-bit chunks from bit 0 upward, the last zero-extended.
+// timed in its parent. The fold of the page, PA[47:16] (W = 32): MIU's TLB
+// keeps fold(PFN) beside each PFN, written at the fill. In RTL only MIU
+// folds: DCU keeps MIU's pa_fold in its miss entry and writes its fold table
+// with it at the fill. fold is the XOR of tag's K-bit chunks from bit 0
+// upward, the last zero-extended. Below 512 sets the tag also holds page
+// offset bits, PA[15:7+log2 sets], whose fold miu_a2 XORs in (MA-33 (3)).
 // sim/skel/wayfold.h is its C++ twin, held to it by tools/check-skel.sh.
 //===----------------------------------------------------------------------===//
 module ccv_common_wayfold #(

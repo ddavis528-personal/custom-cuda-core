@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-24. Keep this current at every task's end; it is what
+Updated 2026-11-27. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -31,14 +31,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 ## Daily sweep (scheduled task trig_01A8r3ENUjnLyTaNUcc23ZbF, 02:11 PT)
 Register section 4 from the bookmarks; then the repo half (daily-sweep.sh,
 detached; wait with gate-wait). Exit 3 = a real conflict to resolve.
-Since 7b0bbe2a (ti-oo, not yet landed) the sweep merges fewest merge bases
-first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
-`-s resolve`. Until it lands: a merge hung for minutes = kill the sweep,
-`git merge -s resolve` that branch by hand, rerun the sweep (11-20: OA's
-4-base branch hung 25 min; resolve took 0.15 s).
+The sweep merges fewest bases first; a merge past 300 s falls back to
+tools/sweep-merge.sh (AR 425: virtual base (RI-65), conflicts settled only by
+exact-blob history, else exit 3 naming the files). /home/user/ti-ret is
+gone: run the sweep from /home/user/ti-rp.
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-580 (rev 582). Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). See the file (nested "bookmarks" object; keep updates there). Last row TI-598 (rev 600). Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -51,54 +50,26 @@ Never run skeleton measurements beside a gate: on 11-23 a coremark run
 bg-run dies with its 30-min wrapper; a measurement runs `setsid nohup` with a
 background `while pgrep` wait.
 
-## State (2026-11-23)
-- Landed ba085cda (SCOPED PASS 28/28) on both branches: DI's slice 2
-  (a6b8a4eb) + DI-33 (a)(b) lines (04a0f58d); ti-pk (parked check masks by
-  ccv-sim width, control parked-full-width; pc_kept on ccv_ooe_rau_drained per
-  AR 406/408, RAU stub keeps/derives resume_pc, bins pc_kept_launch/restore,
-  control rau-pc-from-drained whitelist-only); ti-mi20 (stub MIU takes a UE
-  line's two answers, bin ue_second_answer, control ue-close-first
-  whitelist-only). TI-529 to OI, DI, MI.
-- 11-23 sweep landed b4930c18 (full clean gate; release d6bbd90e, tag
-  refused, local only). It skipped ccr-80102643-4n8bv4 and
-  ccr-9eb50716-lecnjf (they moved mid-merge): next sweep takes them.
-- Task 59 closed: transp4 restore hang gone (2,000-run scan); narrowadd R2
-  was TI's checker (fixed above); early-demote resume_pc 0 became pc_kept.
-- DI-23 answered (TI-522): localsp mru doubling is the stub MIU's MA-14
-  head-of-line block behind a pred-store RMW through the cacheless MLC stub.
-- Gate times: a scoped gate touching params now takes ~7 h (cg 3.4 h, ngd
-  3.7 h, mostly heavy-unit serialisation); plan pushes around it.
-- Disk: scratchpad priv/ and ~/.cache/ccache untouched: ask Daniel before
-  clearing. Worktrees ti-ecc72, ti-drop are landed and clean (ti-fold holds ba085cda):
-  their build/ dirs may go.
+## State (2026-11-27)
+- Landed be7c37b7 on both branches (SCOPED PASS): the sweep's empty-pick skip,
+  on the 11-27 sweep db54eeb6 (release 73edf5d5; tag refused, local only).
+  Before it c0883a36: MA-34 (B) + AR 417 EXB 8, gate-scope ALWAYS_READERS
+  (lint-rtl.py, check-1d.sh name rtl/rcu/ but run in s1d). MI-47's 8566e6ff in.
+- 51c78bc4: a kernel run cut at its cycle cap names the cap and no longer
+  fails held checks of unretired instructions (colwalk-p1k was the 20000
+  cap at CCV_TB_LATENCY >= 560, not a stall). TI-593 corrected TI-592; AR 424
+  wants no control; TI-594 closed AR 422 (1).
+- TI-591 (RI-64): miu_form OOM is MI's clang++ fix 104678de, on MI's
+  ccr-58815650-0ch1hh at 208e4c46, pushed after the 11-27 fetch. Task 90: when
+  a landed tip has it, drop miu_form from tools/heavy-units.json.
+- Disk: scratchpad priv/ and ~/.cache/ccache untouched: ask Daniel first.
 - Known: MIU-model rows on bank bounds are stub-MIU only (slotform,
-  coremark128). AR 405 leaves MA to state the mispredict path; a DCU
-  response field for it would be a new TI row.
+  coremark128).
 
 ## In flight
-- ti-pt (worktree /home/user/ti-pt, on landed 77f7849e): 9578fbef input-port
-  table form (OA-492 (3)) + b3834897 check-ngd OOE cap rise to 30 (DA rev 134).
-  Gate restarted with CCV_RESUME=1 after a disk-full stop; job log
-  /root/ccv-logs/job-gate-push-20261124-094150-3345.log. On landing: row to OI, OA.
-  Never edit ti-pt while it gates.
-- ti-hop (worktree /home/user/ti-hop, gate-scratch/TI-hop @ 02dbf5c4, on
-  b3834897): orphan check (MI-44), helper hops (OI-213), named crossings
-  (OA-494), cone + registered hop (OA-495), OA-496, writer-input exemption
-  (OI-217/OA-497/OI-219), OA-498/499 cone sources, OA-500 write-pipeline
-  fixed point (u_map's ten off), OA-501 helper crossing over a sibling-output
-  source (CCV_LINT_FIXTURE_UNITS for check-1d), OI's u_gfree declarations
-  (cherry-picked cf3ce683, 9ffba2bd, ade5d5a1, f05fad61: u_gfree ratchet
-  empty, 24 entries left). check-1d 68 PASS, tree lint 0. Gate-push right
-  after ti-pt lands (merge its landed tip first); ring OI, OA, MI, MA.
-- 11-24 daily sweep: register half done (TI-580). Repo half (daily-sweep.sh)
-  waits: run it after ti-pt and ti-hop land, never beside a gate.
-- Disk: landed worktrees' build/ dirs were cleared (ti-tw, ti-conn, ti-drop,
-  ti-l23, ti-fold). 12G free.
-- Then: OA signatures on u_gfree's child-to-child entries (rt_v/row wait on
-  OI's late-return control; OI drafts sa_l/rt_l); MI writes
-  ccv_miu.feedback.json at assembly; DI-38 (1) fill-unheld line (task 72,
-  needs DI's spec); MI 29603c02 held-wait re-pin (task 80); OI-204 pc_kept
-  at:11 lines (task 66); AR 417 (task 79); task 76 credit modules.
+- Next: task 90 after the next sweep; then the open work below, plus DI-38 (1) (task 72, needs DI's spec),
+  MI 29603c02 held-wait re-pin (task 80), AR 417 swap-class control (task 79),
+  task 76 credit modules.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
