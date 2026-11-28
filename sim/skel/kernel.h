@@ -348,6 +348,11 @@ struct Kernel {
   void failHeld(const std::string &where, uint64_t tid, const char *fmt, ...);
   void executing(const std::string &where, uint64_t tid);
   void flushHeld();
+  /// The run stopped at its cycle cap, not at KernelEnd's finish: a check
+  /// held for an instruction its warp had not yet retired may still have
+  /// been made moot by its replay, so flushHeld drops it. The run fails on
+  /// finished=0 regardless (colwalk-p1k at CCV_TB_LATENCY 600, 11-27).
+  bool cut_short = false;
   std::map<std::pair<std::string, uint64_t>, std::vector<std::string>> held;
   std::set<std::pair<std::string, uint64_t>> executed;
   std::set<uint64_t> reexecuted;                   ///< tids that ran twice
