@@ -112,8 +112,11 @@ module ooe_decrx #(
   // Each slot's table: whether it holds a warp, the warp, its epoch and
   // the two after it.
   logic [S-1:0]    sv_cq02h;
-  logic [S*LW-1:0] swi_cq02h;
-  logic [S*EP-1:0] sei_cq02h, sni_cq02h, s2i_cq02h;
+  // swi, sni and wq are kept: each has an output copy (swo, sno, woo) of
+  // the same next value and enable, which synthesis would merge into it.
+  (* keep *) logic [S*LW-1:0] swi_cq02h;
+  (* keep *) logic [S*EP-1:0] sni_cq02h;
+  logic [S*EP-1:0] sei_cq02h, s2i_cq02h;
 
   // Each slot's epoch after this cycle's advances (0, 1 or 2 of them), and
   // the two after that, chosen from the flops' own increments so that no
@@ -223,7 +226,8 @@ module ooe_decrx #(
   // epoch its stragglers carry, the slot's before the notice: its epoch if
   // the notice advances it alone, the one after if a redirect advances it
   // too. An AND-OR on D, in the tables' gate.
-  logic [S-1:0]    wq_cq02h, wq_nx_cq01h;
+  (* keep *) logic [S-1:0] wq_cq02h;
+  logic [S-1:0]    wq_nx_cq01h;
   logic [S*EP-1:0] wep_cq02h, wep_nx_cq01h;
   always_comb
     for (int s = 0; s < S; s++) begin
