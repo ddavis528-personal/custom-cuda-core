@@ -243,7 +243,8 @@ module ooe_rename #(
   // Its pool registers and their corrections, the floors and rooms, from
   // rename's counters (below).
   logic [4*LX-1:0]    px_cq04h;
-  logic [4*(R+1)-1:0] pl_cq03h;
+  (* keep *) logic [4*(R+1)-1:0] pl_cq03h;   // tq_*'s copy for the go alone (OI-207's register loop)
+  logic [4*(R+1)-1:0] pl_nx_cq02h;
   logic [S*LU-1:0]    unmet_g_cq04h, unmet_p_cq04h, room_g_cq04h, room_p_cq04h;
   logic [S*LU-1:0]    ug_go_cq05h, up_go_cq05h;   // the go's: the registered unmet less the last take (OI-134)
   logic               pool_en_cq04h;
@@ -726,6 +727,16 @@ module ooe_rename #(
   logic             tq_nz_cq03h, tq_en_cq02h;
   assign tq_nz_cq03h = !tq_r_cq03h[0] || !tq_m_cq03h[0] || !tq_g_cq03h[0] || !tq_p_cq03h[0];
   assign tq_en_cq02h = r1_en_cq02h || tq_nz_cq03h;
+  // The go reads its own copy of the four class takes, so u_go.pl reads one
+  // register directly: the loop u_go.wb/wt -> takes -> pl_cq03h -> u_go.pl
+  // is declared in ooe_rename.feedback.json (OI-207, OA-489). The control
+  // no-take-q blinds only the go's copy.
+`ifdef CCV_CHECK_RENAME
+  assign pl_nx_cq02h = ctl_notq ? {4{(R + 1)'(1)}}
+                     : {oh_count(tk_p_cq02h), oh_count(tk_g_cq02h), oh_count(tk_m_cq02h), oh_count(tk_r_cq02h)};
+`else
+  assign pl_nx_cq02h = {oh_count(tk_p_cq02h), oh_count(tk_g_cq02h), oh_count(tk_m_cq02h), oh_count(tk_r_cq02h)};
+`endif
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       tq_r_cq03h  <= (R + 1)'(1);
@@ -734,7 +745,9 @@ module ooe_rename #(
       tq_p_cq03h  <= (R + 1)'(1);
       tq_gs_cq03h <= {S{(R + 1)'(1)}};
       tq_ps_cq03h <= {S{(R + 1)'(1)}};
+      pl_cq03h    <= {4{(R + 1)'(1)}};
     end else if (tq_en_cq02h) begin
+      pl_cq03h   <= pl_nx_cq02h;
       tq_r_cq03h <= oh_count(tk_r_cq02h);
       tq_m_cq03h <= oh_count(tk_m_cq02h);
       tq_g_cq03h <= oh_count(tk_g_cq02h);
@@ -922,11 +935,6 @@ module ooe_rename #(
   // The readers: the corrections, each class's lagged take; a slot's floor
   // unmet (an occupied slot's) and its room to its ceiling, each its
   // remainder less its lagged take.
-`ifdef CCV_CHECK_RENAME
-  assign pl_cq03h = ctl_notq ? {4{(R + 1)'(1)}} : {tq_p_cq03h, tq_g_cq03h, tq_m_cq03h, tq_r_cq03h};
-`else
-  assign pl_cq03h = {tq_p_cq03h, tq_g_cq03h, tq_m_cq03h, tq_r_cq03h};
-`endif
   always_comb
     for (int s = 0; s < S; s++) begin
       unmet_g_cq04h[s * LU +: LU] = occ_cq01h[s] ? rem_of(ufg_cq04h[s * HW +: HW], tq_gs_cq03h[s * (R + 1) +: R + 1]) : '0;
