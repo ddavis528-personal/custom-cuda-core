@@ -4,6 +4,16 @@ Session `session_01QPk2jyUbWA7fW9YpUwqdxk`, started 2026-11-13. Start doc:
 `docs/miu-arch.md` (AR's handoff). Branch `claude/miu-dcu-microarch-spec-664pgr`
 in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
+## Now (2026-11-27 late)
+
+- MA-35 / MA-33 (3) DONE at Daniel's direction: fold = fold(PA[47:16]) ^ fold(PA[15:7+log2 sets]). Commit f4952819
+  (unpushed until gate; touches tools/ -> full gate). DCU tab rev 149, register MA rev 223. After push: notify TI, MI, DI
+  (owners of the edited files); TI also fixes CCV_DCU_WAYPRED_BITS doc. Model runs at 64/128/512 sets in
+  scratchpad/wf/runs (missrun, plog clean; cm128 new vs old binary pending) -> response row with figures.
+- In RTL only MIU folds (DCU stores MIU's pa_fold); ccv_common_wayfold has no design instance yet (walker not written).
+- RH (OA-504) asked for gtr4/gtw* kernels: sent inline (they live only in scratchpad/ar412/synth); told RH MA-31 had no
+  B/cycle counter (lines x 128 / cycles is the equivalent), env, and the uncommitted p1-knobs.patch; offered it if needed.
+
 ## Working rules beyond CLAUDE.md
 
 - MA owns the MIU and DCU tabs of *Per-block architecture specs*
