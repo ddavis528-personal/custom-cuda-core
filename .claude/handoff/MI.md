@@ -59,7 +59,7 @@ every agent's ping to MI answered.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. Pushed 285eaef0 (SCOPED PASS). MI tab rev 77: MI-52 (ruled, below), MI-53 (TI: bin + merge).
+0. Pushed 285eaef0 (SCOPED PASS). MI tab rev 77: MI-52 (ruled, below), MI-53 done: TI landed picks + bin at d5903f2b (TI-611, TI rev 608); merge at sweep.
    MA tab rev 224: MI-52 ruled. New miu_pass (1 inst, stage H-1): picks every MQ-sourced lookup
    (later passes, window fills, drains incl st.pred RMW and atomic A1/A3, walker reads); TLB lookup
    (its one port, RR with L0 refills) before offering; flops per-lookup-slot candidate at H-1
