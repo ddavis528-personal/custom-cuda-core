@@ -1,0 +1,29 @@
+{
+  "_comment": "bad_conn4.sv's reference_kcnp.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "from": {
+        "cone": [
+          "km_cy04h"
+        ],
+        "ahead": {
+          "km_cy04h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "km_cy03h",
+        "km_cy04h"
+      ],
+      "why": "a loop whose input reads a cone over two parent registers, as u_go's counters (OA-495 (a))"
+    }
+  }
+}

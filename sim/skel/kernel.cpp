@@ -159,7 +159,8 @@ namespace {
 
 // The testbench link: the flattened TL-C bundle CCV_L_W_TL_OUT / _IN were
 // sized from -- A + C + E out, B + D in, each channel's fields at the stated
-// parameters (512-bit beat, 48-bit address, 6-bit source, 4-bit sink), then a
+// parameters (512-bit beat, 48-bit address, CCV_L_W_TL_SOURCE-bit source, which
+// is MLC's req_id width (AR 422), 4-bit sink), then a
 // valid bit per TL channel at the top. A 128-byte line is therefore a
 // TWO-BEAT burst, and EXB is where the sequencer lives. Flattened versus
 // decomposed is still the EXB session's decision (tilelink_tlc).
@@ -168,13 +169,18 @@ constexpr uint32_t kBeat = 64;                    // bytes per beat
 constexpr uint32_t kBeats = kLine / kBeat;        // beats per line
 constexpr uint32_t kTlSizeLine = 7;               // log2(128)
 // A channel, at the bottom of tl_out
-constexpr uint32_t kAOp = 0, kAParam = 3, kASize = 6, kASrc = 10, kAAddr = 16,
-                   kAMask = 64, kAData = 128;
-constexpr uint32_t kAValid = 1222;                // a_valid, c_valid, e_valid
+constexpr uint32_t kTlSrcW = ccv::prelim::kWTlSource;    // 8 (AR 422)
+constexpr uint32_t kTlA = 635 + kTlSrcW, kTlC = 571 + kTlSrcW, kTlB = kTlA,
+                   kTlD = 527 + kTlSrcW;                   // channel widths
+constexpr uint32_t kAOp = 0, kAParam = 3, kASize = 6, kASrc = 10, kAAddr = kASrc + kTlSrcW,
+                   kAMask = kAAddr + 48, kAData = kAMask + 64;
+constexpr uint32_t kAValid = kTlA + kTlC + 4;     // a_valid, c_valid, e_valid
 // D channel, above B in tl_in
-constexpr uint32_t kDOp = 641, kDSize = 646, kDSrc = 650, kDData = 661;
-constexpr uint32_t kDValid = 1175;                // b_valid 1174, d_valid 1175
-constexpr uint32_t kTlSrcW = 6;
+constexpr uint32_t kDOp = kTlB, kDSize = kDOp + 5, kDSrc = kDSize + 4, kDSink = kDSrc + kTlSrcW,
+                   kDData = kDSink + 4 + 1;
+constexpr uint32_t kDValid = kTlB + kTlD + 1;     // b_valid, then d_valid
+static_assert(kAValid + 3 == ccv::prelim::kWTlOut, "tl_out layout != CCV_L_W_TL_OUT");
+static_assert(kDValid + 1 == ccv::prelim::kWTlIn, "tl_in layout != CCV_L_W_TL_IN");
 
 void putBeat(Bits &b, uint32_t lsb, const Line &l, unsigned beat) {
   for (unsigned k = 0; k != kBeat; ++k) b.set(lsb + 8 * k, 8, l[beat * kBeat + k]);
@@ -1164,7 +1170,7 @@ private:
 class Miu : public Stub {
 public:
   Miu(int inst, Kernel &k)
-      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {}
+      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS", ccv::kMiuDcuIds), spm_ids_(ch().miu_spm) {}
   const char *kind() const override { return "miu"; }
 
 private:
@@ -1735,7 +1741,7 @@ private:
           }
       }
 
-    if (jobs_.size() < kMiuPipes) start();
+    if (jobs_.size() < ccv::kMiuMemopsInflight) start();   // memops in flight (MA-34), not the pipes
     advance();
     // A hit's data leaves at the contract's data cycle and its completion
     // CCV_LAT_L1_ECC cycles later (AR 368, OA 426: the syndrome stages), or

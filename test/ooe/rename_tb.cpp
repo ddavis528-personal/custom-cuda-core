@@ -43,8 +43,9 @@
 // take, a check-build input: OA's rev 208) and no-take-q2 (the names' pool
 // register drops the older take: OA's rev 219), unmet-now (the go reads the
 // unmet on time, not its register: OI-134) and no-last-take (the register's
-// unmet, its last take not subtracted). The last four need names
-// that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
+// unmet, its last take not subtracted), no-prv (ooe_rendep's G-1 hits
+// dropped from prv_dep: OA-496's control for u_map's table read).
+// no-take-q to no-last-take need names that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
 // GPR ceiling of 24, the model's set alike.
 // The sectioned build (RENAME_SECTIONS) adds no-merge (no head's attributes
 // say it reads its merge source, so a merge places by its sources).
@@ -363,6 +364,7 @@ void clearInputs() {
   dut->ctl_notq2 = control == "no-take-q2";
   dut->ctl_unow = control == "unmet-now";
   dut->ctl_nolt = control == "no-last-take";
+  dut->ctl_noprv = control == "no-prv";
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
