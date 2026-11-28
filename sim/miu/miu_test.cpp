@@ -4,6 +4,7 @@
 // and each has a negative: the broken behaviour the test must refuse.
 // Run by sim/miu/run-tests.sh (the check-miu-unit job, MI-1).
 //===----------------------------------------------------------------------===//
+#include "miu_ids.h"
 #include "miu_res.h"
 
 #include <cstdio>
@@ -163,12 +164,41 @@ static void sharedFaults() {
   CHECK(sharedCases(signedRead) != 0);
 }
 
+// MA-34 (option B): 160 req_ids in the 8-bit field, in 4 interleaved
+// quarters of 40 as rtl/miu/miu_ids.sv: slot s takes only ids i * 4 + s,
+// never one at or past 160. Negative: the old blocked quarters (slot 1's
+// first id 40, or 64 at 256 ids) would fail the residue check.
+static void reqIds() {
+  ccv_miu::MiuIds ids(8, 4, 160, nullptr);
+  CHECK(ids.size() == 160 && ids.holds(159) && !ids.holds(160));
+  unsigned seen[4] = {0, 0, 0, 0};
+  bool ok = true;
+  for (unsigned cyc = 0; cyc != 60; ++cyc) {
+    for (unsigned s = 0; s != 4; ++s)
+      if (ids.any(s)) {
+        const unsigned id = ids.take(s);
+        ok = ok && id < 160 && id % 4 == s && id / 4 == seen[s];
+        ++seen[s];
+      }
+    ids.tick();
+  }
+  CHECK(ok);                                           // each quarter in order, interleaved
+  CHECK(seen[0] == 40 && seen[1] == 40 && seen[2] == 40 && seen[3] == 40);
+  CHECK(!ids.any(0) && !ids.any(3));                   // 160 taken: none past the cap
+  ids.release(5);                                      // quarter 1's id 5
+  ids.release(200);                                    // not the pool's: ignored
+  for (unsigned i = 0; i != 4; ++i) ids.tick();
+  CHECK(ids.any(1) && !ids.any(0));
+  CHECK(ids.take(1) == 5);
+}
+
 int main() {
   memopCredits();
   bankCredits();
   tlb();
   walker();
   sharedFaults();
+  reqIds();
   std::printf("miu unit: %d checks, %d failed\n", checks, fails);
   return fails ? 1 : 0;
 }
