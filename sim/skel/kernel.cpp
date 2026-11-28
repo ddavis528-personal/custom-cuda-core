@@ -74,6 +74,9 @@ void Kernel::flushHeld() {
   for (const auto &h : held) {
     const uint32_t seq = uidSeq(h.first.second);
     if (parkedNow(seqWarp(seq)) && seqIndex(seq) >= nret[seqWarp(seq)]) continue;
+    // Likewise for a run cut at its cycle cap (cut_short): an unretired
+    // instruction's replay may simply not have come yet.
+    if (cut_short && seqIndex(seq) >= nret[seqWarp(seq)]) continue;
     // Likewise for a warp the machine check killed (AR 370): an instruction
     // past what it retired never retires, and its operands (a load's data
     // the kill dropped) are moot.
@@ -5784,11 +5787,25 @@ private:
   /// in that order, either way.
   struct Mig { unsigned w, slot, place, dir, sent; };
   std::deque<Mig> mig_q_;
+  /// PCA's CCV_PCA_PLACES places, one more than CCV_PARKED_WARPS (AR 431).
+  /// CCV_RAU_PLACES=n overrides the count for a test (AR 432): RAU then uses
+  /// only the first n, so a few-warp kernel reaches full occupancy (RA-164's
+  /// control); PCA keeps its own size.
   std::set<unsigned> places_ = [] {
     std::set<unsigned> p;
-    for (unsigned i = 0; i != ccv::kParkedWarps; ++i) p.insert(i);
+    unsigned n = unsigned(std::strtoul(env("CCV_RAU_PLACES", "0"), nullptr, 0));
+    if (n == 0 || n > ccv::kPcaPlaces) n = ccv::kPcaPlaces;
+    for (unsigned i = 0; i != n; ++i) p.insert(i);
     return p;
   }();
+  /// Places promised to demotions in flight that have not drained yet
+  /// (RA-164): each takes its place at drained, so demote() reserves it.
+  size_t reserved() const {
+    size_t r = 0;
+    for (unsigned w : demoting_)
+      if (!place_of_.count(w)) ++r;
+    return r;
+  }
   std::map<unsigned, unsigned> place_of_;    ///< parked or moving warp -> its place
 
   /// RAU's warp-to-CTA table: a CTA slot per CTA, whose warps all name it
@@ -6045,6 +6062,17 @@ private:
         (provisional_.count(w) && !wanted() && k_.brk != "demote-unwanted") ||
         (swap_ && !wanted()))
       return;
+    // RA-164, AR 431 (1): a demotion takes a PCA place at drained, and only
+    // a restore frees one, so a demotion with no place left over the ones
+    // reserved could wait on the restore its own slot is to make room for
+    // (gtw32 had 4 slots + 28 places, 32 warps). It stays resident instead,
+    // until a place frees. The spare place (CCV_PCA_PLACES = 29) is what
+    // lets one demote at full occupancy. demote-no-place: demote anyway;
+    // drained then finds PCA full.
+    if (places_.size() <= reserved() && k_.brk != "demote-no-place") {
+      k_.hit("demote_no_place");
+      return;
+    }
     if (provisional_.erase(w)) k_.hit("prov_demote");
     demoting_.insert(w);
     ready_.erase(w);   // the demotion's own discard reports it again
@@ -6103,6 +6131,8 @@ private:
       // pca-place: a place handed out and never taken off the free list,
       // so the next demotion gets it again and PCA must refuse it.
       if (k_.brk != "pca-place") places_.erase(places_.begin());
+      // The last free place taken: at full occupancy, the spare (AR 431).
+      if (places_.empty()) k_.hit("demote_spare");
       place_of_[w] = pl;
       mig_q_.push_back({w, slot_of_[w], pl, 0, 0});
     }
@@ -6345,6 +6375,7 @@ private:
       const unsigned w = unsigned(get(m, c.rau_pca_mig, "warp_id"));
       const unsigned pl = unsigned(get(m, c.rau_pca_mig, "pca_place"));
       if (get(m, c.rau_pca_mig, "direction") == 0) {
+        if (pl >= ccv::kPcaPlaces) k_.fail("pca: place %u is past CCV_PCA_PLACES (%u)", pl, ccv::kPcaPlaces);
         if (array_.count(pl)) k_.fail("pca: place %u is already held, by warp %u", pl, array_[pl].warp);
         // or claimed by a demotion still arriving
         for (auto &[v, x] : ctx_)
@@ -7114,6 +7145,11 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
              kChans[ci.chan].name, s - ci.slot_base, (unsigned long long)n);
     }
   }
+  k.cut_short = !e.finished;
+  if (k.cut_short)
+    std::fprintf(stderr, "kernel %s: stopped at the cycle cap before it finished; "
+                 "raise --cycles (the default 20000 is short at a high CCV_TB_LATENCY)\n",
+                 k.name.c_str());
   const KernelReport r = compareFinal(k);
   const uint64_t from_fetch =
       k.fetched && e.finish >= k.first_fetch ? e.finish - k.first_fetch : 0;

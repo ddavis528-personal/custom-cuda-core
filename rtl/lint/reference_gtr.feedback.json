@@ -1,0 +1,15 @@
+{
+  "_comment": "CCV-L23's port table on a register-free child, its assertion in the parent (OI-230 (g), OA 514), for reference_gtr.sv.",
+  "tables": {
+    "rd_cy04h": {
+      "reader": "hd_cy03h",
+      "ahead": 1,
+      "writer": "rd_cy04h",
+      "assert": "hd_read_not_written",
+      "control": "tport-dup",
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "the parent's row register read by its clockless child a stage early, never as it is written; the assertion is the parent's, naming the table (OI-230 (g), OA 514)"
+    }
+  }
+}

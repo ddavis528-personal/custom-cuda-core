@@ -40,6 +40,10 @@ static constexpr uint32_t kTier1Warps = 4;
 /// decided at the block-level grill-me (grill-me 2026-09-23)
 static constexpr uint32_t kParkedWarps = 28;
 
+/// Places in PCA's parked array, the count RAU's free list and PCA's storage take: one more than CCV_PARKED_WARPS. RAU reserves a place when it sends a demote, and frees it once the restore is done. With every context live (4 slots, 28 parked), a demotion goes into the spare, and the restore it makes room for frees the next; with no spare, a full core could not demote until a warp exited (AR 431 (2)). The spare fits in the padding of PCA's SRAM rows (AR 431 (3)). The skeleton's RAU stub reads CCV_RAU_PLACES, when set, as a test override of this count.  Derived: = CCV_PARKED_WARPS + 1.  Requires: CCV_PCA_PLACES > CCV_PARKED_WARPS.
+/// decided at the block-level grill-me (AR 431, AR 432 (re RA-164, RI-72, OI-234))
+static constexpr uint32_t kPcaPlaces = 29;
+
 /// Warp contexts the core holds, resident and parked: the width of every per-warp mask (kill_warp_mask, ccv_rau_syu_alloc's warp_mask). One name, so a mask sized by it cannot miss a residency tier added later. Equal to CCV_W_LANE_MASK today by coincidence only (A-12).  Derived: = CCV_TIER1_WARPS + CCV_PARKED_WARPS.
 /// decided at the block-level grill-me (arch open A-23 (2026-09-27))
 static constexpr uint32_t kWarpContexts = 32;
@@ -140,8 +144,8 @@ static constexpr uint32_t kBarrierEntries = 64;
 /// decided at the block-level grill-me (grill-me 2026-09-23)
 static constexpr uint32_t kCoreIdBits = 2;
 
-/// A place in PCA's parked array: RAU allocates one from a free list of CCV_PARKED_WARPS on a demotion and names it on ccv_rau_pca_mig both ways, so PCA stores by place, not by warp, and holds no table. It replaces CCV_L_W_PCA_BANK's bank_select, which reached only RCU and FET, neither of which stores anything.  Derived: = clog2(CCV_PARKED_WARPS).
-/// decided at the block-level grill-me (AR's response TI-24 (1) (2026-10-21))
+/// A place in PCA's parked array: RAU allocates one from a free list of CCV_PCA_PLACES on a demotion and names it on ccv_rau_pca_mig both ways, so PCA stores by place, not by warp, and holds no table. It replaces CCV_L_W_PCA_BANK's bank_select, which reached only RCU and FET, neither of which stores anything.  Derived: = clog2(CCV_PCA_PLACES).
+/// decided at the block-level grill-me (AR's response TI-24 (1) (2026-10-21); AR 431)
 static constexpr uint32_t kWPcaPlace = 5;
 
 /// Every PC of a warp lies in one aligned window of 2^CCV_W_PC_WINDOW bytes, so a warp's lanes share the PC's bits above it and FET holds only the bits below per lane (IS-17's per-lane PCs).
@@ -485,7 +489,7 @@ static constexpr uint32_t kDcuWays = 8;
 /// PROVISIONAL -- decided by: MA-19 (re AR 370 (3), DA rev 124): one entry per spare row, 16 data instances
 static constexpr uint32_t kDcuUeTrack = 16;
 
-/// DCU's way predictor: the width of each way's partial-tag fold, the XOR fold of the line's tag, PA[47:16], in its k-bit chunks (sim/skel/wayfold.h and rtl/common/ccv_common_wayfold.sv, the one fold MIU's TLB and DCU's table write share; AR 405 (3)). 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, the fold table is flops in dcu_bctl, not a register file: 64 sets x 8 ways x this a bank, 16,384 flops at 4, written only on a fill or eviction (MA-30). MIU sends the lookup's fold as ccv_miu_dcu_req's pa_fold, since DCU cannot fold the PA itself in H+3 within 25 NGD. The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding.  Requires: CCV_DCU_WAYPRED_BITS <= 16.
+/// DCU's way predictor: the width of each way's partial-tag fold, the XOR fold of the line's tag, PA[47:7+log2 CCV_DCU_SETS]: the page's part PA[47:16] in its k-bit chunks XOR the page offset's tag bits PA[15:7+log2 sets] in theirs, the latter empty at the built 512 sets (MA-35, MA-33 (3); sim/skel/wayfold.h and rtl/common/ccv_common_wayfold.sv, the one fold MIU's TLB and DCU's table write share; AR 405 (3)). 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, the fold table is flops in dcu_bctl, not a register file: 64 sets x 8 ways x this a bank, 16,384 flops at 4, written only on a fill or eviction (MA-30). MIU sends the lookup's fold as ccv_miu_dcu_req's pa_fold, since DCU cannot fold the PA itself in H+3 within 25 NGD. The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding.  Requires: CCV_DCU_WAYPRED_BITS <= 16.
 /// PROVISIONAL -- decided by: DA rev 128 (MA-23), MA-26; MA-30 (MA rev 154), AR 405 (AR rev 409): 4, within 0.3% of 5 on cm128priv for 4,096 fewer flops; 3 not taken
 static constexpr uint32_t kDcuWaypredBits = 4;
 

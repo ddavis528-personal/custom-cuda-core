@@ -123,10 +123,11 @@ private:
     // whenever the predictor is on (--break miu-fold-flip), as the stub's.
     const unsigned k = core_.config().wp_bits;
     const uint64_t pf = get(req, c.miu_dcu, "pa_fold");
-    if (k && !core_.config().wp_mru && pf != ccv::skel::wayFold(pa, k))
+    const unsigned sb = ccv::skel::wayFoldSetBits(core_.config().sets);
+    if (k && !core_.config().wp_mru && pf != ccv::skel::wayFold(pa, k, sb))
       k_.fail("dcu: slot %u req_id %u pa_fold %llx is not its phys_addr %llx's fold %x",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)pf,
-              (unsigned long long)pa, ccv::skel::wayFold(pa, k));
+              (unsigned long long)pa, ccv::skel::wayFold(pa, k, sb));
   }
 
   D::Req decode(unsigned s, const Receiver::Msg &m) {

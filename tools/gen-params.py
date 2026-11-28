@@ -399,6 +399,7 @@ def selftest(d):
              ("CCV_W_PRED_STATE", "value", 2048, "CCV_MIGRATION_CYCLES"),
              ("CCV_MIGRATION_CYCLES", "value", 33, "CCV_W_MIG_ROW"),
              ("CCV_PARKED_WARPS", "value", 60, "CCV_WARP_CONTEXTS"),
+             ("CCV_PCA_PLACES", "value", 28, "CCV_PCA_PLACES"),
              ("CCV_P_PRED_REGS", "value", 16, "CCV_P_PRED_REGS"),
              ("CCV_P_PHYS_REGS", "value", 64, "CCV_P_PHYS_REGS"),
              ("CCV_P_PHYS_REGS", "value", 256, "CCV_P_REN_FLOOR"),
