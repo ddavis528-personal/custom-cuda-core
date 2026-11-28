@@ -54,16 +54,12 @@ Core::Core(const Config &c, Hooks &h) : c_(c), h_(h) {
   seen_ent_.assign(c_.banks, 0);
   seen_std_.assign(c_.banks, 0);
   std_used_.assign(c_.banks, 0);
-  for (unsigned i = 0; i != c_.ids; ++i) free_ids_.insert(i);
-  {
-    std::vector<unsigned> all(free_ids_.begin(), free_ids_.end());
-    const std::vector<unsigned> o = offerOrder(all);
-    std::set<unsigned> out(o.begin(), o.end());
-    for (unsigned p = 0; p != kNfIds && p != o.size(); ++p) nf_[p] = o[p];
-    std::vector<unsigned> rest;
-    for (unsigned i : all)
-      if (!out.count(i)) rest.push_back(i);
-    pk_ = offerOrder(rest);
+  for (unsigned i = 0; i != c_.banks * c_.ids; ++i) free_ids_.insert(i);
+  nf_.assign(c_.banks, std::nullopt);
+  pk_.assign(c_.banks, std::nullopt);
+  for (unsigned b = 0; b != c_.banks; ++b) {
+    nf_[b] = pickFree(b, {});
+    pk_[b] = nf_[b] ? pickFree(b, {*nf_[b]}) : std::nullopt;
   }
 }
 
@@ -953,6 +949,16 @@ void Core::missOrWait(const Req &r, uint64_t d2, bool late) {
   // ids leave only by a port pick). dcu-late-miss-port, the control, puts
   // it on its slot's port, where it meets the slot's next miss with one
   // id (the CHECK in startMiss).
+  // A second miss in one bank in one cycle (MA-34: one dcu_mshr a bank,
+  // one new miss a cycle): a bank-conflict loser deciding its miss at D2
+  // beside its bank's winner waits the same way and retries on port 0.
+  // dcu-bank-two-miss, the control, lets it in (the CHECK in startMiss).
+  if (!late && nm_.count({b, d2}) && c_.brk != "dcu-bank-two-miss") {
+    h_.hit("dcu_bank_miss_busy");
+    h_.hit("dcu_miss_wait");
+    bq_[b].push_back(Acc{Acc::MissW, now_, d2 + kRetryLag, r.pa, r, 0, {}});
+    return;
+  }
   if (late && c_.brk != "dcu-late-miss-port") {
     h_.hit("dcu_late_miss_retry");
     h_.hit("dcu_miss_wait");
@@ -968,8 +974,7 @@ void Core::missOrWait(const Req &r, uint64_t d2, bool late) {
   }
   const char *why = "dcu_miss_wait_order";
   const unsigned port = r.slot + 1;
-  if (port >= kNfIds) h_.fail(fmt("dcu: slot %u has no MSHR port", r.slot));
-  if (waits) nf_pq_ |= 1u << port;   // it presents its request and waits
+  if (waits) nf_pq_ |= 1u << b;   // it presents its request and waits
   else {
     for (const Acc &x : bq_[b])
       if (x.k == Acc::MissW && x.line == r.pa)
@@ -1065,47 +1070,40 @@ void Core::freeId(unsigned id) {
   freed_.insert(id);
 }
 
-/// The RTL's pick order of the free ids (ascending): lowest, highest,
-/// second lowest, second highest, third lowest, as many as there are.
-std::vector<unsigned> Core::offerOrder(const std::vector<unsigned> &av) {
-  static const size_t pick[kNfIds][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {0, 2}};   // {from the top, index}
-  std::vector<unsigned> o;
-  const size_t n = av.size();
-  for (size_t i = 0; i != kNfIds && i != n; ++i)
-    o.push_back(pick[i][0] ? av[n - 1 - pick[i][1]] : av[pick[i][1]]);
-  return o;
+/// Bank b's lowest free id not in `out` (an id freed this cycle counts as
+/// free; one taken last cycle does not yet).
+std::optional<unsigned> Core::pickFree(unsigned b, const std::set<unsigned> &out) const {
+  for (unsigned i = b * c_.ids; i != (b + 1) * c_.ids; ++i)
+    if (((free_ids_.count(i) && !ua_.count(i)) || freed_.count(i)) && !out.count(i)) return i;
+  return std::nullopt;
 }
 
-/// The next cycle's offers and picks, under the RTL's enable: a request,
-/// a free, or a pick for a port with none. (The RTL also refreshes on a
-/// lookup that sent nothing to the MSHR; that changes only which free ids
-/// are picked, never how many.)
+/// The next cycle's offers and picks, a bank at a time, under the RTL's
+/// enable: a request, a free in the bank, or a pick for an empty offer.
 void Core::nfNext() {
-  bool hole = false;
-  for (const auto &o : nf_) hole = hole || !o;
-  if (nf_pq_ || !freed_.empty() || (!pk_.empty() && hole)) {
-    std::set<unsigned> out(pk_.begin(), pk_.end());
-    for (const auto &o : nf_)
-      if (o) out.insert(*o);
-    std::vector<unsigned> av;
-    for (unsigned i = 0; i != c_.ids; ++i)
-      if (((free_ids_.count(i) && !ua_.count(i)) || freed_.count(i)) && !out.count(i)) av.push_back(i);
-    std::set<unsigned> ua;
-    size_t j = 0;
-    bool left = false;
-    for (unsigned p = 0; p != kNfIds; ++p) {
-      const bool req = (nf_pq_ >> p) & 1;
-      if (req && nf_[p]) ua.insert(*nf_[p]);
-      if (req || !nf_[p]) nf_[p] = j < pk_.size() ? std::optional<unsigned>(pk_[j++]) : std::nullopt;
-      left = left || !nf_[p];
+  std::set<unsigned> ua;
+  for (unsigned b = 0; b != c_.banks; ++b) {
+    const bool req = (nf_pq_ >> b) & 1;
+    bool fr = false;
+    for (unsigned i : freed_) fr = fr || idBank(i) == b;
+    if (!(req || fr || (pk_[b] && !nf_[b]))) continue;
+    if (req && nf_[b]) ua.insert(*nf_[b]);
+    if (req || !nf_[b]) {
+      nf_[b] = pk_[b];
+      if (req && !nf_[b]) h_.hit("dcu_mshr_id_skipped");
     }
-    if (nf_pq_ && left) h_.hit("dcu_mshr_id_skipped");
-    pk_ = offerOrder(av);
-    ua_ = std::move(ua);
-  } else {
-    ua_.clear();
   }
+  // The picks see the offers taken last cycle as in use (ua_), then this
+  // cycle's are added for the cycle after.
+  for (unsigned b = 0; b != c_.banks; ++b) {
+    std::set<unsigned> out;
+    if (nf_[b]) out.insert(*nf_[b]);
+    for (unsigned i : ua) out.insert(i);
+    pk_[b] = pickFree(b, out);
+  }
+  ua_ = std::move(ua);
   nf_pq_ = 0;
+  while (!nm_.empty() && nm_.begin()->second + 64 < now_) nm_.erase(nm_.begin());
   freed_.clear();
 }
 
@@ -1113,10 +1111,15 @@ void Core::nfNext() {
 /// flight and has room, else a buffer of its own if one is free (with
 /// dcu-one-miss, only when none is). False: it stalls, and so does the
 /// channel (accepting()).
-bool Core::startMiss(const Req &r, uint64_t d2, unsigned port, const char **why) {
+bool Core::startMiss(const Req &r, uint64_t d2, unsigned, const char **why) {   // its port: its bank (MA-34)
   const char *dummy;
   if (!why) why = &dummy;
-  nf_pq_ |= 1u << port;   // every request takes its port's offer
+  const unsigned bk = bankOf(r.pa);
+  // CHECK (MA-34): a bank takes at most one new miss a cycle, a retry or a
+  // slot's (A2 sends no two lookups to one bank, MA-27; a bank holding a
+  // waiter queues its own new miss behind it).
+  if (!nm_.insert({bk, d2}).second) h_.fail(fmt("dcu: bank %u started two misses in one cycle (D2 %llu)", bk, d2));
+  nf_pq_ |= 1u << bk;   // every request takes its bank's offer
   for (auto &m : miss_)
     if (m.second.line == r.pa && m.second.k != MK::Evict && c_.brk != "dcu-mshr-nomerge") {
       if (m.second.filled) {   // filled, not yet written (slice 2, part 1)
@@ -1137,7 +1140,7 @@ bool Core::startMiss(const Req &r, uint64_t d2, unsigned port, const char **why)
     *why = "dcu_miss_wait_wb";
     return false;
   }
-  if (!nf_[port]) {   // no id offered to its port
+  if (!nf_[bk]) {   // no id of its bank offered
     *why = "dcu_miss_wait_entry";
     return false;
   }
@@ -1154,8 +1157,11 @@ bool Core::startMiss(const Req &r, uint64_t d2, unsigned port, const char **why)
       h_.fail(fmt("dcu: a second miss buffer entry for line %llx", r.pa));
   if (wb_lines_.count(r.pa))   // dcu-wb-refetch, the control (DI-48)
     h_.fail(fmt("dcu: line %llx fetched while its writeback awaits MLC's acknowledgement", r.pa));
-  const unsigned id = *nf_[port];
+  const unsigned id = *nf_[bk];
   if (!free_ids_.erase(id)) h_.fail(fmt("dcu: miss buffer id %u offered while in use", id));
+  nf_[bk].reset();   // taken: its bank's next pick is offered next cycle
+  // CHECK (MA-34): an id's bank is its line's bank.
+  if (idBank(id) != bk) h_.fail(fmt("dcu: miss buffer id %u for line %llx of bank %u", id, r.pa, bk));
   ++st_.misses;
   h_.peak("dcu_mshr_max", miss_.size() + 1);
   if (r.op == Op::Read) {
@@ -1208,6 +1214,8 @@ void Core::onFill(const Fill &f) {
     return;
   }
   Miss &m = it->second;
+  if (idBank(f.id) != bankOf(m.line))   // CHECK (MA-34): an id's bank is its line's
+    h_.fail(fmt("dcu: MLC answered req_id %llu for line %llx of bank %u", f.id, m.line, bankOf(m.line)));
   const uint64_t at = floorAt() - (c_.brk == "dcu-fill-early" ? 1 : 0);
   switch (m.k) {
   case MK::Evict:
@@ -1246,11 +1254,18 @@ void Core::onFill(const Fill &f) {
     install(w.line, l, false, false);
     hold(w.line);
     bq_[bankOf(w.line)].push_back(Acc{Acc::FillW, now_, now_, w.line, Req{}, ~0u, {}});
-    const unsigned id = *free_ids_.begin();   // write-through only: no port
-    free_ids_.erase(free_ids_.begin());
+    // Write-through only: no port; its own bank's lowest free id (the
+    // read's, just freed, at the latest).
+    const unsigned wb_b = bankOf(w.line);
+    unsigned id = ~0u;
+    for (unsigned i = wb_b * c_.ids; i != (wb_b + 1) * c_.ids && id == ~0u; ++i)
+      if (free_ids_.count(i)) id = i;
+    if (id == ~0u) h_.fail(fmt("dcu: no free miss buffer id in bank %u for a write-through", wb_b));
+    free_ids_.erase(id);
     for (auto &o : nf_)
       if (o && *o == id) o.reset();
-    pk_.erase(std::remove(pk_.begin(), pk_.end(), id), pk_.end());
+    for (auto &o : pk_)
+      if (o && *o == id) o.reset();
     miss_[id] = newMiss(MK::WriteAck, w.line, std::move(w.reqs), l);
     mlcReq(MlcOp::Write, w.line, &l, id, miss_[id].reqs.front().tid, now_);
     return;
