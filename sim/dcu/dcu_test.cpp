@@ -696,20 +696,21 @@ int main(int argc, char **argv) {
   // ---- Slice 2, parts 1-2 -------------------------------------------------
 
   // The request to MLC: a miss's tag result is flopped at D2 (H+4 = P+1)
-  // under every pipe, and a request picked straight from D2 launches its
-  // valid at H+5 (P+2). A second miss the same cycle, in another bank, is
+  // under every pipe, and its bank offers it from its head flops a cycle
+  // on, so its valid launches at H+6 (P+3) at the earliest (DI-66, MA rev
+  // 227: no straight offer). A second miss the same cycle, in another bank, is
   // the oldest unsent one next cycle: one a cycle.
   for (unsigned hit : {7u, 8u, 9u})
-    test(hit == 7 ? "mlc-h5-A" : hit == 8 ? "mlc-h5-C" : "mlc-h5-B", [&] {
+    test(hit == 7 ? "mlc-h6-A" : hit == 8 ? "mlc-h6-C" : "mlc-h6-B", [&] {
       Bench b(cfg(hit));
       b.reqs[3] = {rd(0, 1, 0x2000), rd(1, 2, 0x2080)};
       b.run(60);
       EXPECT(b.mlc.size() == 2, "two requests");
-      EXPECT(b.mlc.size() == 2 && b.mlc[0].first == 5 && b.mlc[1].first == 6,
-             "valids at P+%lld and P+%lld, want P+2 and P+3",
+      EXPECT(b.mlc.size() == 2 && b.mlc[0].first == 6 && b.mlc[1].first == 7,
+             "valids at P+%lld and P+%lld, want P+3 and P+4",
              (long long)(b.mlc.empty() ? 0 : b.mlc[0].first - 3),
              (long long)(b.mlc.size() < 2 ? 0 : b.mlc[1].first - 3));
-      EXPECT(b.h.bins["dcu_mlc_straight"] == 1, "one straight from D2");
+      EXPECT(b.h.bins["dcu_mlc_earliest"] == 1, "one at D2 + 2");
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 
@@ -834,7 +835,7 @@ int main(int argc, char **argv) {
       warm(b, o, 61);
       const uint64_t P = b.t;
       b.reqs[P] = {rd(0, 1, n)};
-      b.run(P + 3);
+      b.run(P + 4);   // its request launched (H+6)
       const uint64_t F = b.mlc.back().first + b.mlc_lat;
       // Under B, D = P + 1: both lookups' D is F + 2, after the victim's
       // choice (F + 1); the victim's lookup loses the bank to o's.
@@ -858,6 +859,29 @@ int main(int argc, char **argv) {
   // next miss (its bank's, MA-34) has the bank's offer to itself.
   // (dcu-late-miss-port, its control, is retired: per bank the two never
   // share a D2; DCU tab rev 148, DI-61.)
+  // MA-34 (DI-58): a miss buffer id's bank is its line's bank, checked at
+  // allocation and on MLC's answer. dcu-miss-other-bank, the control, takes
+  // another bank's offered id: refused at the miss and at its fill.
+  for (const char *brk : {"", "dcu-miss-other-bank"})
+    test(*brk ? "dcu-miss-other-bank-control" : "miss-id-bank", [brk] {
+      Config c = cfg(9);
+      c.brk = brk;
+      Bench b(c);
+      b.reqs[0].push_back(rd(0, 7, 0x2000));
+      b.run(100);
+      size_t alloc = 0, ans = 0;
+      for (const auto &f : b.h.fails) {
+        alloc += f.find("miss buffer id") != std::string::npos;
+        ans += f.find("MLC answered req_id") != std::string::npos;
+      }
+      if (*brk) {
+        EXPECT(alloc == 1 && ans == 1, "the control is caught at allocation (%zu) and fill (%zu)", alloc, ans);
+      } else {
+        EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+        EXPECT(b.rsp(7) && !b.rsp(7)->hit, "the miss is answered");
+      }
+    });
+
   test("late-miss-retry", [&] {
       unsigned retried = 0;
       for (unsigned d = 0; d != 8; ++d) {
@@ -870,7 +894,7 @@ int main(int argc, char **argv) {
         warm(b, o, 61);
         const uint64_t P = b.t;
         b.reqs[P] = {rd(0, 1, n)};
-        b.run(P + 3);
+        b.run(P + 4);
         const uint64_t F = b.mlc.back().first + b.mlc_lat;
         b.reqs[F + 1] = {rd(0, 2, o), rd(1, 3, v)};
         b.reqs[F + 1 + d].push_back(rd(1, 4, x));
@@ -902,7 +926,7 @@ int main(int argc, char **argv) {
       b.reqs[0] = {st(0, 1, 0x6000, 0, 0x11)};
       b.run(60);
       b.reqs[60] = {rd(0, 2, 0x6000 + uint64_t(c.sets) * kLineBytes)};
-      b.run(63);
+      b.run(64);
       F = b.mlc.back().first + b.mlc_lat;
     }
     bool wroteBack() const {
@@ -1154,7 +1178,7 @@ int main(int argc, char **argv) {
     EXPECT(b.h.bins["dcu_prb_ack_sent"] == 1, "against a sent entry");
     const uint64_t F = b.mlc[0].first + b.mlc_lat;
     b.reqs[b.t] = {rd(0, 2, 0x4000)};
-    b.run(b.t + 3);
+    b.run(b.t + 4);
     const uint64_t F2 = b.mlc.back().first + b.mlc_lat;
     b.probes[F2 + 1] = Probe{1, 0x4000, true};
     b.run(F2 + 30);

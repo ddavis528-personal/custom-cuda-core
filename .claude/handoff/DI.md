@@ -36,14 +36,17 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   scratchpad/ma33 (MA-33 debug instrumentation: g_dbg_site, DBG prints).
 
 ## Open work, most urgent first
-1. MA-34 (MA rev 220/222, DCU tab rev 147/148): params landed (TI c0883a36,
-   merged). Model done (078f5069, af59fee3 on main): per-bank offers, CHECKs
-   id bank == line bank and one new miss a bank a D2; a loser's same-D2 miss
-   waits and retries on port 0 (control dcu-bank-two-miss); dcu-late-miss-port
-   retired (DI-61, MA rev 222). Next: check the model's cross-bank MLC pick and
-   retry grant vs dcu_mpick's spec; kernel sweep CCV_DCU_IMPL=model (never
-   beside a gate); then RTL: dcu_mshr per bank, dcu_mpick, bctl queue req_id
-   8; then the dcu_fill 4-buffer recheck under gtw.
+1. MA-34 RTL GATED AND PUSHED (69659b33, SCOPED PASS 24/28): per-bank
+   dcu_mshr, g_mpick in dcu_fill (DI-67), H+6 (DI-66), budgets. DI-68 (DI
+   rev 107) told MA. Merged MA's branch (27e67d25): DI-63 p1 fix 669cfdde
+   and MA-35 two-field fold (f4952819; its sim/dcu edits reviewed: correct,
+   one fold function at the run's sets). DI-63 verified (needs
+   CCV_MIU_IMPL=model: vadd4 75 drops / rope 210, 0 CHECKs; control 150) and
+   answered with MA-35 in DI-69 (rev 108, notice sent). Merge gating.
+   Next gate (bundle): increment B, DI-25 btag fill write, rarb/rslot
+   growth, bdat wdata select, TI-537 if landed. Later: lone-bank backlog
+   report (dcu_mpick_pass, wait cycles, gtw and cm128) with the dcu_fill gtw
+   recheck (MA rev 226 (1)).
 2. TI-590 (TI rev 592), low: re-measure dcu=model IMPL_PINS rows on ti-rp's
    params (held-wait demote dcu=model 862, pair 876; UE rows); the vadd4-swap
    rows are gone. Answer in the DI tab.
@@ -63,12 +66,13 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit-tree with both parents. Session home installed; --check in sweep.
 
 ## Status
-- Pushed f2accd75 (SCOPED PASS 24/28): sweep merge of every remote branch to
-  11-27. On top (unpushed until the next gate): TI c0883a36 + MA-34 model.
-- Pongs 11-27: all answered; OI and RH sender=stale (their roster); tell
-  Daniel if still stale next Friday.
+- Pushed 393d8275 (SCOPED PASS 11/28). DI-63 (p1 ignores MA-27 drop, OI-225):
+  MA built the fix (588 -> 0), lands after MA's gate. DI-64 confirmed by MA
+  rev 225 (DCU tab rev 150). Forced-model kernel diffs (transp4, vadd ue,
+  privwin, no-resource-cap) come from TI's params (f1ef8080), told TI (DI-64).
+- Pongs 11-27: OI and RH sender=stale; tell Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 100, MI 74, MA 222, AR 426, OA 506, TI 594, OI 427, DA 136,
-RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-61 (id m8yvbw8rqgz.117367).
+Conventions 20, DI 108, MI 76, MA 232, AR 426, OA 506, TI 594, OI 427, DA 136,
+RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-69 (row id .130369).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.

@@ -1156,9 +1156,18 @@ bool Core::startMiss(const Req &r, uint64_t d2, unsigned, const char **why) {   
       h_.fail(fmt("dcu: a second miss buffer entry for line %llx", r.pa));
   if (wb_lines_.count(r.pa))   // dcu-wb-refetch, the control (DI-48)
     h_.fail(fmt("dcu: line %llx fetched while its writeback awaits MLC's acknowledgement", r.pa));
-  const unsigned id = *nf_[bk];
+  // dcu-miss-other-bank, the control (DI-58): the miss takes another
+  // bank's offered id, which the CHECK below refuses.
+  unsigned ob = bk;
+  if (c_.brk == "dcu-miss-other-bank")
+    for (unsigned k = 1; k != c_.banks; ++k)
+      if (nf_[(bk + k) % c_.banks]) {
+        ob = (bk + k) % c_.banks;
+        break;
+      }
+  const unsigned id = *nf_[ob];
   if (!free_ids_.erase(id)) h_.fail(fmt("dcu: miss buffer id %u offered while in use", id));
-  nf_[bk].reset();   // taken: its bank's next pick is offered next cycle
+  nf_[ob].reset();   // taken: its bank's next pick is offered next cycle
   // CHECK (MA-34): an id's bank is its line's bank.
   if (idBank(id) != bk) h_.fail(fmt("dcu: miss buffer id %u for line %llx of bank %u", id, r.pa, bk));
   ++st_.misses;
@@ -1800,6 +1809,10 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       if (it == miss_.end() || it->second.written) probeStart(x.first);
     }
   retryWaits();
+  // dcu_fill_bufs_full (MA-34, DI-58): cycles every fill buffer was held,
+  // so MLC could send no fill; the recheck of 4 buffers under gtw reads it.
+  if (size_t(std::count_if(miss_.begin(), miss_.end(), [](const auto &x) { return x.second.fb; })) >= c_.fills)
+    h_.hit("dcu_fill_bufs_full");
   // dcu_wb_full (DI-21): cycles a victim read waited for a writeback buffer.
   if (wb_used_ >= c_.wb) {
     bool waits = false;
@@ -1841,12 +1854,38 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
         h_.hit("dcu_wb_sent");
       }
     }
-  } else if (!to_mlc_.empty() && p.mlc_can && to_mlc_.front().first < t) {
-    // The oldest unsent miss, its valid no earlier than D2 + 1 (H+5 for a
-    // lookup's own D2): straight from D2 when nothing older waits.
-    if (to_mlc_.front().first + 1 == t) h_.hit("dcu_mlc_straight");
-    o.mlc = to_mlc_.front().second;
-    to_mlc_.pop_front();
+  } else if (p.mlc_can) {
+    // The oldest unsent miss, its valid no earlier than D2 + 2 (H+6 for a
+    // lookup's own D2): offered from its bank's head flops the cycle after
+    // its allocation, never straight from D2 (DI-66, MA rev 227). A bank
+    // whose miss launched last cycle is passed over now (dcu_mpick: a bank
+    // learns of its send a cycle on, its head picked a cycle ahead; DI-65),
+    // as DI-35's retry grant passes over the bank it granted.
+    // Oldest D2 first, ties (one D2, two banks) to the lowest bank (DI-64).
+    auto pass = [&](const MlcReq &q) { return mlc_last_t_ + 1 == t && bankOf(q.pa) == mlc_last_bank_; };
+    auto it = to_mlc_.end();
+    for (auto j = to_mlc_.begin(); j != to_mlc_.end(); ++j) {
+      if (j->first + 1 >= t || pass(j->second)) continue;
+      if (it == to_mlc_.end() || j->first < it->first ||
+          (j->first == it->first && bankOf(j->second.pa) < bankOf(it->second.pa)))
+        it = j;
+    }
+    if (it != to_mlc_.end()) {
+      if (std::any_of(to_mlc_.begin(), to_mlc_.end(), [&](const auto &q) {
+            return q.first < it->first && pass(q.second); }))
+        h_.hit("dcu_mpick_pass");
+      if (it->first + 2 == t) h_.hit("dcu_mlc_earliest");
+      // dcu_mpick's stamp is 10 bits, taken at D2 and compared modulo
+      // (DI-64, DCU tab rev 150): a miss picked past half the range would
+      // order wrongly in the RTL, so the bin counts any (dcu_mpick_alias).
+      if (t - it->first > 512) h_.hit("dcu_mpick_alias");
+      o.mlc = it->second;
+      mlc_last_t_ = t;
+      mlc_last_bank_ = bankOf(it->second.pa);
+      to_mlc_.erase(it);
+    } else if (!to_mlc_.empty() && to_mlc_.front().first + 1 < t) {
+      h_.hit("dcu_mpick_pass");
+    }
   }
   // Probe acks, one a cycle, in the order their probes finished; the
   // payload's launch frees the buffer, its credit and a writeback buffer.
