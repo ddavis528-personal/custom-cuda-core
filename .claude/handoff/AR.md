@@ -89,8 +89,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 431 .702820 (tab rev 436).
-  - **The next AR row inserts after .702820**, labelled AR 432.
+  - Latest row: AR 432 .705344 (tab rev 437).
+  - **The next AR row inserts after .705344**, labelled AR 433.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -112,7 +112,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 436, OA 507, TI 605, MA 221, DI 99,
+- **Bookmarks** (revs read through): AR 437, OA 507, TI 606, MA 221, DI 99,
   MI 74, RA 164, RI 101, IS 201, CP 160, OI 437, DA 136, Conventions 20 (full
   sweep read 11-27; TI, RA, RI read further from notices).
 - **Pings:** Friday 11-27 to all 11 (OA IS TI OI CP RA RI MA RH MI DI); all
@@ -303,7 +303,10 @@ Credit rules (TI-49):
    policy is evict, so without it a full core never demotes until an exit.
    Spec tabs edited: RAU Parked places (now list item .35863), .23245,
    .37015 (was .34040); PCA .27, .12487, .3328 (doc revs RAU 66, PCA 21).
-   TI owes the param, stubs, a no-reservation brk on gtw32, two bins; then
+   TI-606 built the reservation (ti-rau 4eb9a3d5; control brk
+   demote-no-place, vadd6 at CCV_RAU_PLACES=2); AR 432 took that control,
+   gtw32 clean is the acceptance run, one knob (CCV_RAU_PLACES overrides
+   CCV_PCA_PLACES). TI owes the param, the spare, two bins; then
    OA's THRESHOLD_MLC re-sweep (OA 504) can run.
 
 000m. **Read-path depth DECIDED: B, 128 lines (DA row .137863, 11-24; PF-54).**
