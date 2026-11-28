@@ -17,13 +17,18 @@
 #            lane 0's line copied for miu_grp (MA rev 209), control lcl1 (lane
 #            1's line taken)
 #   miu_rcap: test/miu/rcap_tb.cpp, one ccv_dcu_miu_rsp slot's capture,
+#   miu_hitq: test/miu/hitq_tb.cpp, the first-pass delay line (lookup slot to
+#     MQ entry and address slot, H+1 to R1); controls nodrop (A2's drop
+#     ignored) and early (R1 a cycle early),
 #   miu_lead: test/miu/lead_tb.cpp, A1 leaders, set index and the every-bank
 #     gate (MI-27 (b)); controls used (a gate blind to last cycle's
 #     launches), scale (no index scale) and lowest (the lowest active lane,
 #     not the fixed leader),
 #   miu_a2: test/miu/a2_tb.cpp, A2's lookup, PA and drop, controls carry,
 #     bank, addr, line, split, fone, win (an ordinary lane in the run's
-#     windows), iblk (an interleaved lane off W's block) and align,
+#     windows), iblk (an interleaved lane off W's block) and align; at 64
+#     sets (miu_a2_s64, MA-33 (3)) control lofold (pa_fold without the
+#     page offset's tag bits),
 #   miu_tlb: test/miu/tlb_tb.cpp, each slot's L0 and the 32-entry TLB's
 #     refill (MA revs 199, 206-208), controls early (the L0 written a cycle
 #     early), norr (the grant to the lowest pending slot), tight (the
@@ -97,6 +102,9 @@ control miu_ids relnow
 control miu_ids nodrop
 bench miu_rcap test/miu/cg-build.sh miu_rcap "$B/miu_rcap" -- "$B/miu_rcap/tb"
 control miu_rcap early
+bench miu_hitq test/miu/cg-build.sh miu_hitq "$B/miu_hitq" -- "$B/miu_hitq/tb"
+control miu_hitq nodrop
+control miu_hitq early
 bench miu_lead test/miu/cg-build.sh miu_lead "$B/miu_lead" -- "$B/miu_lead/tb"
 control miu_lead used
 control miu_lead scale
@@ -117,5 +125,7 @@ control miu_a2 split
 control miu_a2 fone
 control miu_a2 win
 control miu_a2 iblk
+bench miu_a2_s64 test/miu/cg-build.sh miu_a2_s64 "$B/miu_a2_s64" -- "$B/miu_a2_s64/tb"
+control miu_a2_s64 lofold
 control miu_a2 align
 exit $fail
