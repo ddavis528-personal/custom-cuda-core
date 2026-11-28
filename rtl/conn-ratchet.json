@@ -216,54 +216,6 @@
   },
   {
    "parent": "ooe_rename",
-   "instance": "u_gfree",
-   "port": "sa_row_cq01h",
-   "net": null,
-   "net_stage": 3,
-   "port_stage": 1,
-   "deficit": 2,
-   "kind": "register",
-   "outputs": [
-    "avail_cq02h",
-    "cand_row_cq02h",
-    "cand_v_cq02h",
-    "fsp_cq03h"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
-   "instance": "u_gfree",
-   "port": "sa_sec_cq01h",
-   "net": null,
-   "net_stage": 3,
-   "port_stage": 1,
-   "deficit": 2,
-   "kind": "register",
-   "outputs": [
-    "avail_cq02h",
-    "cand_row_cq02h",
-    "cand_v_cq02h",
-    "fsp_cq03h"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
-   "instance": "u_gfree",
-   "port": "sa_v_cq01h",
-   "net": null,
-   "net_stage": 3,
-   "port_stage": 1,
-   "deficit": 2,
-   "kind": "register",
-   "outputs": [
-    "avail_cq02h",
-    "cand_row_cq02h",
-    "cand_v_cq02h",
-    "fsp_cq03h"
-   ]
-  },
-  {
-   "parent": "ooe_rename",
    "instance": "u_go",
    "port": "pool_en_cq01h",
    "net": null,

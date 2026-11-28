@@ -41,7 +41,10 @@
 // free reaches the RTL) and sa-early (Rename 2's allocations driven at
 // their grants' step, a cycle early) and sa-late (a cycle late: the
 // free list's state misses an allocation u_ren1n has made, which
-// sec_free_live and sec_alloc_free catch; ooe_rename's CCV-L23 loop control).
+// sec_free_live and sec_alloc_free catch; ooe_rename's CCV-L23 loop control)
+// and rt-late (Rename 2's returns a cycle late, each naming a row
+// granted two edges back, which rt_of_grant catches; the loop control
+// of u_gfree's rt_v and rt_row).
 //
 // FL_POOL selects the pool: 0 the GPR rows (CCV_P_PHYS_REGS), 1 the
 // predicates (CCV_P_PRED_REGS). Each new core resets the RTL. Every
@@ -109,7 +112,7 @@ constexpr unsigned homeKind(unsigned s, unsigned k) { return k == 0 ? s % 4 : 4 
 // FL_NS: the section events, as recorded at each hook, and the model's
 // candidates and their section bits, one hook back.
 std::vector<Core::SecEvent> prev_sa, prev2_sa, prev3_sa, prev_sfr;
-std::vector<unsigned> prev_rt;
+std::vector<unsigned> prev_rt, prev2_rt;
 std::vector<std::array<unsigned, 6>> prev_cand, prev2_cand;
 std::vector<uint8_t> prev_csec, prev2_csec;
 std::vector<Core::SecEvent> driven_sa, driven_sa2;   // the allocations driven at the last edge, and the one before
@@ -164,6 +167,7 @@ void record(const Core &c, const FreeVec &fv) {
     prev2_sa = prev_sa;
     prev_sa = c.cycleSecAllocs();
     prev_sfr = c.cycleSecFrees();
+    prev2_rt = prev_rt;
     prev_rt = c.cycleReturns();
     prev2_cand = prev_cand;
     prev2_csec = prev_csec;
@@ -207,6 +211,7 @@ void hook(const Core &c) {
       prev3_sa.clear();
       prev_sfr.clear();
       prev_rt.clear();
+      prev2_rt.clear();
       prev_cand.clear();
       prev_csec.clear();
       prev2_cand.clear();
@@ -319,7 +324,8 @@ void hook(const Core &c) {
         for (unsigned j = 0; j != FL_NS; ++j)
           if ((f.sec >> j) & 1u) setBit(dut->free_sec_cq01h, (f.row % FL_FS) * FL_N * FL_NS + f.row * FL_NS + j, true);
     const auto &sa = control == "sa-early" ? prev_sa : control == "sa-late" ? prev3_sa : prev2_sa;
-    if (sa.size() > FL_A || prev_rt.size() > FL_A) {
+    const auto &rt = control == "rt-late" ? prev2_rt : prev_rt;
+    if (sa.size() > FL_A || rt.size() > FL_A) {
       fail("more section allocations or returns than lanes", unsigned(prev2_sa.size()), FL_A);
       desync = true;
       return;
@@ -331,21 +337,21 @@ void hook(const Core &c) {
       setField(dut->sa_row_cq01h, k * W, W, sa[k].row);
       setField(dut->sa_sec_cq01h, k * FL_NS, FL_NS, sa[k].sec);
     }
-    for (unsigned k = 0; k != prev_rt.size(); ++k) {
+    for (unsigned k = 0; k != rt.size(); ++k) {
       dut->rt_v_cq01h |= 1u << k;
-      setField(dut->rt_row_cq01h, k * W, W, prev_rt[k]);
+      setField(dut->rt_row_cq01h, k * W, W, rt[k]);
     }
     // The lead: the next step's allocations (this hook's prev_sa) or returns.
     // Each lane's lead: the next step's allocation or return on it.
     const auto &nsa = control == "sa-early" ? c.cycleSecAllocs() : control == "sa-late" ? prev2_sa : prev_sa;
     auto lanes = [](size_t n) { return n ? (1u << std::min<size_t>(n, FL_A)) - 1u : 0u; };
     dut->sa_l_cq00h = lanes(nsa.size());
-    dut->rt_l_cq00h = lanes(c.cycleReturns().size());
+    dut->rt_l_cq00h = lanes(control == "rt-late" ? prev_rt.size() : c.cycleReturns().size());
     driven_sa2 = driven_sa;
     driven_sa = sa;
     sec_allocs += sa.size();
     sec_frees += prev_sfr.size();
-    returns += prev_rt.size();
+    returns += rt.size();
   }
   // Each port's owner: its allocation's, a random slot where none.
   for (unsigned k = 0; k != FL_A; ++k) {
