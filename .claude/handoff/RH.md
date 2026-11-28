@@ -73,6 +73,26 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-504: stub seeds 1-3 SENT 00:43Z 11-28 (nothing beats 50; gtw32 PCA hang at m35 3/3 seeds AND m100 on s2/s3). Fix (b) DONE: the hang survives 669cfdde
+  (stub s1 m35, s2/s3 m100). Fix gtw32 grid DONE+SENT 00:55Z: ARM 50 HANGS at s4 and s5 (base 57ca7d30 too; pre-existing), m75 clean 3/3, m35 3/3 hang, m100 hangs s2/s3.
+  OI raised OI-234 (RA/RI); m75 s4-10 not needed. KEEP the s4/s5 m50 gtw32 logs (base + fix) and the rh-oi504 kernels; repro in ~/ccv-logs/oi504stub/OI-234.repro
+- RUNNING OA-504 post-fix sweep (OI 06:07Z; OA-518, AR-431): worktree rh-oi504rau = 0dcdeab6+669cfdde (local merge, NEVER push), scripts /home/user/rh-jobs/oi504rau (prep, chainA small+cm32+read then stub gtw32 m50 s4-6, chainB cm128 serial), logs ~/ccv-logs/oi504rau/{stub,model}. Mixes stub/model MIU+p1, seeds 1-3, arms 35/50/75/100. Report: mean+worst-seed delta vs 50 per class/arm, chk/mm, CHECKs, hangs, S1 demote counters. Fallback trig_012M7vdJRcsbKyK4Zbr3vATb 08:09Z.
+- OA-504 old: OI released rh-oi504fix (removed). Keep ~/ccv-logs/oi504fix and oi504stub until OI sends the full rerun (after TI lands AR-431 RAU fix). Keep rh-oi504 + OI-234.repro for RA/RI.
+  trigger 03:00Z. Disk: removed rh-oi504/build/bench-oracle (3G, regenerable) and trimmed the non-kept hang logs; s4/s5 m50 logs kept whole. FIX RUN (OI 22:23Z): rh-oi504fix = 57ca7d30 + 669cfdde (MA's OI-225 fix; local merge 6e034acc, never push), MA kernels copied.
+  rh-jobs/oi504/prepfix.sh (prep) then chainfix.sh (after chains23): (a) oi504f.sh/oi504fr.sh model+p1 seed 1 all arms; (b) stub gtw32 m35. Logs ~/ccv-logs/oi504fix.
+  Report one table (arm × class Δ vs 50) + req_id/credit CHECKs, 75/100 mismatches, hang lines.
+- OI OA-504 MODEL+P1 MIX ABANDONED (OI 19:05Z: not clean; chk at every arm). Seed-1 model+p1 tables sent 19:05Z; logs kept in ~/ccv-logs/oi504 (aborted s2 in aborted-s2/).
+  Cycle-stamped CHECK head sent to OI for MI/DI: ~/ccv-logs/oi504/rh-cyc.s1.m50.coremark32priv.head (build/skel-rh in rh-oi504 is an experiment binary; source reverted).
+  NOW: STUB-MIU mix (CCV_MIU_IMPL unset, DCU p1), logs ~/ccv-logs/oi504stub. Step 1 gate50.sh CLEAN 19:21Z (73/73, 0 chk; sent). Step 2 seed 1 DONE+SENT 21:10Z (all clean except gtw32 m35 HANG: 'rau: warp 30 drained, PCA has no free place', the same in model+p1, so it is the arm, not the mix).
+  Seeds 2+3 RUNNING all arms from 21:10Z (chains23.sh, ~4h); then send the seeds-1-3 table. Was: oi504s.sh 1 + oi504sr.sh 1 for all arms; then seeds 2 and 3 only for arms within 0.5% of 50.
+  Table: table.py <seed> ~/ccv-logs/oi504stub. Watcher bg4vy9t7j ('[c]hains23.sh'); trigger trig_01XKmiGkDDgf8LZDaC4zaxWG 23:20Z. Originally started 17:07Z 11-27: THRESHOLD_MLC re-sweep at 57ca7d30 (origin/ccr-57eff422-5tdecg) in rh-oi504, rh-jobs/oi504/oi504.sh <seed> [arms]
+  (resumable), logs ~/ccv-logs/oi504 (s<seed>.m<arm>.*). Common env: CCV_RAU_DEMOTE=mlc CCV_MIU_IMPL=model CCV_DCU_IMPL=p1. Arms: demote_mlc_miss=35/50/75/100.
+  Class 2: vadd6 at CCV_TB_LATENCY=1000 --cycles 400000. Class 3: S1, cm32p, cm128p at default. Seed 1 first; arms within 0.5% of 50 get seeds 2 and 3.
+  Class 1 (read): MA sent gtr4 and gtw8/16/32 (17:10Z; uncommitted in rh-oi504/test/kernels, oracles in build/syn-oracle); rh-jobs/oi504/oi504r.sh <seed> [arms].
+  B/cycle = demanded load lines (256/512/1024/2048) x 128 / KERNEL cycles (MA's definition); also report p1_mshr_peak and sum/cycles. Env = OI's (not MA-31's
+  P1_STORE=af/STRICT/jitter 0/size knobs), so cycles won't match MA-31 c128. MA (17:11Z): p1 holds up to 128 fills (IdPool by dcu_mlc req_id width 7); dcu_core.h:141 is the DCU model's. A low p1_mshr_peak means MIU binds (ids or memops 8). MIU model + p1 is a mix MA-31 never measured (stub MIU): LABEL it. Watcher '[o]i504.sh' does not match oi504r.sh.
+  Per run: cycles, Δ vs 50, fin/order/chk, demote_trigger.mlc_miss.true_miss/false_hit/unresolved, demote, restored, parked, slot_refill_parked.
+  The decision is OI's and OA's.
 - AR 410/412 re-baseline DONE+SENT 17:20Z 11-24 (rh-jobs/ar410, ~/ccv-logs/ar410, <tag>.<k>.cmd). All 49 runs exact. S1 (1,640) and cm32priv
   (1,177,935) are bit-identical OLD vs NEW at every seed: with warm MLC they never pay DRAM, so the 0.2% S1 bar can't be tested this way (offered a
   cold-MLC rerun). cm128priv: OLD 1,977,489; NEW s1/s2/s3 +0.050/+0.141/+0.135%; jitter 0 +0.061%; seed spread 0.091%.
