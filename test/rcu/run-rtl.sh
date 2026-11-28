@@ -148,8 +148,8 @@ for c in drop1 drop2; do
   fi
 done
 bench rcu_mig test/rcu/cg-build.sh rcu_mig "$B/rcu_mig" -- "$B/rcu_mig/tb"
-grep -h "^mig M5" "$B/rcu_mig.log" 2>/dev/null | sed 's/^/    /'
-for c in rlie cred wake stall2; do
+grep -h "^mig M5\|^mig full rate" "$B/rcu_mig.log" 2>/dev/null | sed 's/^/    /'
+for c in rlie cred wake stall2 credlate; do
   if [ -x "$B/rcu_mig/tb" ] && ! "$B/rcu_mig/tb" --control "$c" >"$B/rcu_mig.$c.log" 2>&1 &&
      grep -q "control $c .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_mig.$c.log"; then
     say "rcu_mig control $c" "caught"
