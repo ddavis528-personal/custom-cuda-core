@@ -89,8 +89,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 430 .702029 (tab rev 435).
-  - **The next AR row inserts after .702029**, labelled AR 431.
+  - Latest row: AR 431 .702820 (tab rev 436).
+  - **The next AR row inserts after .702820**, labelled AR 432.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -112,8 +112,8 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 435, OA 507, TI 605, MA 221, DI 99,
-  MI 74, RA 161, RI 100, IS 201, CP 160, OI 427, DA 136, Conventions 20 (full
+- **Bookmarks** (revs read through): AR 436, OA 507, TI 605, MA 221, DI 99,
+  MI 74, RA 164, RI 101, IS 201, CP 160, OI 437, DA 136, Conventions 20 (full
   sweep read 11-27; TI, RA, RI read further from notices).
 - **Pings:** Friday 11-27 to all 11 (OA IS TI OI CP RA RI MA RH MI DI); all
   ponged within a minute, every one `check` rc 0. Saturday has nothing left
@@ -293,6 +293,18 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+
+000n. **PCA places (AR 431 .702820, 11-28; TI, RA, RI, OI rung).** gtw32
+   (32 warps) hung: a demote took its PCA place only at drained, all 28 held.
+   Ruled both: RAU reserves a place when it sends the demote (refused drained
+   returns it), and PCA gets a spare, CCV_PCA_PLACES = CCV_PARKED_WARPS + 1 =
+   29 (rows 247 of 256 per SRAM instance, inside the padding: no SRAM; div
+   state RFs 29 x 212, +1,060 bits; W_PCA_PLACE stays 5). Why the spare: the
+   policy is evict, so without it a full core never demotes until an exit.
+   Spec tabs edited: RAU Parked places (now list item .35863), .23245,
+   .37015 (was .34040); PCA .27, .12487, .3328 (doc revs RAU 66, PCA 21).
+   TI owes the param, stubs, a no-reservation brk on gtw32, two bins; then
+   OA's THRESHOLD_MLC re-sweep (OA 504) can run.
 
 000m. **Read-path depth DECIDED: B, 128 lines (DA row .137863, 11-24; PF-54).**
    MA-31 (MA rev 218) sized A 64 / B 128 / C 192 on p1 at TB latency 1000.
