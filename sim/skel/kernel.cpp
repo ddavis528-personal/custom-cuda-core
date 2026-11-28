@@ -1164,7 +1164,7 @@ private:
 class Miu : public Stub {
 public:
   Miu(int inst, Kernel &k)
-      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {}
+      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS", ccv::kMiuDcuIds), spm_ids_(ch().miu_spm) {}
   const char *kind() const override { return "miu"; }
 
 private:
@@ -1735,7 +1735,7 @@ private:
           }
       }
 
-    if (jobs_.size() < kMiuPipes) start();
+    if (jobs_.size() < ccv::kMiuMemopsInflight) start();   // memops in flight (MA-34), not the pipes
     advance();
     // A hit's data leaves at the contract's data cycle and its completion
     // CCV_LAT_L1_ECC cycles later (AR 368, OA 426: the syndrome stages), or
