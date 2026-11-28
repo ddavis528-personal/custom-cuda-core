@@ -55,7 +55,10 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 426, OA 506, IS 201, CP 160, OI 427, RA 159, RI 93, MA 222, DA 136, MI 74, DI 100, TI 594.
+Conventions 20, AR 437, OA 518, IS 201, CP 160, OI 439, RA 164, RI 101, MA 233, DA 136, MI 77, DI 108, TI 609.
+- Sweep 2026-11-28: nothing in Needs MA. OI-225 closed by OI-236 (p1 fix verified; gtw32 hang is RAU/PCA, OI-234, fixed
+  by TI-612 CCV_PCA_PLACES=29). Merged with tools/sweep-merge.sh (signs; handles multi-base): infra 41, 126afa13 11,
+  3868632d 48, 57eff422 6, 58815650 21, 5e4d6c70 44, 80102643 12, 888218a3 13, 9eb50716 12, c22116ce 15.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
