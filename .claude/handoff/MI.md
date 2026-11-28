@@ -72,7 +72,7 @@ every agent's ping to MI answered.
    Bins pass_bank_lost, pass_slot_busy; controls pass-wins-bank, pass-on-owned-slot. Responses by
    req_id (miu_ids), never hitq. Partition row comes with slice 2's notice (wait for it).
    MA-35 merged (8bd5f9f2, MA's cd94f843: lofold in miu_a2, unit miu_a2_s64, control lofold) and
-   accepted in MI-54 (rev 77, rung MA); MI-51 closed (MA's 669cfdde). Gate-push of the merge in flight.
+   accepted in MI-54 (rev 77, rung MA); MI-51 closed (MA's 669cfdde). Pushed 196cd569 (SCOPED PASS).
 1. Option B done in the model (0c891315): IdPool(width, slots, ids=kMiuDcuIds) interleaved
    id%4 = slot; record gate recs_ = CCV_MIU_MEMOPS_INFLIGHT (env lowers it), bin miu_memop_rec_full.
 2. miu_pass (MI-52) once MA's slice-2 notice brings its partition row. miu_grp remaining: lines + lost flag (OA-486 assertion +
@@ -86,5 +86,6 @@ every agent's ping to MI answered.
 
 ## Pushed
 - ccr-58815650-0ch1hh at 208e4c46: SCOPED PASS (miu_form clang++, handoff); RI and TI rung.
+- ccr-58815650-0ch1hh at 196cd569: SCOPED PASS (MA-35 merge, handoff).
 - ccr-58815650-0ch1hh at 285eaef0: SCOPED PASS (option B model, miu_hitq, handoff).
 - ccr-58815650-0ch1hh at 8719d88b: full PASS (sweep merge of 8 branches incl. TI's c0883a36).
