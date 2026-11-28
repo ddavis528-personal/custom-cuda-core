@@ -238,6 +238,7 @@ job_iface() {
   # The gate's own joins, cheap, in a section every run takes (OI-95, OI-101).
   run "gate scope map" python3 tools/gate-scope.py --selftest
   run "split gate join" python3 tools/gate-combine.py --selftest
+  run "sweep merge settles by history only" tools/sweep-merge.sh --selftest
   run "resumed gate carries only what passed on this tree" python3 tools/gate-resume.py --selftest
 }
 

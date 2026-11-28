@@ -17,6 +17,9 @@
 #            lane 0's line copied for miu_grp (MA rev 209), control lcl1 (lane
 #            1's line taken)
 #   miu_rcap: test/miu/rcap_tb.cpp, one ccv_dcu_miu_rsp slot's capture,
+#   miu_hitq: test/miu/hitq_tb.cpp, the first-pass delay line (lookup slot to
+#     MQ entry and address slot, H+1 to R1); controls nodrop (A2's drop
+#     ignored) and early (R1 a cycle early),
 #   miu_lead: test/miu/lead_tb.cpp, A1 leaders, set index and the every-bank
 #     gate (MI-27 (b)); controls used (a gate blind to last cycle's
 #     launches), scale (no index scale) and lowest (the lowest active lane,
@@ -99,6 +102,9 @@ control miu_ids relnow
 control miu_ids nodrop
 bench miu_rcap test/miu/cg-build.sh miu_rcap "$B/miu_rcap" -- "$B/miu_rcap/tb"
 control miu_rcap early
+bench miu_hitq test/miu/cg-build.sh miu_hitq "$B/miu_hitq" -- "$B/miu_hitq/tb"
+control miu_hitq nodrop
+control miu_hitq early
 bench miu_lead test/miu/cg-build.sh miu_lead "$B/miu_lead" -- "$B/miu_lead/tb"
 control miu_lead used
 control miu_lead scale

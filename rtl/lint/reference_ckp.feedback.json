@@ -1,0 +1,28 @@
+{
+  "_comment": "bad_conn10.sv's reference_ckp: a read-back whose input closes a loop (OA 513).",
+  "reads": {
+    "u_r.c_cy01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "kp_cy03h"
+        ],
+        "ahead": {
+          "kp_cy03h": 2
+        }
+      },
+      "via": [
+        "u_h.a>y"
+      ],
+      "assert": [
+        "bk_seen"
+      ],
+      "control": [
+        "bk-drop"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "a later group's lanes read the head-read result of an earlier group's register; c_cy01h reaches no lane, so no cycle closes through u_r's port (OA 513)"
+    }
+  }
+}

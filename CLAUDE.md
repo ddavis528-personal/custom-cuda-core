@@ -105,7 +105,10 @@ Routine moves are one command each, printing a few lines with the logs in
 the clean one with `--full`, an ancestry check, push to
 `$CCV_PUSH_BRANCHES`, clear build but the synthesis cache) and `tools/daily-sweep.sh` (merge every
 remote branch but release and `gate-scratch/*`, regen, `tools/make-release.sh --push`, push,
-clear; it stops, exit 3, on a conflict outside generated files). Read a
+clear; it stops, exit 3, on a conflict outside generated files; a merge
+past 300 s falls back to `tools/sweep-merge.sh`, one merge base (several merged into a virtual one, RI-65) with each
+conflict settled only where one side's history holds the other's exact
+blob, the one procedure every agent's sweep uses (AR 425)). Read a
 gate's result with `tools/gate-summary.py <log>`, not the log, and run any
 other long job as `tools/bg-run.sh <name> <cmd...>`, which ends in one line.
 

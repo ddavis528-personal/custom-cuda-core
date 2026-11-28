@@ -23,7 +23,7 @@
 # recursive virtual-ancestor build past half an hour (11-20: OA's branch, four
 # bases, 25 min and counting; resolve took 0.15 s). So each merge has
 # CCV_SWEEP_MERGE_TIMEOUT seconds (default 300); past it the attempt is
-# discarded and the merge retried with -s resolve, which takes one base.
+# discarded and tools/sweep-merge.sh merges on the newest base alone.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ME=daily-sweep
@@ -54,37 +54,26 @@ order=$(for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/or
   echo "$(git merge-base --all HEAD "$rb" 2>/dev/null | wc -l) $rb"
 done | sort -k1,1n -k2,2 | awk '{print $2}')
 # One merge, at most CCV_SWEEP_MERGE_TIMEOUT seconds with the default
-# strategy, then with -s resolve. The tree was clean before it (clean_tree),
-# so a timed-out attempt is discarded with a hard reset to the tip.
+# strategy; past it, tools/sweep-merge.sh: one (virtual) merge base, conflicts settled
+# by history only (AR 425, RI-65, TI-599; 11-27's ten-base branch in 10 s, where
+# recursive ran hours and resolve refused). A file it cannot settle is left
+# in UNSETTLED for the caller, HEAD at the tip. The tree was clean before it
+# (clean_tree), so a timed-out attempt is discarded with a hard reset.
+UNSETTLED=""
 merge_one() {
-  local rb=$1 msg=$2 head st c
-  head=$(git rev-parse HEAD)
+  local rb=$1 msg=$2 head st
+  UNSETTLED=""; head=$(git rev-parse HEAD)
   timeout "${CCV_SWEEP_MERGE_TIMEOUT:-300}" git merge -q --no-ff --no-edit -m "$msg" "$rb" >/dev/null 2>&1
   st=$?
   [ $st = 124 ] || return $st
-  say "merging $rb took over ${CCV_SWEEP_MERGE_TIMEOUT:-300}s; retrying with -s resolve"
   git merge --abort >/dev/null 2>&1; git reset -q --hard "$head"
-  rm -f .merge_file_*   # a killed merge's temporaries
-  git merge -q --no-ff --no-edit -s resolve -m "$msg" "$rb" >/dev/null 2>&1 && return 0
-  # A conflicted resolve merge is the caller's to settle, as any conflict.
-  [ -f "$(git rev-parse --git-path MERGE_HEAD)" ] && return 1
-  # Resolve refused outright: past 8 merge bases, read-tree cannot take them
-  # (11-20: AR's branch, 7 bases and 8 trees). Then the branch's own commits
-  # the tip lacks, merges left out, are cherry-picked oldest first (a
-  # sweep's merge brings nothing the tip lacks once its other parent is in
-  # it), and an -s ours merge records the ancestry, so the next sweep finds
-  # the branch merged. A pick's conflict in generated files takes ours; any
-  # other is left for the caller, as a merge's would be.
+  say "merging $rb took over ${CCV_SWEEP_MERGE_TIMEOUT:-300}s ($(git merge-base --all HEAD "$rb" | wc -l) merge bases); one-base merge (tools/sweep-merge.sh)"
+  UNSETTLED=$(CCV_GENERATED_RE="$GENERATED" tools/sweep-merge.sh "$rb" "$msg (one base, settled by history)")
+  st=$?
+  [ $st = 0 ] && return 0
   git reset -q --hard "$head"
-  say "resolve refused $rb ($(git merge-base --all HEAD "$rb" | wc -l) merge bases); picking its own commits"
-  for c in $(git rev-list --reverse --no-merges --cherry-pick --right-only "HEAD...$rb"); do
-    git cherry-pick -x "$c" >/dev/null 2>&1 && continue
-    [ -z "$(git diff --name-only --diff-filter=U | grep -Ev "$GENERATED")" ] || return 1
-    git diff --name-only --diff-filter=U | xargs -r git checkout --ours --
-    git diff --name-only --diff-filter=U | xargs -r git add --
-    GIT_EDITOR=true git cherry-pick --continue >/dev/null 2>&1 || return 1
-  done
-  git merge -q --no-ff --no-edit -s ours -m "$msg (its own commits picked; resolve refused)" "$rb"
+  [ -n "$UNSETTLED" ] || UNSETTLED="(tools/sweep-merge.sh failed, exit $st)"
+  return 1
 }
 for rb in $order; do
   b=${rb#origin/}
@@ -99,10 +88,10 @@ for rb in $order; do
   pre=$(git rev-parse HEAD)
   if ! merge_one "$rb" "Merge $rb (daily sweep $WHEN)"; then
     other=$(git diff --name-only --diff-filter=U | grep -Ev "$GENERATED" || true)
-    # A pick's conflict (merge_one's last fallback) is never concluded here.
-    [ -f "$(git rev-parse --git-path CHERRY_PICK_HEAD)" ] && [ -z "$other" ] && other="(a cherry-pick of $rb)"
+    # sweep-merge's unsettled files (merge_one's fallback) are never concluded here.
+    [ -n "$UNSETTLED" ] && other=$UNSETTLED
     if [ -n "$other" ]; then
-      git cherry-pick --abort >/dev/null 2>&1; git merge --abort >/dev/null 2>&1
+      git merge --abort >/dev/null 2>&1
       git reset -q --hard "$pre"
       die "merging $rb conflicts outside generated files; resolve it, or rerun with --skip=$b:
 $(printf '  %s\n' $other)" 3
