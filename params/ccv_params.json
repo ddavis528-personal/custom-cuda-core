@@ -1636,16 +1636,16 @@
     },
     {
       "name": "CCV_P_TIMEOUT_MEMOP",
-      "value": 6144,
+      "value": 40960,
       "status": "provisional",
-      "derive": "((CCV_MEMOP_CREDITS * CCV_WARP_LANES + 2 ** CCV_P_W_REQ_DCU_MLC - 1) // 2 ** CCV_P_W_REQ_DCU_MLC) * CCV_P_TIMEOUT_MEM",
-      "source": "AR rev 350 (re TI rev 424, AR 349); AR-410 (re TI-531): derived from the fill rounds a full queue can wait",
-      "doc": "Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). A memop can wait behind the fills of every other entry of its slot: CCV_MEMOP_CREDITS entries of up to CCV_WARP_LANES lines each, fetched 2^CCV_P_W_REQ_DCU_MLC at a time (DCU's req_ids to MLC, its fills in flight), each round within CCV_P_TIMEOUT_MEM, the bound on any external latency (AR-410, re TI-531). So it is ceil(CCV_MEMOP_CREDITS x CCV_WARP_LANES / 2^CCV_P_W_REQ_DCU_MLC) rounds of CCV_P_TIMEOUT_MEM, and it moves by itself when the memory timeout follows a real DRAM latency. The skeleton's testbench refuses any latency over CCV_P_TIMEOUT_MEM (its slow regions and CCV_TB_LATENCY). The corpus's holds must stay under it: every gate run fires response_within_n past it, and check-kernel's coremark128 line runs at CCV_TB_LATENCY=1000 so its hold passes CCV_P_TIMEOUT_BP. A watchdog and a sizing signal: each gate run reports the channel's longest credit hold (BPAGE). Before AR-410 it was CCV_MEMOP_CREDITS x CCV_P_TIMEOUT_MEM (20480, AR 350), which coremark128 nearly met only because its data sat in the testbench's 1000-cycle region by accident.",
+      "derive": "((CCV_MEMOP_CREDITS * CCV_WARP_LANES + CCV_DCU_MSHR_PER_BANK - 1) // CCV_DCU_MSHR_PER_BANK) * CCV_P_TIMEOUT_MEM",
+      "source": "AR rev 350 (re TI rev 424, AR 349); AR-410 (re TI-531): derived from the fill rounds a full queue can wait; AR 421 (re TI-584): one bank's miss buffers, not the whole id space",
+      "doc": "Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). A memop can wait behind the fills of every other entry of its slot: CCV_MEMOP_CREDITS entries of up to CCV_WARP_LANES lines each, fetched CCV_DCU_MSHR_PER_BANK at a time (one bank's miss buffers: a stream of one bank's lines, a 1 KiB stride, puts them all there; AR 421, MA-34), each round within CCV_P_TIMEOUT_MEM, the bound on any external latency (AR-410, re TI-531). So it is ceil(CCV_MEMOP_CREDITS x CCV_WARP_LANES / CCV_DCU_MSHR_PER_BANK) rounds of CCV_P_TIMEOUT_MEM, and it moves by itself when the memory timeout follows a real DRAM latency. The skeleton's testbench refuses any latency over CCV_P_TIMEOUT_MEM (its slow regions and CCV_TB_LATENCY). The corpus's holds must stay under it: every gate run fires response_within_n past it, and check-kernel's coremark128 line runs at CCV_TB_LATENCY=1000 so its hold passes CCV_P_TIMEOUT_BP. A watchdog and a sizing signal: each gate run reports the channel's longest credit hold (BPAGE). Before AR-410 it was CCV_MEMOP_CREDITS x CCV_P_TIMEOUT_MEM (20480, AR 350), which coremark128 nearly met only because its data sat in the testbench's 1000-cycle region by accident.",
       "decided_at": "with CCV_P_TIMEOUT_MEM"
     },
     {
       "name": "CCV_P_TIMEOUT_UOP",
-      "value": 6144,
+      "value": 40960,
       "status": "provisional",
       "derive": "CCV_P_TIMEOUT_MEMOP",
       "require": "CCV_P_TIMEOUT_UOP >= CCV_P_TIMEOUT_MEMOP",
