@@ -36,39 +36,39 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   scratchpad/ma33 (MA-33 debug instrumentation: g_dbg_site, DBG prints).
 
 ## Open work, most urgent first
-1. MA-34 (MA rev 220, DCU tab rev 147; DI-58 accepted): dcu_mshr 8 banks x 16,
-   req_id {bank, entry}, new dcu_mpick (cross-bank pick by stamp behind
-   writebacks, DI-35's retry grant, ccv_dcu_mlc_req's flops), bctl queue req_id
-   8, recheck dcu_fill's 4 buffers under gtw. New CHECKs: an id's bank is its
-   line's bank; one new miss per bank per cycle. Model first, then RTL.
-   Blocked on TI's params (ti-rp 1183b16c: W_REQ_MIU_DCU 8, W_REQ_DCU_MLC 7,
-   MSHRs 8x16) landing on a working branch; TI-rp's gate waits on MI's
-   miu_ids bench (TI-590 (1)). DI's interim (80071ac5, NE = per-bank 16) and
-   bench width fix 79203045 (gate-scratch/DI-rp) ride TI's gate. Merge at once.
-2. OA-505 answered (DI-60, rev 99): dcu_bctl cold check-cg peak 371 MiB.
-3. TI-590 (TI rev 592), low: re-measure dcu=model IMPL_PINS rows on ti-rp's
+1. MA-34 (MA rev 220/222, DCU tab rev 147/148): params landed (TI c0883a36,
+   merged). Model done (078f5069, af59fee3 on main): per-bank offers, CHECKs
+   id bank == line bank and one new miss a bank a D2; a loser's same-D2 miss
+   waits and retries on port 0 (control dcu-bank-two-miss); dcu-late-miss-port
+   retired (DI-61, MA rev 222). Next: check the model's cross-bank MLC pick and
+   retry grant vs dcu_mpick's spec; kernel sweep CCV_DCU_IMPL=model (never
+   beside a gate); then RTL: dcu_mshr per bank, dcu_mpick, bctl queue req_id
+   8; then the dcu_fill 4-buffer recheck under gtw.
+2. TI-590 (TI rev 592), low: re-measure dcu=model IMPL_PINS rows on ti-rp's
    params (held-wait demote dcu=model 862, pair 876; UE rows); the vadd4-swap
    rows are gone. Answer in the DI tab.
-4. DI-38 (1) fill-unheld kernel line; DI-38 (5) coremark128 pair watchdog
+3. DI-38 (1) fill-unheld kernel line; DI-38 (5) coremark128 pair watchdog
    (MI first, TI-547).
-5. RTL slice 2 increment B: tag-stale marking in dcu_bctl; a relook that
+4. RTL slice 2 increment B: tag-stale marking in dcu_bctl; a relook that
    misses joins the miss-wait FIFO, retries on port 0 (DCU tab rev 127),
-   with the dcu-late-miss-port control in the bench. Then btag's fill tag RF
+   (dcu-late-miss-port retired by MA rev 222). Then btag's fill tag RF
    write (DI-25), rarb/rslot growth, dcu_bdat wdata select.
-6. TI-537: one common credit module (TI); dcu_mshr's cr_q_cc05h moves to it.
-7. Later: price VICTIM_AT=2, wb_ack_delay, re-measure DI-23; watch DA rev
+5. TI-537: one common credit module (TI); dcu_mshr's cr_q_cc05h moves to it.
+6. Later: price VICTIM_AT=2, wb_ack_delay, re-measure DI-23; watch DA rev
    134's TB read class (1000 cycles, 1 line per 8) for MA's fill sizing.
-8. Gaps vs spec: probes (no MLC probe traffic), CE injection on DCU side,
+7. Gaps vs spec: probes (no MLC probe traffic), CE injection on DCU side,
    MA-25 vectors unwired.
-9. Merges: criss-cross history; ort can hang (timeout 60), resolve refuses
+8. Merges: criss-cross history; ort can hang (timeout 60), resolve refuses
    >8 bases: then read-tree -m -u <newest base> HEAD <theirs>, merge-index,
    commit-tree with both parents. Session home installed; --check in sweep.
 
 ## Status
-- Pushed 987567fd (SCOPED PASS 28/28): sweep merge of every remote branch to
-  11-27, incl. TI's heavy-units miu_form. MA-33 closed (DI-57).
+- Pushed f2accd75 (SCOPED PASS 24/28): sweep merge of every remote branch to
+  11-27. On top (unpushed until the next gate): TI c0883a36 + MA-34 model.
+- Pongs 11-27: all answered; OI and RH sender=stale (their roster); tell
+  Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 99, MI 70, MA 220, AR 423, OA 505, TI 592, OI 427, DA 136,
-RA 159, RI 92, IS 201, CP 160 (sweep 2026-11-26). DI tab last row DI-60 (id m8yvbw8rqgz.116565).
+Conventions 20, DI 100, MI 74, MA 222, AR 426, OA 506, TI 594, OI 427, DA 136,
+RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-61 (id m8yvbw8rqgz.117367).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
