@@ -630,7 +630,11 @@ bench names its control. Then the read counts at the reader's stage.
 The writer's register may reach its output through the writer's
 combinational logic, never another register (OA-496: a sibling child's
 table, as u_map's read by u_dep; `reference_mtpp.sv` passes,
-`bad_tport2.sv` is refused).
+`bad_tport2.sv` is refused). A writer so declared may be fed from later
+stages: its inputs whose every path to an output passes through the table
+register are its table's write, excused at the connection (OI-217;
+`reference_ttp.sv`); an input reaching the output around the register is
+still a back edge (`bad_conn5.sv`).
 `reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
 `bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
 assertion are refused.

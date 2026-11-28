@@ -1,0 +1,15 @@
+{
+  "_comment": "bad_conn5.sv's reference_lttr.",
+  "tables": {
+    "rd_cy02h": {
+      "reader": "hd_cy01h",
+      "ahead": 1,
+      "writer": "u_w.tab_cy02h",
+      "assert": "hd_read_not_written",
+      "control": "tport-dup",
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "a sibling's table, written from later-stage registers (OI-217)"
+    }
+  }
+}

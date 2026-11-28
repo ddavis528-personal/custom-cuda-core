@@ -2139,6 +2139,7 @@ def check_connections(src, rel, add, signers, fbdir):
         pseq = bool(dep_graph(pbody)[1])
         fp, decl, _, _ = feedback_decls(fbdir, parent)
         xdecl = {k: v for k, v in decl.items() if "." in k}
+        table_regs = sibling_tables(pbody, local, idx, fbdir)
         used = set()
         for m in re.finditer(r"\b([a-z]\w*)\s*(#\s*\()?", pbody):
             child = m.group(1)
@@ -2221,6 +2222,11 @@ def check_connections(src, rel, add, signers, fbdir):
                     key = "%s.%s" % (inst, i)
                     if key in xdecl:
                         used.add(key)
+                        continue
+                    # A verified table (OI-217, OA-496): this child is a
+                    # sibling's declared table writer, and its input reaches
+                    # the output only through the table register.
+                    if any(only_through(cbody, i, o, g) for g in table_regs.get(inst, ())):
                         continue
                     e = (parent, inst, i, None, pt[i][1], si[2], deficit,
                          "combinational" if comb else "register")
@@ -2327,6 +2333,46 @@ def verify_port_table(n, port, d, body, graph, signers, path):
         return "its control is missing or named nowhere in %s" % " or ".join(
             os.path.relpath(h, ROOT) for h in homes)
     return None
+
+
+def sibling_tables(pbody, local, idx, fbdir):
+    """{instance: {register}}: the table registers this parent's children
+    declare a sibling writes, "writer": "<inst>.<reg>" in a child's
+    feedback.json "tables" (OA-492, OA-496). The declaration itself is
+    verified where its reader is linted."""
+    out = {}
+    for iname, (child, ports, body, conns) in instances(pbody, local, idx, fbdir).items():
+        src = idx.get(child)
+        cdir = os.path.join(ROOT, os.path.dirname(src[0])) if src and src[0] else fbdir
+        _, _, _, tbl = feedback_decls(cdir, child)
+        for port, d in tbl.items():
+            w = str(d.get("writer", "")) if isinstance(d, dict) else ""
+            if "." in w and ports.get(port) == "input":
+                wi, wreg = w.split(".", 1)
+                out.setdefault(wi, set()).add(wreg)
+    return out
+
+
+def only_through(body, i, o, reg):
+    """Whether every path in a module from input i to output o passes
+    through register reg: i reaches reg's next value or enable, and with
+    reg cut, i no longer reaches o."""
+    deps, flops = dep_graph(body)
+    if reg not in flops:
+        return False
+    def reaches(start, cut):
+        seen, todo = set(), [start]
+        while todo:
+            n = todo.pop()
+            for x in deps.get(n, ()):
+                if x == i:
+                    return True
+                if x in seen or x == cut:
+                    continue
+                seen.add(x)
+                todo.append(x)
+        return False
+    return reaches(reg, None) and not reaches(o, reg)
 
 
 def helper_self_loop(pbody, inets, onets, inst):
