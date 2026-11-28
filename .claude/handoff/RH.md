@@ -76,7 +76,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI OA-504 RUNNING from 17:07Z 11-27: THRESHOLD_MLC re-sweep at 57ca7d30 (origin/ccr-57eff422-5tdecg) in rh-oi504, rh-jobs/oi504/oi504.sh <seed> [arms]
   (resumable), logs ~/ccv-logs/oi504 (s<seed>.m<arm>.*). Common env: CCV_RAU_DEMOTE=mlc CCV_MIU_IMPL=model CCV_DCU_IMPL=p1. Arms: demote_mlc_miss=35/50/75/100.
   Class 2: vadd6 at CCV_TB_LATENCY=1000 --cycles 400000. Class 3: S1, cm32p, cm128p at default. Seed 1 first; arms within 0.5% of 50 get seeds 2 and 3.
-  Class 1 (gtr4, gtw8/16/32 at latency 1000, cold MLC, B/cycle) is BLOCKED: MA-31's kernels are not in any branch; asked MA and OI 17:06Z.
+  Class 1 (read): MA sent gtr4 and gtw8/16/32 (17:10Z; uncommitted in rh-oi504/test/kernels, oracles in build/syn-oracle); rh-jobs/oi504/oi504r.sh <seed> [arms].
+  B/cycle = demanded load lines (256/512/1024/2048) x 128 / KERNEL cycles (MA's definition); also report p1_mshr_peak and sum/cycles. Env = OI's (not MA-31's
+  P1_STORE=af/STRICT/jitter 0/size knobs), so cycles won't match MA-31 c128. p1 may still be 16 MSHRs (dcu_core.h:141). Watcher '[o]i504.sh' does not match oi504r.sh.
   Per run: cycles, Δ vs 50, fin/order/chk, demote_trigger.mlc_miss.true_miss/false_hit/unresolved, demote, restored, parked, slot_refill_parked.
   The decision is OI's and OA's. Check trigger trig_01EiH8qAZn8idqvLFJAaBg3W 20:00Z.
 - AR 410/412 re-baseline DONE+SENT 17:20Z 11-24 (rh-jobs/ar410, ~/ccv-logs/ar410, <tag>.<k>.cmd). All 49 runs exact. S1 (1,640) and cm32priv
