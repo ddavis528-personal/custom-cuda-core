@@ -42,7 +42,9 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    and MA-35 two-field fold (f4952819; its sim/dcu edits reviewed: correct,
    one fold function at the run's sets). DI-63 verified (needs
    CCV_MIU_IMPL=model: vadd4 75 drops / rope 210, 0 CHECKs; control 150) and
-   answered with MA-35 in DI-69 (rev 108, notice sent). Merge gating.
+   answered with MA-35 in DI-69 (rev 108, notice sent); merge pushed
+   05185259. 11-28 sweep merged 8 branches (sweep-merge.sh), gating;
+   that answers OA 508.
    Next gate (bundle): increment B, DI-25 btag fill write, rarb/rslot
    growth, bdat wdata select, TI-537 if landed. Later: lone-bank backlog
    report (dcu_mpick_pass, wait cycles, gtw and cm128) with the dcu_fill gtw
@@ -61,7 +63,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    134's TB read class (1000 cycles, 1 line per 8) for MA's fill sizing.
 7. Gaps vs spec: probes (no MLC probe traffic), CE injection on DCU side,
    MA-25 vectors unwired.
-8. Merges: criss-cross history; ort can hang (timeout 60), resolve refuses
+8. Merges: use tools/sweep-merge.sh <theirs> <msg> (TI-605). Older:
+   criss-cross history; ort can hang (timeout 60), resolve refuses
    >8 bases: then read-tree -m -u <newest base> HEAD <theirs>, merge-index,
    commit-tree with both parents. Session home installed; --check in sweep.
 
@@ -73,6 +76,6 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - Pongs 11-27: OI and RH sender=stale; tell Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 108, MI 76, MA 232, AR 426, OA 506, TI 594, OI 427, DA 136,
-RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-69 (row id .130369).
+Conventions 20, DI 108, MI 77, MA 233, AR 437, OA 518, TI 609, OI 439, DA 136,
+RA 164, RI 101, IS 201, CP 160 (sweep 2026-11-28). DI tab last row DI-69 (row id .130369).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
