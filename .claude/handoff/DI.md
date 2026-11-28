@@ -36,26 +36,17 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   scratchpad/ma33 (MA-33 debug instrumentation: g_dbg_site, DBG prints).
 
 ## Open work, most urgent first
-1. MA-34 RTL, ONE bundled gate (Daniel: compute-bound, bundle all ngd/cg
-   work). Worktree scratchpad/m34, backed up on gate-scratch/DI-m34 (tip
-   1c63f699): dcu_mshr per bank, dcu_mpick, dcu_fill ORs 8 buses, benches
-   mshr_tb (BK 0, 5), mpick_tb, fill_tb, run-rtl controls (twolook etc.).
-   All benches pass; lint clean. Per-unit results: /root/ccv-logs/m34units*.log
-   (run: check-ngd.py --unit U; scratchpad/cgbudget.py U).
-   DI-66 ruled A (MA rev 227) and DI-67 ruled fold (MA rev 229): done.
-   dcu_mpick is g_mpick inside dcu_fill (unit dcu_fill_mpick, mpick_tb);
-   budgets in dcu_fill.ngd.json and dcu_mshr.ngd.json. Per-unit ngd/cg all
-   clean, run-rtl 40/40 (m34units4.log). GATE: gate-push from main checkout
-   at 9c6257e6 (+ handoff); wait with tools/gate-wait.sh. After it: DI answer
-   row to MA (applied; snt split to snv+sbk got snt's 15; DCU tab rows take
-   H+6 and the fold with this notice), then increment B etc. in a later gate.
-   dcu=model kernel pins (tools/check-kernel.sh, TI's, ungated) may move with
-   H+6: re-measure with TI-590.
-   Next gate: increment
-   B, DI-25, rarb/rslot, bdat wdata, MA p1 fix (DI-63), TI-537 if landed;
-   merge worktree into the branch, one gate-push from the main checkout.
-   Later: lone-bank backlog report (dcu_mpick_pass, wait cycles, gtw and
-   cm128) with the dcu_fill gtw recheck (MA rev 226 (1)).
+1. MA-34 RTL GATED AND PUSHED (69659b33, SCOPED PASS 24/28): per-bank
+   dcu_mshr, g_mpick in dcu_fill (DI-67), H+6 (DI-66), budgets. DI-68 (DI
+   rev 107) told MA. Merged MA's branch (27e67d25): DI-63 p1 fix 669cfdde
+   and MA-35 two-field fold (f4952819; its sim/dcu edits reviewed: correct,
+   one fold function at the run's sets). Verifying DI-63 repro (vadd4/rope
+   under CCV_DCU_IMPL=p1, was 588 CHECKs; job di63) then answer DI-63 and
+   MA-35 in the DI tab, notice to MA; then gate-push the merge.
+   Next gate (bundle): increment B, DI-25 btag fill write, rarb/rslot
+   growth, bdat wdata select, TI-537 if landed. Later: lone-bank backlog
+   report (dcu_mpick_pass, wait cycles, gtw and cm128) with the dcu_fill gtw
+   recheck (MA rev 226 (1)).
 2. TI-590 (TI rev 592), low: re-measure dcu=model IMPL_PINS rows on ti-rp's
    params (held-wait demote dcu=model 862, pair 876; UE rows); the vadd4-swap
    rows are gone. Answer in the DI tab.
@@ -82,6 +73,6 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - Pongs 11-27: OI and RH sender=stale; tell Daniel if still stale next Friday.
 
 ## Register bookmarks
-Conventions 20, DI 106, MI 76, MA 226, AR 426, OA 506, TI 594, OI 427, DA 136,
-RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-67 (row id .126624).
+Conventions 20, DI 107, MI 76, MA 232, AR 426, OA 506, TI 594, OI 427, DA 136,
+RA 159, RI 93, IS 201, CP 160 (sweep 2026-11-27). DI tab last row DI-68 (row id .128290).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
