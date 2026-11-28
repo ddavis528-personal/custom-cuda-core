@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 423, OA 503, IS 201, CP 160, OI 427, RA 159, RI 92, MA 221, DA 136, MI 70, DI 96, TI 585.
+Conventions 20, AR 423, OA 503, IS 201, CP 160, OI 427, RA 159, RI 92, MA 221, DA 136, MI 71, DI 96, TI 588.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -134,6 +134,9 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - AR 418 ANSWERED (MA rev 215, AR notified): AR's warm re-baseline -> capacity and hit-latency tables stand; only MA-30 (cold) owes a re-run = g2 grid; S1/cm32 sent, cm128 after DI-55 clean; then full table to AR. Bookmark AR 422.
 - DI-56 (FYI, DI rev 95): fold-table port, fill re-snapshot, signed declaration landed at d16fc703; closes DI-43..47, DI-52, DI-54. Bookmark DI 95.
 - MA-32 CLOSED (MA rev 214) on DI's 54eb9217 (dcu_bctl.feedback.json signed by MA, DI-40 budgets) + a518a612 (dcu_bctl CG 94/101.5), at d16fc703 on ccr-5e4d6c70 with the MA-33 fix. DI's full cm128priv runs in progress -> DI-55. Merge ccr-5e4d6c70 and ccr-58815650 at next sweep, then re-run cm128 grid.
+- Sweep 11-27: criss-cross merges (10 merge bases) hang ort for hours. Merge with `git merge-tree --write-tree --merge-base=<C>` where C wraps a synthetic tree: the theirs-side oldest first-parent commit containing every base, with files of its unique non-merge commits taken from HEAD; check the result's diff vs HEAD equals theirs' unique files, then commit-tree -p HEAD -p theirs.
+- TI-586 (TI rev 588): TI took dcu_p1 seal() and the TL id ride-along (2f1fde73); sweep knobs not taken. My seal() commit is no longer owed.
+- MI-46 CLOSED (MI-47, MI rev 71): F-SHARED negative-sum bin and control; ccr-58815650 merged in the 11-27 sweep. Gate on 8d9064c5 failed cg twice by OOM compiling miu_form's harness; fixed by miu_form in tools/heavy-units.json (merged 11-27).
 - MI-40 RULED (MA rev 209): miu_grp is an inner helper of miu_a2 (lv/am_cm06h from miu_agu8 flops at arrival 0, ge_cm06h gone). Fix (i): one extra (* keep *) copy of the leader lines in miu_agu8 (<=50 compares each, ~41 flops), a third only if still >25; (ii) drop_split-to-pass rejected. Owed by MI: sum/lq/footprint depths and miu_agu8 flops. MIU tab rev 221 (miu_tlb 4,259, miu_pair 754, budgets rows rewritten). MI-40 (4) asks TI about list-valued assert/control in feedback.json.
 - OA-486 AGREED (MA rev 210; MI, OA notified): invalidate may lose the refill request, never the lane; MI owes an assertion (outstanding MQ line completes or re-misses within pass + refill bound) and a control (mutation marks the lost line done). Bookmark OA 486.
 - MI-42 ACCEPTED (MA rev 211): lc_cm06h keep copy (miu_agu8 LC=1 on octets 0/2, 453 flops, +328 total), miu_a2 in-flop 25.0 at zero margin, third copy pre-approved; lc budgets and miu_grp inner declaration by MA citing 209/211. MIU tab rev 226. Bookmark MI 66.
