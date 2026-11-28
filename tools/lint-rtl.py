@@ -264,22 +264,58 @@ def stage_ratchet():
 # <module>.feedback.json: {"reads": {reader: {"from": [read, ...], "by": an
 # architect, "date", "why"}}}. The lint finds the loop itself and refuses a
 # declaration it cannot find, so the exemption is no wider than the loop.
-FEEDBACK_BY = ("OA", "AR", "DA")
-# MA is the MIU and DCU architect (MA-32): it signs a declaration of a module
-# under rtl/miu/ or rtl/dcu/ only, and nowhere else.
-FEEDBACK_BY_DIR = {"MA": ("rtl/miu/", "rtl/dcu/")}
+# Who signs (DA-135, 2026-11-24): the architect who owns the block, and no
+# one else -- MA for MIU and DCU, OA for OOE, RA for RCU, AR for the blocks AR
+# owns (every other rtl/ directory). A loop that crosses two blocks needs both
+# architects: "by" is then a list naming each, and nothing more.
+BLOCK_ARCH = (("rtl/ooe/", "OA"), ("rtl/miu/", "MA"), ("rtl/dcu/", "MA"),
+              ("rtl/rcu/", "RA"),
+              # check-1d's fixtures read as OOE modules unless --signer-path
+              # places them elsewhere.
+              ("rtl/lint/", "OA"))
+BLOCK_ARCH_DEFAULT = "AR"
 
 
 # check-1d reads a fixture as if it stood at this repo path (--signer-path=).
 _signer_path = {"rel": None}
 
 
+def block_arch(rel):
+    """The architect who owns the block a repo path lies in (DA-135)."""
+    rel = rel.replace(os.sep, "/").rstrip("/") + "/"
+    for d, who in BLOCK_ARCH:
+        if rel.startswith(d):
+            return who
+    return BLOCK_ARCH_DEFAULT
+
+
 def feedback_signers(path):
-    """The architects who may sign a CCV-L23 declaration beside this module."""
-    rel = (_signer_path["rel"] or
-           os.path.relpath(os.path.abspath(path), ROOT)).replace(os.sep, "/").rstrip("/") + "/"
-    return FEEDBACK_BY + tuple(b for b, dirs in sorted(FEEDBACK_BY_DIR.items())
-                               if any(rel.startswith(d) for d in dirs))
+    """The architect(s) who must sign a CCV-L23 declaration beside this
+    module: its block's owner (DA-135)."""
+    rel = _signer_path["rel"] or os.path.relpath(os.path.abspath(path), ROOT)
+    return (block_arch(rel),)
+
+
+def module_block_arch(name, rel):
+    """A child module's block architect, from its source path. check-1d places
+    a reference_* fixture module in a block with CCV_LINT_FIXTURE_BLOCKS
+    ("<module>=rtl/<dir>,..."); a design module is never moved."""
+    for kv in os.environ.get("CCV_LINT_FIXTURE_BLOCKS", "").split(","):
+        if "=" in kv:
+            m, d = kv.split("=", 1)
+            if m.strip() == name and name.startswith("reference_"):
+                return block_arch(d.strip())
+    return block_arch(rel) if rel else None
+
+
+def signed(by, signers):
+    """Whether "by" names exactly the architects required: one, or for a
+    loop across blocks, a list of each (DA-135)."""
+    names = by if isinstance(by, list) else [by]
+    return bool(names) and all(isinstance(n, str) for n in names) and \
+        sorted(set(names)) == sorted(set(signers)) and len(names) == len(set(names))
+
+
 IDENT_RE = re.compile(r"\b[a-z]\w*\b")
 
 
@@ -1513,8 +1549,8 @@ def check_file(path, rel):
                 why = None
                 sa = stage_of(arr)
                 words, dtext = array_decl(body, arr)
-                if d.get("by") not in signers:                  # (1)
-                    why = ("not an architect's (by %r, not one of %s): each is reviewed "
+                if not signed(d.get("by"), signers):                  # (1)
+                    why = ("not an architect's (by %r; it needs %s): each is reviewed "
                            "alone before it is listed" % (d.get("by"), ", ".join(signers)))
                 elif not isinstance(readers, list) or not readers:
                     why = "it names no reader: write \"readers\": [\"<reader>\", ...]"
@@ -1746,9 +1782,9 @@ def check_file(path, rel):
             # on from a register at the reader's stage in its pipeline.
             for reader, d in sorted(byp.items()):
                 reads = d.get("from", {})
-                if d.get("by") not in signers:
+                if not signed(d.get("by"), signers):
                     add("CCV-L23", ln0,
-                        "%s: %s's declared bypass is not an architect's (by %r, not one of "
+                        "%s: %s's declared bypass is not an architect's (by %r; it needs "
                         "%s): each is reviewed before it is listed"
                         % (fp, reader, d.get("by"), ", ".join(signers)))
                     continue
@@ -1788,10 +1824,10 @@ def check_file(path, rel):
                             byp_ok.setdefault(reader, {})[rd] = ahead
             for reader, d in sorted((k, v) for k, v in decl.items() if "." not in k):
                 reads = d.get("from", [])
-                if d.get("by") not in signers:
+                if not signed(d.get("by"), signers):
                     add("CCV-L23", ln0,
-                        "%s: %s's declared feedback reads are not an architect's (by %r, "
-                        "not one of %s): each is reviewed before it is listed"
+                        "%s: %s's declared feedback reads are not an architect's (by %r; "
+                        "it needs %s): each is reviewed before it is listed"
                         % (fp, reader, d.get("by"), ", ".join(signers)))
                     continue
                 # Each read with the alignment it is declared at (DA, 2026-10-23):
@@ -2299,8 +2335,8 @@ def verify_port_table(n, port, d, body, graph, signers, path):
     in the parent, the port is fed directly by instance <inst>'s output that
     is its register <reg>; an assertion with that label in this module, that
     the read never meets a write; and a bench control that breaks it."""
-    if d.get("by") not in signers:
-        return "not an architect's (by %r, not one of %s)" % (d.get("by"), ", ".join(signers))
+    if not signed(d.get("by"), signers):
+        return "not an architect's (by %r; it needs %s)" % (d.get("by"), " and ".join(signers))
     reader = d.get("reader")
     if not reader or port not in graph[0].get(reader, ()):
         return "its reader %r does not read %s" % (reader, port)
@@ -2526,9 +2562,30 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
     the reader's input reaching the writer's output; and an assertion with
     that label in the parent or the reader's module, for the hazard the stale
     read opens, with its bench control named."""
-    if d.get("by") not in signers:
-        return "not an architect's (by %r, not one of %s)" % (d.get("by"), ", ".join(signers))
     insts = instances(pbody, local, idx, fbdir)
+    # A loop across blocks needs each block's architect (DA-135): every
+    # instance the declaration names adds its own block's owner.
+    named = {key.split(".", 1)[0]}
+    fr0 = d.get("from")
+    srcs = (fr0.get("cone") or []) if isinstance(fr0, dict) else [fr0]
+    for x in list(d.get("loop") or []) + [str(g) for g in srcs if g]:
+        if "." in str(x):
+            named.add(str(x).split(".", 1)[0])
+        elif str(x) in insts:
+            named.add(str(x))
+    need = set(signers)
+    fbrel = _signer_path["rel"] or (os.path.relpath(fbdir, ROOT) if fbdir else "")
+    for iname in sorted(named):
+        if iname in insts:
+            ch = insts[iname][0]
+            crel = idx[ch][0] if ch in idx and idx[ch][0] else fbrel
+            who = module_block_arch(ch, crel)
+            if who:
+                need.add(who)
+    signers = tuple(sorted(need))
+    if not signed(d.get("by"), signers):
+        return "not its block architect's (by %r; it needs %s)" % (
+            d.get("by"), " and ".join(signers))
     ri, rp = key.split(".", 1)
     fr = d.get("from", "")
     if isinstance(fr, dict) or "." not in str(fr):
