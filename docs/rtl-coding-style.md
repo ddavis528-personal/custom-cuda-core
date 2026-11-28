@@ -651,6 +651,23 @@ too, or a writer whose table does not verify, keeps its back edge
 `reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
 `bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
 assertion are refused.
+The writer may instead be the parent's own register, `"writer":
+"<register>"` (OI-226: `ooe_rob_w`'s held redirect words read by the
+`ooe_redir` it instantiates, OA-487): a register of every parent, at the
+port's stage, feeding the port directly as its only net, the other terms
+as above (`reference_otpp.sv` passes; `bad_tport3.sv`'s parent wire and
+unsigned declaration are refused).
+A register-free module (nothing beneath it holds a register or latch)
+has no clock to hold an assertion: its table's assertion is then looked
+up in every parent instantiating it, and must name the table, reading the
+net the parent connects to the port or the register that writes it,
+directly or through the parent's combinational nets (a check net, as
+`ooe_decrx`'s `chk_rdwr_cq02h`) (OI-230 (g), OA 514); a module with a register holds its own. A table so
+verified also excuses its port's back edge at the connection, within its
+`ahead`. Any `` `CCV_ASSERT* `` macro the assertion header defines carries
+the label, `_T` and `_AT` included, read at its NAME argument, here and
+in every declared form (OI-230 (f)). `reference_gtp.sv` passes;
+`bad_tport4.sv`'s three are refused.
 
 **Across a connection** (OA 481-483; TI-554..556; MI-35). A child's port
 tags are its own numbering, not its parent's: a parent may feed a child's
@@ -665,7 +682,11 @@ other deficit is fixed or declared. A child with no register of its own
 (an inner helper) is its parent's logic: its ports carry no stage and a
 path through it counts zero. A connection whose port or net carries no
 tag is a finding, except a block top's own boundary ports, which carry the
-schema's channel names. Out of scope, by name: children with a register
+schema's channel names. A child's own reach from input to output traces
+its register-free children, recursively, as its own logic, and stops at a
+child with any register (OI-227 (e): `ooe_select`'s gnt and rhold reach
+grant through `ooe_pick`; `reference_gp.sv` passes, `bad_conn9.sv`'s
+registered grandchild is refused). Out of scope, by name: children with a register
 under `rtl/common`, `rtl/ctech`, `rtl/macro` and `rtl/clk` (library
 modules); a register-free one there is a helper like any other (OA 485).
 And the generated design (`rtl/top`, `rtl/generated`), whose
@@ -674,7 +695,39 @@ channels cross repeaters by `params/links.json` and are held there.
 Through a register-free helper, a deficit of 1 is exempt only when the
 helper's input reads one parent register and its output feeds, through
 the parent's combinational nets, that register's next value or enable and
-nothing else (OA-488 (1)).
+nothing else (OA-488 (1)). The input may combine that register R with
+other nets (OI-226: `ooe_rename`'s carry-save sums of a remainder with its
+frees and take): its combinational cone's sources are R and nets tagged at
+or before the helper output's own stage, nothing later and nothing
+untagged; an output whose nets nothing reads reaches nothing (OI-219)
+(`reference_csp.sv` passes; `bad_conn8.sv`'s `reference_lcsp`, with a net
+past that stage, is refused).
+
+A function call is logic, not a net (OI-226): every graph these checks
+trace reads a call's arguments and, for a function of the module, the
+module nets its body reads, never its name, and a function or task ends
+the always block before it (`reference_fnp.sv` passes; `bad_conn8.sv`'s
+cones leaving out a call's register argument, or the register its body
+reads, are refused).
+
+A register read back a cycle on, with no loop (OA 513, OI-229 option B:
+`u_ren1`'s lanes reading `u_rd`'s head read of rename 1's `p_v`,
+`p_gkm` and `p_pkm`), is declared `{"readback": true, "from": {"cone":
+[<parent registers>], "ahead": {<register>: n}}, "via":
+["<inst>.<input>><output>", ...], "assert", "control", "by", "date",
+"why"}`, with no `"loop"`. The lint verifies that the sources of the
+input's net lying past the stage the reader's outputs allow it (parent
+registers and sibling outputs, through the parent's combinational nets,
+its register-free children and the named crossings, each a combinational
+path that reaches the input) are exactly the cone, each `ahead` its
+stage less the input's tag; and that no closing path exists: no output
+the input reaches feeds, through the parent's combinational nets and any
+child's combinational path, a cone register's next value or enable. A
+read-back that closes is a loop and refused (`reference_bkp.sv` passes;
+`bad_conn10.sv` is refused). The cone may be the parent register that
+feeds the input directly, with no crossing (OA 514: `u_ren1nr`'s
+`pn_gname` and `pn_pname` reading group N's names in `m_gname_cq04h` and
+`m_pname_cq04h`; `reference_bnp.sv`).
 
 A loop closed by the parent's own registers (OI-207, OA-489) is declared
 with `"from"` naming the parent register the child input reads, and

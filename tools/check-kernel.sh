@@ -248,6 +248,8 @@
 #   a demote that lands after the exit       ignore-refused (brs): RAU
 #     retired is refused, and the exit         migrates it, and refuses
 #     frees the slot (TI-25)                   the drained report
+#   a demotion reserves its PCA place at     demote-no-place (vadd6, 2
+#     demote, else waits (RA-164)              places): drained finds PCA full
 #   a demoted warp parks in PCA with its     corrupt-map, mig-row-order,
 #     state at its retirement boundary         resume-pc (stall, demoting):
 #     (TI-24), at the place RAU names, each    resume-pc, rewind-pc (stall):
@@ -2265,6 +2267,33 @@ if [ -z "$w" ] && [ -n "$wc" ]; then
   say "swap class: vadd6 at latency 1000" "PASS ($(cover "$sl" demote) demoted and restored, slot_refill_parked=$(cover "$sl" slot_refill_parked); at 20+-5 it fails: $wc)"
 else
   bad "swap class: vadd6 at latency 1000" "${w:-clean}; control at 20+-5: ${wc:-passed, which it must not}"
+fi
+# RA-164, AR 431/432: RAU reserves a PCA place at demote, not at drained,
+# and PCA has a spare (CCV_PCA_PLACES = CCV_PARKED_WARPS + 1). A demotion
+# took its place only at drained, and only a restore frees one, so at full
+# occupancy (gtw32: 4 slots, 28 places, 32 warps) a swap's demotion waited
+# on the very restore its slot was to make room for. The swap class run
+# again with RAU's places overridden (CCV_RAU_PLACES, a test override of
+# CCV_PCA_PLACES): at 3, vadd6's 6 warps are 4 resident + 2 parked + the
+# spare, and a demotion goes into the spare (demote_spare); at 2 there is
+# no spare, and RAU declines a demotion for want of a place
+# (demote_no_place). Both end clean. Control demote-no-place at 2: RAU
+# demotes anyway, and drained finds PCA full.
+pls="$B/kernel_vadd6_places3.log"; pl="$B/kernel_vadd6_places2.log"; plc="$B/kernel_vadd6_places2_brk.log"
+CCV_RAU_PLACES=3 CCV_TB_LATENCY=1000 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd6/oracle.jsonl --cycles 400000 >"$pls" 2>&1
+CCV_RAU_PLACES=2 CCV_TB_LATENCY=1000 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd6/oracle.jsonl --cycles 400000 >"$pl" 2>&1
+CCV_RAU_PLACES=2 CCV_TB_LATENCY=1000 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd6/oracle.jsonl --cycles 400000 --break demote-no-place >"$plc" 2>&1
+w=$(ok "$pls" restored="$(cover "$pls" demote)" parked="$(cover "$pls" demote)")
+[ "$(cover "$pls" demote_spare)" -gt 0 ] 2>/dev/null || w="$w places3:demote_spare=$(cover "$pls" demote_spare)"
+w2=$(ok "$pl" restored="$(cover "$pl" demote)" parked="$(cover "$pl" demote)")
+[ -n "$w2" ] && w="$w places2:$w2"
+[ "$(cover "$pl" demote_no_place)" -gt 0 ] 2>/dev/null || w="$w places2:demote_no_place=$(cover "$pl" demote_no_place)"
+if [ -n "${w# }" ]; then
+  bad "RA-164: vadd6 at 3 and 2 places, a place reserved at demote" "${w# }"
+elif ! grep -q "^CHECK rau: warp [0-9]* drained, and PCA has no free place" "$plc"; then
+  bad "--break demote-no-place" "a demotion without a place was not caught: $(grep '^KERNEL' "$plc")"
+else
+  say "RA-164: vadd6 at 3 and 2 places, a place reserved at demote" "PASS (demote_spare=$(cover "$pls" demote_spare) at 3, demote_no_place=$(cover "$pl" demote_no_place) at 2; demote-no-place: PCA full at drained)"
 fi
 # MA-25: DCU's per-bank credits. MIU holds CCV_DCU_BANK_QDEPTH entry credits
 # and CCV_DCU_BANK_STDATA store-data credits a bank, sends a lookup only with
