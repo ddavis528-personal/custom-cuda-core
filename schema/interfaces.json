@@ -1376,7 +1376,7 @@
       "id_classes": [
         "none"
       ],
-      "doc": "The migration command to PCA (AR's response TI-24 (1); repo Q-39), the third beside ccv_rau_rcu_mig and ccv_rau_fet_mig: which warp, which direction, and its place in the parked array. RAU allocates the place from a free list of CCV_PARKED_WARPS on a demotion and frees it once the warp is restored, so PCA stores by place and holds no table. direction 0: PCA files the rows from RCU and the PCs from FET at pca_place, and acks on ccv_pca_rau_mig_done once it holds both. direction 1: PCA sends the warp's rows on ccv_pca_rcu_mig and its PCs on ccv_pca_fet_mig, then acks direction 1 once every row's credit is back (done means written, TI-13). It replaces bank_select on the other two commands, which reached only RCU and FET, neither of which stores anything."
+      "doc": "The migration command to PCA (AR's response TI-24 (1); repo Q-39), the third beside ccv_rau_rcu_mig and ccv_rau_fet_mig: which warp, which direction, and its place in the parked array. RAU reserves the place from a free list of CCV_PCA_PLACES when it sends the demote (AR 431) and frees it once the warp is restored, so PCA stores by place and holds no table. direction 0: PCA files the rows from RCU and the PCs from FET at pca_place, and acks on ccv_pca_rau_mig_done once it holds both. direction 1: PCA sends the warp's rows on ccv_pca_rcu_mig and its PCs on ccv_pca_fet_mig, then acks direction 1 once every row's credit is back (done means written, TI-13). It replaces bank_select on the other two commands, which reached only RCU and FET, neither of which stores anything."
     },
     {
       "name": "ccv_miu_rau_ready",

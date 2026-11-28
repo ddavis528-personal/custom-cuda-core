@@ -1,0 +1,25 @@
+{
+  "_comment": "OA 513's read-back from a parent register (OA 514, OI-230 (5)) for reference_bnp.sv.",
+  "reads": {
+    "u_r.pn_cy01h": {
+      "readback": true,
+      "from": {
+        "cone": [
+          "m_cy04h"
+        ],
+        "ahead": {
+          "m_cy04h": 3
+        }
+      },
+      "assert": [
+        "bn_seen"
+      ],
+      "control": [
+        "bn-drop"
+      ],
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "group N's names, held in the parent's m_cy04h, read by group N+1 a cycle on; pn_cy01h reaches g only, never nn (OA 513, OA 514)"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "_comment": "bad_conn8.sv's reference_fbnp: its cone omits a register the call reads.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "from": {
+        "cone": [
+          "gm_cy04h"
+        ],
+        "ahead": {
+          "gm_cy04h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "gm_cy03h",
+        "gm_cy04h"
+      ],
+      "why": "a cone formed by a call, gk_cy04h left out (bad_conn8.sv; OI-226 (a))"
+    }
+  }
+}

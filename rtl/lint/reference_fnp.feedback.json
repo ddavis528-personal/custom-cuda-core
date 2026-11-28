@@ -1,0 +1,31 @@
+{
+  "_comment": "OI-226 (a)'s cone through a function call for reference_fnp.sv: the call's argument and its body's read of a register are the cone.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "from": {
+        "cone": [
+          "m_cy04h",
+          "k_cy04h"
+        ],
+        "ahead": {
+          "m_cy04h": 3,
+          "k_cy04h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "m_cy03h",
+        "m_cy04h"
+      ],
+      "why": "a cone formed by a function call: its argument m_cy04h and k_cy04h, which its body reads, are the cone; the call itself is logic (OI-226 (a))"
+    }
+  }
+}
