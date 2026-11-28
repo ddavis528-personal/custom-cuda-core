@@ -264,22 +264,58 @@ def stage_ratchet():
 # <module>.feedback.json: {"reads": {reader: {"from": [read, ...], "by": an
 # architect, "date", "why"}}}. The lint finds the loop itself and refuses a
 # declaration it cannot find, so the exemption is no wider than the loop.
-FEEDBACK_BY = ("OA", "AR", "DA")
-# MA is the MIU and DCU architect (MA-32): it signs a declaration of a module
-# under rtl/miu/ or rtl/dcu/ only, and nowhere else.
-FEEDBACK_BY_DIR = {"MA": ("rtl/miu/", "rtl/dcu/")}
+# Who signs (DA-135, 2026-11-24): the architect who owns the block, and no
+# one else -- MA for MIU and DCU, OA for OOE, RA for RCU, AR for the blocks AR
+# owns (every other rtl/ directory). A loop that crosses two blocks needs both
+# architects: "by" is then a list naming each, and nothing more.
+BLOCK_ARCH = (("rtl/ooe/", "OA"), ("rtl/miu/", "MA"), ("rtl/dcu/", "MA"),
+              ("rtl/rcu/", "RA"),
+              # check-1d's fixtures read as OOE modules unless --signer-path
+              # places them elsewhere.
+              ("rtl/lint/", "OA"))
+BLOCK_ARCH_DEFAULT = "AR"
 
 
 # check-1d reads a fixture as if it stood at this repo path (--signer-path=).
 _signer_path = {"rel": None}
 
 
+def block_arch(rel):
+    """The architect who owns the block a repo path lies in (DA-135)."""
+    rel = rel.replace(os.sep, "/").rstrip("/") + "/"
+    for d, who in BLOCK_ARCH:
+        if rel.startswith(d):
+            return who
+    return BLOCK_ARCH_DEFAULT
+
+
 def feedback_signers(path):
-    """The architects who may sign a CCV-L23 declaration beside this module."""
-    rel = (_signer_path["rel"] or
-           os.path.relpath(os.path.abspath(path), ROOT)).replace(os.sep, "/").rstrip("/") + "/"
-    return FEEDBACK_BY + tuple(b for b, dirs in sorted(FEEDBACK_BY_DIR.items())
-                               if any(rel.startswith(d) for d in dirs))
+    """The architect(s) who must sign a CCV-L23 declaration beside this
+    module: its block's owner (DA-135)."""
+    rel = _signer_path["rel"] or os.path.relpath(os.path.abspath(path), ROOT)
+    return (block_arch(rel),)
+
+
+def module_block_arch(name, rel):
+    """A child module's block architect, from its source path. check-1d places
+    a reference_* fixture module in a block with CCV_LINT_FIXTURE_BLOCKS
+    ("<module>=rtl/<dir>,..."); a design module is never moved."""
+    for kv in os.environ.get("CCV_LINT_FIXTURE_BLOCKS", "").split(","):
+        if "=" in kv:
+            m, d = kv.split("=", 1)
+            if m.strip() == name and name.startswith("reference_"):
+                return block_arch(d.strip())
+    return block_arch(rel) if rel else None
+
+
+def signed(by, signers):
+    """Whether "by" names exactly the architects required: one, or for a
+    loop across blocks, a list of each (DA-135)."""
+    names = by if isinstance(by, list) else [by]
+    return bool(names) and all(isinstance(n, str) for n in names) and \
+        sorted(set(names)) == sorted(set(signers)) and len(names) == len(set(names))
+
+
 IDENT_RE = re.compile(r"\b[a-z]\w*\b")
 
 
@@ -1513,8 +1549,8 @@ def check_file(path, rel):
                 why = None
                 sa = stage_of(arr)
                 words, dtext = array_decl(body, arr)
-                if d.get("by") not in signers:                  # (1)
-                    why = ("not an architect's (by %r, not one of %s): each is reviewed "
+                if not signed(d.get("by"), signers):                  # (1)
+                    why = ("not an architect's (by %r; it needs %s): each is reviewed "
                            "alone before it is listed" % (d.get("by"), ", ".join(signers)))
                 elif not isinstance(readers, list) or not readers:
                     why = "it names no reader: write \"readers\": [\"<reader>\", ...]"
@@ -1746,9 +1782,9 @@ def check_file(path, rel):
             # on from a register at the reader's stage in its pipeline.
             for reader, d in sorted(byp.items()):
                 reads = d.get("from", {})
-                if d.get("by") not in signers:
+                if not signed(d.get("by"), signers):
                     add("CCV-L23", ln0,
-                        "%s: %s's declared bypass is not an architect's (by %r, not one of "
+                        "%s: %s's declared bypass is not an architect's (by %r; it needs "
                         "%s): each is reviewed before it is listed"
                         % (fp, reader, d.get("by"), ", ".join(signers)))
                     continue
@@ -1788,10 +1824,10 @@ def check_file(path, rel):
                             byp_ok.setdefault(reader, {})[rd] = ahead
             for reader, d in sorted((k, v) for k, v in decl.items() if "." not in k):
                 reads = d.get("from", [])
-                if d.get("by") not in signers:
+                if not signed(d.get("by"), signers):
                     add("CCV-L23", ln0,
-                        "%s: %s's declared feedback reads are not an architect's (by %r, "
-                        "not one of %s): each is reviewed before it is listed"
+                        "%s: %s's declared feedback reads are not an architect's (by %r; "
+                        "it needs %s): each is reviewed before it is listed"
                         % (fp, reader, d.get("by"), ", ".join(signers)))
                     continue
                 # Each read with the alignment it is declared at (DA, 2026-10-23):
@@ -2029,6 +2065,33 @@ _conn = {"path": CONN_RATCHET, "baseline": CONN_BASELINE, "entries": None,
          "found": set(), "seen": set(), "index": None}
 
 
+_units = {"mods": None}
+
+
+def unit_modules():
+    """Modules with a timing unit (test/**/cg-units.json or ngd-units.json)."""
+    if _units["mods"] is None:
+        mods = set()
+        for d, _, fns in os.walk(os.path.join(ROOT, "test")):
+            for fn in fns:
+                if fn in ("cg-units.json", "ngd-units.json"):
+                    try:
+                        u = json.load(open(os.path.join(d, fn))).get("units", [])
+                    except (OSError, ValueError):
+                        continue
+                    for e in (u.values() if isinstance(u, dict) else u):
+                        if isinstance(e, dict) and e.get("module"):
+                            mods.add(e["module"])
+        # check-1d's fixtures have no timing unit; CCV_LINT_FIXTURE_UNITS
+        # names those it treats as verified, and only reference_* fixture
+        # modules (rtl/lint/), never the design's.
+        for m in os.environ.get("CCV_LINT_FIXTURE_UNITS", "").split(","):
+            if m.strip().startswith("reference_"):
+                mods.add(m.strip())
+        _units["mods"] = mods
+    return _units["mods"]
+
+
 def conn_ratchet():
     if _conn["entries"] is None:
         p = _conn["path"]
@@ -2139,6 +2202,7 @@ def check_connections(src, rel, add, signers, fbdir):
         pseq = bool(dep_graph(pbody)[1])
         fp, decl, _, _ = feedback_decls(fbdir, parent)
         xdecl = {k: v for k, v in decl.items() if "." in k}
+        table_regs = sibling_tables(pbody, local, idx, fbdir)
         used = set()
         for m in re.finditer(r"\b([a-z]\w*)\s*(#\s*\()?", pbody):
             child = m.group(1)
@@ -2172,6 +2236,17 @@ def check_connections(src, rel, add, signers, fbdir):
             txt, _ = balanced(pbody, pbody.index("(", j + k.end(1)))
             ln = line_of(src, src.find(pbody) + m.start()) if pbody in src else 1
             pt = {}
+            # An output whose net the parent never reads (unconnected, or
+            # connected to a net nothing else names) reaches nothing (OI-219).
+            read_outs = set()
+            rest = pbody.replace(txt, " ")
+            rest = re.sub(r"\b(?:logic|wire|reg)\b[^;]*;", " ", rest)
+            for c in re.finditer(r"\.([a-z]\w*)\s*(\()?", txt):
+                if cports.get(c.group(1)) == "output":
+                    ex = balanced(txt, c.end() - 1)[0] if c.group(2) else c.group(1)
+                    if any(n in pports or re.search(r"\b%s\b" % re.escape(n), rest)
+                           for n in conn_ids(ex)):
+                        read_outs.add(c.group(1))
             for c in re.finditer(r"\.([a-z]\w*)\s*(\()?", txt):
                 port = c.group(1)
                 if UNSTAGED_RE.search(port) or port not in cports:
@@ -2222,6 +2297,11 @@ def check_connections(src, rel, add, signers, fbdir):
                     if key in xdecl:
                         used.add(key)
                         continue
+                    # A verified table (OI-217, OA-496): this child is a
+                    # sibling's declared table writer, and its input reaches
+                    # the output only through the table register.
+                    if inst in table_regs and only_into(cbody, cports, i, table_regs[inst], read_outs):
+                        continue
                     e = (parent, inst, i, None, pt[i][1], si[2], deficit,
                          "combinational" if comb else "register")
                     hit = [x for x in entries if x[:3] == e[:3] and x[3] is None]
@@ -2255,8 +2335,8 @@ def verify_port_table(n, port, d, body, graph, signers, path):
     in the parent, the port is fed directly by instance <inst>'s output that
     is its register <reg>; an assertion with that label in this module, that
     the read never meets a write; and a bench control that breaks it."""
-    if d.get("by") not in signers:
-        return "not an architect's (by %r, not one of %s)" % (d.get("by"), ", ".join(signers))
+    if not signed(d.get("by"), signers):
+        return "not an architect's (by %r; it needs %s)" % (d.get("by"), " and ".join(signers))
     reader = d.get("reader")
     if not reader or port not in graph[0].get(reader, ()):
         return "its reader %r does not read %s" % (reader, port)
@@ -2290,10 +2370,23 @@ def verify_port_table(n, port, d, body, graph, signers, path):
         if wi not in insts:
             return "%s has no instance %s" % (pn, wi)
         wchild, wports, wbody, wconns = insts[wi]
-        wout = [o for o, dr in wports.items() if dr == "output" and (o == wreg or re.search(
-            r"\bassign\s+%s\s*=\s*%s\s*;" % (re.escape(o), re.escape(wreg)), wbody))]
-        if wreg not in dep_graph(wbody)[1] or not wout:
-            return "%s.%s is not a register %s drives an output with" % (wi, wreg, wchild)
+        # The register reaches the writer's output through its combinational
+        # logic only, no register between (OA-496): read from a sibling's
+        # table, the words arrive as that register holds them.
+        wdeps, wflops = dep_graph(wbody)
+        wout = []
+        for o, dr in wports.items():
+            if dr != "output":
+                continue
+            if o == wreg:
+                wout.append(o)
+                continue
+            _, rr = cone(wdeps, wflops, wdeps.get(o, ()) if o not in wflops else ())
+            if o not in wflops and wreg in rr:
+                wout.append(o)
+        if wreg not in wflops or not wout:
+            return ("%s.%s is not a register reaching an output of %s through "
+                    "combinational logic only" % (wi, wreg, wchild))
         wnets = set(x for o in wout for x in conn_ids(wconns.get(o, "")))
         for _, _, _, conns in rd:
             if set(conn_ids(conns.get(port, ""))) != wnets or not wnets:
@@ -2315,6 +2408,89 @@ def verify_port_table(n, port, d, body, graph, signers, path):
             os.path.relpath(h, ROOT) for h in homes)
     return None
 
+
+def sibling_tables(pbody, local, idx, fbdir):
+    """{instance: {register}}: the table registers this parent's children
+    declare a sibling writes, "writer": "<inst>.<reg>" in a child's
+    feedback.json "tables" (OA-492, OA-496). The declaration itself is
+    verified where its reader is linted."""
+    out = {}
+    for iname, (child, ports, body, conns) in instances(pbody, local, idx, fbdir).items():
+        src = idx.get(child)
+        cdir = os.path.join(ROOT, os.path.dirname(src[0])) if src and src[0] else fbdir
+        _, _, _, tbl = feedback_decls(cdir, child)
+        for port, d in tbl.items():
+            w = str(d.get("writer", "")) if isinstance(d, dict) else ""
+            if "." in w and ports.get(port) == "input":
+                # The table must verify in this same run (OA-497).
+                cpath = os.path.join(cdir, child + ".sv")
+                cg = dep_graph(body)
+                if verify_port_table(child, port, d, body, cg,
+                                     feedback_signers(cdir), cpath):
+                    continue
+                wi, wreg = w.split(".", 1)
+                out.setdefault(wi, set()).add(wreg)
+    return out
+
+
+def only_into(body, ports, i, regs, read=None):
+    """OA-497/500: input i's forward cone inside the module ends solely at the
+    declared table registers' next value or enable, directly or through
+    write-pipeline registers whose whole fanout ends at the table registers
+    (or at another such register). It reaches at least one table register,
+    and no other register and no output the parent reads (an output left
+    unconnected reaches nothing, OI-219)."""
+    deps, flops = dep_graph(body)
+    users = {}
+    for n, ds in deps.items():
+        for x in ds:
+            users.setdefault(x, set()).add(n)
+
+    def reach(start):
+        # (registers, outputs read) one combinational step beyond start.
+        seen, todo, rr, outs = set(), [start], set(), False
+        while todo:
+            n = todo.pop()
+            for u in users.get(n, ()):
+                if u in seen:
+                    continue
+                seen.add(u)
+                if u in flops:
+                    rr.add(u)
+                    # A declared table register drives the output its reader
+                    # takes: that is the table, not a path around it.
+                    if ports.get(u) == "output" and u not in regs and \
+                            (read is None or u in read):
+                        outs = True
+                elif ports.get(u) == "output":
+                    if read is None or u in read:
+                        outs = True
+                else:
+                    todo.append(u)
+        return rr, outs
+
+    # The write pipeline: registers whose whole fanout ends at the table
+    # registers or at other pipeline registers (a fixed point; a register
+    # feeding itself as well counts, a hold).
+    good = set(regs)
+    fan = {r: reach(r) for r in flops}
+    grew = True
+    while grew:
+        grew = False
+        for r in flops:
+            if r in good:
+                continue
+            rr, outs = fan[r]
+            # A register that feeds no other register and no output the
+            # parent reads (no fanout at all, or an output the parent leaves
+            # unconnected, OI-219) reaches nothing outward: a dead end.
+            dead = not (rr - {r}) and (ports.get(r) != "output" or
+                                       (read is not None and r not in read))
+            if not outs and (dead or (rr - {r} and (rr - {r}) <= good)):
+                good.add(r)
+                grew = True
+    rr, outs = reach(i)
+    return (not outs) and bool(rr) and rr <= good
 
 def helper_self_loop(pbody, inets, onets, inst):
     """Whether the helper's input reads one parent register R and its
@@ -2386,16 +2562,38 @@ def verify_xloop(key, d, pbody, local, idx, signers, src, fbdir=None):
     the reader's input reaching the writer's output; and an assertion with
     that label in the parent or the reader's module, for the hazard the stale
     read opens, with its bench control named."""
-    if d.get("by") not in signers:
-        return "not an architect's (by %r, not one of %s)" % (d.get("by"), ", ".join(signers))
     insts = instances(pbody, local, idx, fbdir)
+    # A loop across blocks needs each block's architect (DA-135): every
+    # instance the declaration names adds its own block's owner.
+    named = {key.split(".", 1)[0]}
+    fr0 = d.get("from")
+    srcs = (fr0.get("cone") or []) if isinstance(fr0, dict) else [fr0]
+    for x in list(d.get("loop") or []) + [str(g) for g in srcs if g]:
+        if "." in str(x):
+            named.add(str(x).split(".", 1)[0])
+        elif str(x) in insts:
+            named.add(str(x))
+    need = set(signers)
+    fbrel = _signer_path["rel"] or (os.path.relpath(fbdir, ROOT) if fbdir else "")
+    for iname in sorted(named):
+        if iname in insts:
+            ch = insts[iname][0]
+            crel = idx[ch][0] if ch in idx and idx[ch][0] else fbrel
+            who = module_block_arch(ch, crel)
+            if who:
+                need.add(who)
+    signers = tuple(sorted(need))
+    if not signed(d.get("by"), signers):
+        return "not its block architect's (by %r; it needs %s)" % (
+            d.get("by"), " and ".join(signers))
     ri, rp = key.split(".", 1)
-    fr = str(d.get("from", ""))
-    if "." not in fr:
+    fr = d.get("from", "")
+    if isinstance(fr, dict) or "." not in str(fr):
         why = verify_regloop(ri, rp, fr, d, pbody, insts)
         if why:
             return why
         return verify_stale(d, pbody, insts, ri, fbdir)
+    fr = str(fr)
     wi, wp = fr.split(".", 1)
     if ri not in insts or wi not in insts:
         return "%s or %s is no instance of this module" % (ri, wi)
@@ -2456,22 +2654,150 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
     if rp not in insts[ri][1] or insts[ri][1][rp] != "input":
         return "%s is no input of %s" % (rp, ri)
     deps, flops = dep_graph(pbody)
-    if fr not in flops:
-        return "\"from\" %s is neither <instance>.<output> nor a register of this module" % fr
-    if conn_ids(insts[ri][3].get(rp, "")) != [fr]:
-        return "%s.%s does not read register %s directly" % (ri, rp, fr)
-    sn, sp = stage_of(fr), stage_of(rp)
-    if not sn or not sp or d.get("ahead") != sn[2] - sp[2]:
-        return "ahead is %r, but %s lies %s stage(s) past the input's tag" % (
-            d.get("ahead"), fr, (sn[2] - sp[2]) if sn and sp else "?")
+    # A register-free child is its parent's logic (OA 485): its in-to-out
+    # paths join the parent's combinational graph, so a hop through it
+    # (OI-213, u_ren1) is traced as the parent's own logic would be.
+    deps = {k: set(v) for k, v in deps.items()}
+    for hi, (hchild, hports, hbody, hconns) in insts.items():
+        if dep_graph(hbody)[1]:
+            continue
+        for o, reach in port_paths(hbody, hports).items():
+            for on in conn_ids(hconns.get(o, "")):
+                for i in reach:
+                    deps.setdefault(on, set()).update(conn_ids(hconns.get(i, "")))
     loop = [str(x) for x in (d.get("loop") or [])]
-    outs = [x for x in loop if "." in x]
-    regs = [x for x in loop if "." not in x]
-    if not outs or not regs or loop != outs + regs or regs[-1] != fr:
-        return ("\"loop\" lists the reader's output(s), then the parent registers in "
-                "order, ending at %s" % fr)
+    # Named crossings join the graph too, for the cone's reach (OA-495).
+    for h in loop:
+        if h.count(">") == 1 and "." in h:
+            ci, rest = h.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            if ci in insts:
+                for on in conn_ids(insts[ci][3].get(cout, "")):
+                    deps.setdefault(on, set()).update(conn_ids(insts[ci][3].get(cin, "")))
+    sp = stage_of(rp)
+    if isinstance(fr, dict):
+        # A combinational cone over listed parent registers (OA-495 (a)):
+        # exactly the listed registers reach the input through the parent's
+        # combinational nets and crossings, each ahead matching its tags.
+        listed = [str(x) for x in (fr.get("cone") or [])]
+        aheads = fr.get("ahead") or {}
+        if not listed:
+            return "a cone \"from\" lists no register"
+        nets, rr = cone(deps, flops, conn_ids(insts[ri][3].get(rp, "")))
+        # A cone may also list a sibling's output, "<inst>.<output>" (OI-218):
+        # its net is a source as a register is, held to the same terms.
+        outnet = {}
+        for oi, (och, opt, obody, oconns) in insts.items():
+            if not dep_graph(obody)[1]:
+                continue
+            for o, dr in opt.items():
+                if dr == "output":
+                    for nn in conn_ids(oconns.get(o, "")):
+                        outnet[nn] = "%s.%s" % (oi, o)
+        # A cone source may be a named crossing "<inst>.<in>><out>" of a
+        # sibling (OA-498): its output's net is a source, and its input must
+        # trace back, through the parent's combinational nets, only to
+        # listed registers.
+        cone_regs, xsrc = [], {}
+        for g in listed:
+            if ">" in g:
+                ci, rest = g.split(".", 1)
+                cin, cout = rest.split(">", 1)
+                if ci not in insts or insts[ci][1].get(cin) != "input" or \
+                        insts[ci][1].get(cout) != "output":
+                    return "cone crossing %s names no input and output of an instance here" % g
+                if not port_paths(insts[ci][2], insts[ci][1]).get(cout, {}).get(cin):
+                    return ("cone crossing %s: %s has no combinational path from %s to %s"
+                            % (g, insts[ci][0], cin, cout))
+                xsrc["%s.%s" % (ci, cout)] = g
+            elif "." in g:
+                # A sibling's output named directly (TI-575, OA-499): only
+                # where that sibling's tags are verified in this same run,
+                # it has a timing unit and is not on the stage ratchet.
+                oi, op = g.split(".", 1)
+                if oi not in insts or insts[oi][1].get(op) != "output":
+                    return "cone output %s is no output of an instance here" % g
+                if insts[oi][0] not in unit_modules() or insts[oi][0] in stage_ratchet():
+                    return ("cone output %s: %s's tags are not verified (no timing unit, or on "
+                            "rtl/stage-ratchet.json): name it as a crossing traced to listed "
+                            "registers instead (OA-498, OA-499)" % (g, insts[oi][0]))
+                cone_regs.append(g)
+            elif g not in flops:
+                return "cone register %s is no register of this module" % g
+            else:
+                cone_regs.append(g)
+        reached_out = set(outnet[nn] for nn in nets if nn in outnet)
+        rr = set(rr) | (reached_out & set(cone_regs))
+        for o in sorted(reached_out - set(cone_regs)):
+            if o not in xsrc:
+                return ("%s reaches %s.%s through the cone but no listed crossing names "
+                        "it: a cone lists every source it reads" % (o, ri, rp))
+        def xsources(g):
+            # What a crossing's input traces back to: parent registers, and
+            # verified sibling outputs (OA-501: the leads' u_go.lane_v,
+            # crossed through the register-free u_ren1).
+            ci, rest = g.split(".", 1)
+            xn, xr = cone(deps, flops, conn_ids(insts[ci][3].get(rest.split(">", 1)[0], "")))
+            return set(xr) | set(outnet[nn] for nn in xn if nn in outnet)
+        for o, g in sorted(xsrc.items()):
+            ci, rest = g.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            # A register-free child's crossing is the parent's logic: its
+            # output's net is reached when the cone's nets hold it.
+            if o not in reached_out and not set(conn_ids(insts[ci][3].get(cout, ""))) & set(nets):
+                return "cone crossing %s does not reach %s.%s" % (g, ri, rp)
+            xs = xsources(g)
+            if not xs or not xs <= set(cone_regs):
+                return ("cone crossing %s: its input %s traces to %s, not only to listed "
+                        "registers" % (g, cin, ", ".join(sorted(xs)) or "none"))
+        missing = sorted(set(rr) - set(cone_regs))
+        extra = sorted(set(cone_regs) - set(rr) - set().union(
+            *[xsources(g) for g in xsrc.values()] or [set()]))
+        if missing:
+            return ("register(s) %s reach %s.%s through the cone but are not listed: a "
+                    "cone lists every register it reads" % (", ".join(missing), ri, rp))
+        if extra:
+            return ("cone register(s) %s do not reach %s.%s through combinational logic"
+                    % (", ".join(extra), ri, rp))
+        for g in cone_regs:
+            gn = g
+            if "." in g:
+                oi, op = g.split(".", 1)
+                gn = (conn_ids(insts[oi][3].get(op, "")) or [op])[0]
+            sg = stage_of(gn)
+            if not sg or not sp or aheads.get(g) != sg[2] - sp[2]:
+                return "ahead for %s is %r, but it lies %s stage(s) past the input's tag" % (
+                    g, aheads.get(g), (sg[2] - sp[2]) if sg and sp else "?")
+        ends = set(cone_regs) | set(xsrc)
+    else:
+        if fr not in flops:
+            return ("\"from\" %s is neither <instance>.<output> nor a register of this "
+                    "module" % fr)
+        if conn_ids(insts[ri][3].get(rp, "")) != [fr]:
+            return "%s.%s does not read register %s directly" % (ri, rp, fr)
+        sn = stage_of(fr)
+        if not sn or not sp or d.get("ahead") != sn[2] - sp[2]:
+            return "ahead is %r, but %s lies %s stage(s) past the input's tag" % (
+                d.get("ahead"), fr, (sn[2] - sp[2]) if sn and sp else "?")
+        ends = {fr}
+    # The reader's output(s) first, then hops in order: a parent register, or
+    # a crossing "<inst>.<input>><output>" of a child with a combinational
+    # path from that input to that output (OA-494); the last is "from".
+    n_out = 0
+    while n_out < len(loop) and "." in loop[n_out] and ">" not in loop[n_out]:
+        n_out += 1
+    outs, hops = loop[:n_out], loop[n_out:]
+    last = hops[-1] if hops else ""
+    last_ok = last in ends or (">" in last and "%s.%s" % (
+        last.split(".", 1)[0], last.rsplit(">", 1)[-1]) in ends)
+    if not outs or not hops or not last_ok or any(
+            "." in h and ">" not in h for h in hops):
+        return ("\"loop\" lists the reader's output(s), then the hops in order (parent "
+                "registers, \"<inst>.<input>><output>\" crossings or \"<inst>.<input>>"
+                "<register>><output>\" registered hops), ending at %s"
+                % " or ".join(sorted(ends)))
     paths = port_paths(insts[ri][2], insts[ri][1])
-    onets = set()
+    src = set()
     for x in outs:
         oi, op = x.split(".", 1)
         if oi != ri:
@@ -2480,20 +2806,60 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
             return "%s is no output of %s" % (op, ri)
         if rp not in paths.get(op, {}):
             return "%s's input %s does not reach its output %s" % (ri, rp, op)
-        onets |= set(conn_ids(insts[ri][3].get(op, "")))
-    prev = None
-    for g in regs:
-        if g not in flops:
-            return "loop register %s is no register of this module" % g
-        nets, rr = cone(deps, flops, deps.get(g, ()))
-        if prev is None:
-            if not (onets & (nets | rr)):
-                return ("the loop's hop to %s is not traced: its next value and enable "
-                        "reach no listed output's net through combinational logic" % g)
-        elif prev not in rr:
-            return ("the loop's hop %s -> %s is not traced: %s's next value and enable "
-                    "do not read %s through combinational logic" % (prev, g, g, prev))
-        prev = g
+        src |= set(conn_ids(insts[ri][3].get(op, "")))
+    prev = " / ".join(outs)
+    for h in hops:
+        if h.count(">") == 2:
+            # A registered hop (OA-495 (c)): the child's input reaches the
+            # named register's next value or enable, and the register its
+            # output, each combinationally.
+            ci, rest = h.split(".", 1)
+            cin, creg, cout = rest.split(">")
+            if ci not in insts:
+                return "hop %s names no instance of this module" % h
+            cports = insts[ci][1]
+            cdeps, cflops = dep_graph(insts[ci][2])
+            if cports.get(cin) != "input" or cports.get(cout) != "output" or creg not in cflops:
+                return ("hop %s: %s is no input, %s no register or %s no output of %s"
+                        % (h, cin, creg, cout, ci))
+            dn, dr = cone(cdeps, cflops, cdeps.get(creg, ()))
+            if cin not in dn:
+                return ("hop %s: %s's input %s does not reach %s's next value or enable "
+                        "combinationally" % (h, insts[ci][0], cin, creg))
+            on, orr = cone(cdeps, cflops, cdeps.get(cout, ()) | ({cout} if cout in cflops else set()))
+            if creg not in orr and cout != creg:
+                return ("hop %s: %s's register %s does not reach its output %s "
+                        "combinationally" % (h, insts[ci][0], creg, cout))
+            nets, rr = cone(deps, flops, conn_ids(insts[ci][3].get(cin, "")))
+            if not (src & (nets | rr)):
+                return ("the loop's hop %s -> %s is not traced: %s's input %s does not read "
+                        "it through combinational logic" % (prev, h, ci, cin))
+            src = set(conn_ids(insts[ci][3].get(cout, "")))
+        elif ">" in h:
+            ci, rest = h.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            if ci not in insts:
+                return "crossing %s names no instance of this module" % h
+            cports = insts[ci][1]
+            if cports.get(cin) != "input" or cports.get(cout) != "output":
+                return "crossing %s: %s is no input or %s no output of %s" % (h, cin, cout, ci)
+            if not port_paths(insts[ci][2], cports).get(cout, {}).get(cin):
+                return ("crossing %s: %s has no combinational path from %s to %s; a "
+                        "registered crossing is refused" % (h, insts[ci][0], cin, cout))
+            nets, rr = cone(deps, flops, conn_ids(insts[ci][3].get(cin, "")))
+            if not (src & (nets | rr)):
+                return ("the loop's hop %s -> %s is not traced: %s's input %s does not read "
+                        "it through combinational logic" % (prev, h, ci, cin))
+            src = set(conn_ids(insts[ci][3].get(cout, "")))
+        else:
+            if h not in flops:
+                return "loop register %s is no register of this module" % h
+            nets, rr = cone(deps, flops, deps.get(h, ()))
+            if not (src & (nets | rr)):
+                return ("the loop's hop %s -> %s is not traced: %s's next value and enable "
+                        "do not read it through combinational logic" % (prev, h, h))
+            src = {h}
+        prev = h
     return None
 
 
@@ -2540,6 +2906,31 @@ def control_named(home, name):
             except OSError:
                 pass
     return False
+
+
+def check_orphan_feedback(roots=("rtl",)):
+    """A <module>.feedback.json the lint never reads is a silent pass
+    (MI-44): its module must be defined in a .sv file beside it."""
+    F = []
+    for r in roots:
+        for d, _, fns in os.walk(os.path.join(ROOT, r)):
+            defined = None
+            for fn in sorted(fns):
+                if not fn.endswith(".feedback.json"):
+                    continue
+                if defined is None:
+                    defined = set()
+                    for g in fns:
+                        if g.endswith((".sv", ".v")):
+                            defined |= set(n for _, _, n, _ in module_spans(
+                                strip_comments(open(os.path.join(d, g)).read())))
+                mod = fn[:-len(".feedback.json")]
+                if mod not in defined:
+                    F.append(Finding("CCV-L23", os.path.relpath(os.path.join(d, fn), ROOT), 1,
+                                     "%s is declared for module %s, which no .sv beside it "
+                                     "defines: the lint never reads it, so it is refused "
+                                     "until the module lands with it (MI-44)" % (fn, mod)))
+    return F
 
 
 def check_conn_ratchet():
@@ -2752,6 +3143,11 @@ def main():
     if not args or ratchet_given:
         findings.extend(check_stage_ratchet())
         findings.extend(check_conn_ratchet())
+    if not args:
+        findings.extend(check_orphan_feedback())
+    for a in sys.argv[1:]:
+        if a.startswith("--orphan-root="):
+            findings.extend(check_orphan_feedback((a.split("=", 1)[1],)))
     if names:
         findings.extend(check_module_names((names,)))
     for f in sorted(findings, key=lambda f: (f.path, f.line)):

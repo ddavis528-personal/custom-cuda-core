@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-24 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-27 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -60,7 +60,19 @@ file holds AR's.
 1. Read the register from the bookmarks, through `register-reader`.
 2. Answer rows with AR in Needs.
 3. Fetch, then merge every remote branch with commits ours lacks, except
-   `release` and `gate-scratch/*`. Conflicts:
+   `release` and `gate-scratch/*`, with the scratchpad's fast-merge.sh
+   (`<scratchpad>/fast-merge.sh <branches...>`; if the scratchpad was
+   cleared, rebuild it from AR 425's four steps). It merges on the newest single merge base (git merge-tree
+   --merge-base), settles a conflicted file only where one side's history
+   holds the other side's exact blob, else stops; `KEEP_OURS="<file>"` keeps
+   ours by hand for a file you checked. It signs with commit-tree -S (without
+   -S GitHub shows the merge Unverified). Proposed to TI for tools/ (AR 425).
+   TI-605: tools/sweep-merge.sh (6a3b5132, virtual base, RI-65) replaces it
+   once on our branch: `tools/sweep-merge.sh origin/<b> "<message>"` per
+   branch. Until TI signs its merge (AR 430: -S under commit.gpgsign),
+   re-sign its merges on the same trees before pushing.
+   Never git's recursive merge at many bases: 10 bases ran 5.5 h on one
+   branch on 11-27 without finishing. Conflicts by hand:
    - walkthrough: take theirs;
    - heavy-units.json: take TI's newest side.
 4. Regen, full gate, push on PASS.
@@ -77,8 +89,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 419 .686863 (tab rev 423).
-  - **The next AR row inserts after .686863**, labelled AR 420.
+  - Latest row: AR 432 .705344 (tab rev 437).
+  - **The next AR row inserts after .705344**, labelled AR 433.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -100,14 +112,50 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 423, OA 501, TI 584, MA 219, DI 93,
-  MI 68, RA 159, RI 92, IS 201, CP 160, OI 423, DA 136, Conventions 20 (full
-  sweep read 11-24; TI 584 read only for TI-582).
+- **Bookmarks** (revs read through): AR 437, OA 507, TI 606, MA 221, DI 99,
+  MI 74, RA 164, RI 101, IS 201, CP 160, OI 437, DA 136, Conventions 20 (full
+  sweep read 11-27; TI, RA, RI read further from notices).
+- **Pings:** Friday 11-27 to all 11 (OA IS TI OI CP RA RI MA RH MI DI); all
+  ponged within a minute, every one `check` rc 0. Saturday has nothing left
+  to check. All 11 pinged AR too; each got a pong.
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
+- **Sweep 2026-11-27 (merge):** fast-merge.sh merged all 10 branches in
+  0.5 s (clcw9s 148, doowtf 222, p8esoz 190, 0ch1hh 18, n6402z 146, lecnjf
+  135; 20cauz, 1vzyjg, 6msg93 already in) with 29 spurious conflicts, all
+  settled by history; doowtf's RA.md was an older RA copy (kept ours; TI asked
+  in AR 425 (b), RA-160 says RA's own merge was right). Regen clean, gate PASS
+  on 4cf5b3ea (ngd 14367 s, cg 13671 s); the 7 merges re-signed on the same
+  trees and pushed as 327863cf. Session home matches.
+  Register 11-27 after the merge: AR 424 (colwalk-p1k: no control; close AR
+  422 (1) unless a three-memop kernel is cheap). Credit modules: AR 426
+  confirmed TI-595 v3 (csr_cr its own cr_dst WIDTH 1; AVAIL and the +1 from
+  one links.json entry; COMB with SPEND_W > 1 an elaboration $error; waiver
+  max_flops counter+thr_q+ok_q). RI-67 showed AR 416 (1)'s +1 was misplaced;
+  settled in AR 427-429 with TI-597's split: COMB and in-cycle REG at 4+2N,
+  REG_LATE (OOE cok, ok_q = next>=2 || next==1 && !ok_q) at 4+2N+1, a
+  missing entry = REG_LATE; controls at the declared depth: COMB credlate2,
+  REG credlate, REG_LATE itself at 4+2N (RI-71 has them). No Daniel ruling
+  (arithmetic under his option A). rcu_pca_mig goes COMB (RA-160).
+- **Sweeps 2026-11-26 and 11-27:** the 11-26 merge stalled: clcw9s and
+  doowtf each took about 3 h, with 6 merge bases, and the first try was
+  killed at the 2 h task limit. Run long merges detached:
+  `tools/bg-run.sh <name> <script>`, then gate-wait. The other eight were
+  already contained in doowtf. Merged clcw9s 10, doowtf 105, rest 0; regen
+  clean. Gate PASS on 61347a89 (ngd 11615 s, cg 10671 s, no OOM). Pushed;
+  session home matches. 11-27 register: AR 420-422 are built on TI's ti-rp
+  (MA-34 B, EXB 8, TL source 8, TIMEOUT_MEMOP 40960). Its gate was red
+  (miu_ids bench; stub pins re-measured) and is re-running (TI-590/591).
+  miu_form check-cg OOM: MI's 3826f9cf (clang++) drops it to 564 MiB, and
+  TI takes it after ti-rp. OA 504: THRESHOLD_MLC stays 50 until the
+  re-sweep. OA 507 asked AR to fix doowtf (10 bases in OA's sweep). AR 423
+  (.692383): AR can't push there; doowtf is already in
+  ccr-80102643-4n8bv4, so merge that first. OA rung.
+  11-27 merges (clcw9s 12, p8esoz 95, 0ch1hh 15, n6402z 19, lecnjf 1,
+  1vzyjg 1) run after the push, then a gate.
 - **Sweep 2026-11-24 (Tuesday, no pings):** register: nothing open for AR.
   OA 476 took AR 414 (OA asked Daniel whether the 0.2% band covers all its
   cost rulings); DA rev 134 (OA, from Daniel): OOE paths already on
@@ -246,6 +294,21 @@ Credit rules (TI-49):
 
 ## Open work (most urgent first)
 
+000n. **PCA places (AR 431 .702820, 11-28; TI, RA, RI, OI rung).** gtw32
+   (32 warps) hung: a demote took its PCA place only at drained, all 28 held.
+   Ruled both: RAU reserves a place when it sends the demote (refused drained
+   returns it), and PCA gets a spare, CCV_PCA_PLACES = CCV_PARKED_WARPS + 1 =
+   29 (rows 247 of 256 per SRAM instance, inside the padding: no SRAM; div
+   state RFs 29 x 212, +1,060 bits; W_PCA_PLACE stays 5). Why the spare: the
+   policy is evict, so without it a full core never demotes until an exit.
+   Spec tabs edited: RAU Parked places (now list item .35863), .23245,
+   .37015 (was .34040); PCA .27, .12487, .3328 (doc revs RAU 66, PCA 21).
+   TI-606 built the reservation (ti-rau 4eb9a3d5; control brk
+   demote-no-place, vadd6 at CCV_RAU_PLACES=2); AR 432 took that control,
+   gtw32 clean is the acceptance run, one knob (CCV_RAU_PLACES overrides
+   CCV_PCA_PLACES). TI owes the param, the spare, two bins; then
+   OA's THRESHOLD_MLC re-sweep (OA 504) can run.
+
 000m. **Read-path depth DECIDED: B, 128 lines (DA row .137863, 11-24; PF-54).**
    MA-31 (MA rev 218) sized A 64 / B 128 / C 192 on p1 at TB latency 1000.
    AR 419 (.686863) agreed B, with three points: (2) keep CCV_MIU_PIPES 4,
@@ -259,6 +322,13 @@ Credit rules (TI-49):
    CCV_MIU_MEMOPS_INFLIGHT=8, about +800 flops (MI to measure); the
    return-state delta is +19.2 kbit; the 160-id pick splits by bank if it
    goes over 25 NGD. Nothing owed.
+   Since then: MA-34 carries B; MLC spec rev 4 has the 132-entry table and
+   HIT_MAX 28. AR 420 (EXB 8 plus require), AR 421 (TIMEOUT_MEMOP divides
+   by MSHR_PER_BANK, stays 40960; control colwalk-p1k at TB 1000) and
+   AR 422 (CCV_L_W_TL_SOURCE = W_REQ_MLC_EXB; TL_OUT 1229, TL_IN 1180;
+   ride-along dropped) are all built by TI (06b85bfa, 2f1fde73, 686a9846)
+   and land with ti-rp. DI-58 builds the per-bank dcu_mshr; MI-48 has
+   miu_ids at 160. Watch ti-rp's gate, then OA's re-sweep.
 000i1. **Re-baseline DONE (eb1c3851, AR 418 .685318, 11-24; MA rung).**
    RH's runs (warm-MLC recipe, 4e3dda64 vs 77f7849e, 49 exact): S1 1,640
    and cm32priv 1,177,935 unchanged at every seed; cm128priv 1,977,489 ->
@@ -285,7 +355,10 @@ Credit rules (TI-49):
    DEPTH, the checkers and AVAIL derive from it; COMB with SPEND_W>1 refused;
    waiver max_flops = the largest instance (MIU 8); lead:true only at
    FLOPPED=0. RA-159 confirmed with five RCU corrections, taken. TI builds
-   after the ti-tblat landing.
+   after the ti-tblat landing. 11-27: v3 confirmed (AR 426); AR 416 (1)'s
+   "REG and LATE +1" CORRECTED by AR 427-429: COMB and in-cycle REG at
+   4+2N, only REG_LATE +1, missing entry = REG_LATE (see the 11-27 sweep
+   note). Nothing owed by AR; TI builds after ti-rp.
 000k. **MLC hit max (AR 413 .676576, 11-23; OA, TI, MA rung), re: MA rev
    178 (d).** HIT_MAX's (2^W_REQ_DCU_MLC - 1) term (AR's TI-24 (5)) counted
    DCU's in-flight misses as a port queue; it becomes 2**W_REQ_FET_MLC (4),
