@@ -76,7 +76,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI OA-504: stub seeds 1-3 SENT 00:43Z 11-28 (nothing beats 50; gtw32 PCA hang at m35 3/3 seeds AND m100 on s2/s3). Fix (b) DONE: the hang survives 669cfdde
   (stub s1 m35, s2/s3 m100). Fix gtw32 grid DONE+SENT 00:55Z: ARM 50 HANGS at s4 and s5 (base 57ca7d30 too; pre-existing), m75 clean 3/3, m35 3/3 hang, m100 hangs s2/s3.
   OI raised OI-234 (RA/RI); m75 s4-10 not needed. KEEP the s4/s5 m50 gtw32 logs (base + fix) and the rh-oi504 kernels; repro in ~/ccv-logs/oi504stub/OI-234.repro
-- OA-504: part (a) reported; OI released rh-oi504fix (removed). Keep ~/ccv-logs/oi504fix and oi504stub until OI sends the full rerun (after TI lands AR-431 RAU fix). Keep rh-oi504 + OI-234.repro for RA/RI.
+- RUNNING OA-504 post-fix sweep (OI 06:07Z; OA-518, AR-431): worktree rh-oi504rau = 0dcdeab6+669cfdde (local merge, NEVER push), scripts /home/user/rh-jobs/oi504rau (prep, chainA small+cm32+read then stub gtw32 m50 s4-6, chainB cm128 serial), logs ~/ccv-logs/oi504rau/{stub,model}. Mixes stub/model MIU+p1, seeds 1-3, arms 35/50/75/100. Report: mean+worst-seed delta vs 50 per class/arm, chk/mm, CHECKs, hangs, S1 demote counters. Fallback trig_012M7vdJRcsbKyK4Zbr3vATb 08:09Z.
+- OA-504 old: OI released rh-oi504fix (removed). Keep ~/ccv-logs/oi504fix and oi504stub until OI sends the full rerun (after TI lands AR-431 RAU fix). Keep rh-oi504 + OI-234.repro for RA/RI.
   trigger 03:00Z. Disk: removed rh-oi504/build/bench-oracle (3G, regenerable) and trimmed the non-kept hang logs; s4/s5 m50 logs kept whole. FIX RUN (OI 22:23Z): rh-oi504fix = 57ca7d30 + 669cfdde (MA's OI-225 fix; local merge 6e034acc, never push), MA kernels copied.
   rh-jobs/oi504/prepfix.sh (prep) then chainfix.sh (after chains23): (a) oi504f.sh/oi504fr.sh model+p1 seed 1 all arms; (b) stub gtw32 m35. Logs ~/ccv-logs/oi504fix.
   Report one table (arm × class Δ vs 50) + req_id/credit CHECKs, 75/100 mismatches, hang lines.
