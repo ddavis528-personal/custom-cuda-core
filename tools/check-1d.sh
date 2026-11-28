@@ -166,6 +166,7 @@ for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/reference_cnp.sv rtl/lint/reference_rhp.sv rtl/lint/reference_dc.sv \
          rtl/lint/reference_mtpp.sv rtl/lint/reference_mtpr.sv rtl/lint/reference_mtpw.sv \
          rtl/lint/reference_ttp.sv rtl/lint/reference_ttr.sv rtl/lint/reference_ttw.sv \
+         rtl/lint/reference_pttp.sv rtl/lint/reference_pttr.sv rtl/lint/reference_pttw.sv \
          rtl/lint/reference_kp.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
@@ -285,7 +286,11 @@ WANT
 # reference_ttp/ttr/ttw: a sibling table's writer fed from later registers,
 # its inputs reaching its output only through the table register, excused
 # by the verified table (OI-217); bad_conn5.sv's writer input reaching the
-# output around the register is reported.
+# output around the register is reported. reference_pttp/pttr/pttw: the
+# writer's inputs reach the table register through write-pipeline registers
+# whose whole fanout ends there, excused (OA-500); bad_conn5.sv's
+# reference_xttp gives one pipeline register an output the parent reads,
+# and its input's back edge is reported.
 # reference_mtpp/mtpr/mtpw: a sibling's table register reaching its output
 # through a select, read by u_r (OA-496), passes; bad_tport2.sv's register
 # reaching the output through a second register is refused.
@@ -319,6 +324,7 @@ a port table fed through logic|table rd_cy04h (an input port) is refused: in ref
 a table writer whose table does not verify|reference_vttp's u_w (reference_vttw): output rd_cy02h (its stage 02, the parent's 02) depends on input en_cy01h
 a cone naming an unverified sibling's output|cross-module loop u_c.v_cy01h is refused: cone output u_x.y_cy02h: reference_xc's tags are not verified
 a cone crossing traced to an unlisted register|cross-module loop u_c.v_cy01h is refused: cone crossing u_x.a_cy02h>y_cy02h: its input a_cy02h traces to oq_cy04h, not only to listed registers
+a write-pipeline register with one more fanout|reference_xttp's u_w (reference_xttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy00h (its stage 00, fed at 04)
 a table writer's input around its register|reference_lttp's u_w (reference_lttw): output rd_cy02h (its stage 02, the parent's 02) depends on input d_cy01h (its stage 01, fed at 04) combinationally
 a sibling table through a second register|table rd_cy04h (an input port) is refused: u_w.tab_cy03h is not a register reaching an output of reference_qtpw through combinational logic only
 a port table with no assertion|table rd_cy04h (an input port) is refused: no assertion 'hd_read_not_written' in reference_stpr

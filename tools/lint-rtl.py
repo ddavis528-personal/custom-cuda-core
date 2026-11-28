@@ -2194,11 +2194,16 @@ def check_connections(src, rel, add, signers, fbdir):
             txt, _ = balanced(pbody, pbody.index("(", j + k.end(1)))
             ln = line_of(src, src.find(pbody) + m.start()) if pbody in src else 1
             pt = {}
+            # An output whose net the parent never reads (unconnected, or
+            # connected to a net nothing else names) reaches nothing (OI-219).
             read_outs = set()
+            rest = pbody.replace(txt, " ")
+            rest = re.sub(r"\b(?:logic|wire|reg)\b[^;]*;", " ", rest)
             for c in re.finditer(r"\.([a-z]\w*)\s*(\()?", txt):
                 if cports.get(c.group(1)) == "output":
                     ex = balanced(txt, c.end() - 1)[0] if c.group(2) else c.group(1)
-                    if conn_ids(ex):
+                    if any(n in pports or re.search(r"\b%s\b" % re.escape(n), rest)
+                           for n in conn_ids(ex)):
                         read_outs.add(c.group(1))
             for c in re.finditer(r"\.([a-z]\w*)\s*(\()?", txt):
                 port = c.group(1)
@@ -2387,40 +2392,63 @@ def sibling_tables(pbody, local, idx, fbdir):
 
 
 def only_into(body, ports, i, regs, read=None):
-    """OA-497: input i's forward cone inside the module, through its
-    combinational nets, ends solely at the declared table registers' next
-    value or enable: it reaches at least one, and no other register and no
-    output."""
+    """OA-497/500: input i's forward cone inside the module ends solely at the
+    declared table registers' next value or enable, directly or through
+    write-pipeline registers whose whole fanout ends at the table registers
+    (or at another such register). It reaches at least one table register,
+    and no other register and no output the parent reads (an output left
+    unconnected reaches nothing, OI-219)."""
     deps, flops = dep_graph(body)
     users = {}
     for n, ds in deps.items():
         for x in ds:
             users.setdefault(x, set()).add(n)
-    seen, todo, hit = set(), [i], set()
-    while todo:
-        n = todo.pop()
-        for u in users.get(n, ()):
-            if u in seen:
-                continue
-            seen.add(u)
-            if u in flops:
-                if u in regs:
-                    hit.add(u)
-                elif ports.get(u) == "output" and read is not None and u not in read:
-                    # An output register the parent leaves unconnected reaches
-                    # nothing outward (OI-219): follow its own users, so any
-                    # reach beyond it still counts.
-                    todo.append(u)
-                else:
-                    return False
-            elif ports.get(u) == "output" and (read is None or u in read):
-                # An output the parent leaves unconnected reaches nothing
-                # (OI-219); one it reads is a reach beyond the table.
-                return False
-            else:
-                todo.append(u)
-    return bool(hit)
 
+    def reach(start):
+        # (registers, outputs read) one combinational step beyond start.
+        seen, todo, rr, outs = set(), [start], set(), False
+        while todo:
+            n = todo.pop()
+            for u in users.get(n, ()):
+                if u in seen:
+                    continue
+                seen.add(u)
+                if u in flops:
+                    rr.add(u)
+                    # A declared table register drives the output its reader
+                    # takes: that is the table, not a path around it.
+                    if ports.get(u) == "output" and u not in regs and \
+                            (read is None or u in read):
+                        outs = True
+                elif ports.get(u) == "output":
+                    if read is None or u in read:
+                        outs = True
+                else:
+                    todo.append(u)
+        return rr, outs
+
+    # The write pipeline: registers whose whole fanout ends at the table
+    # registers or at other pipeline registers (a fixed point; a register
+    # feeding itself as well counts, a hold).
+    good = set(regs)
+    fan = {r: reach(r) for r in flops}
+    grew = True
+    while grew:
+        grew = False
+        for r in flops:
+            if r in good:
+                continue
+            rr, outs = fan[r]
+            # A register that feeds no other register and no output the
+            # parent reads (no fanout at all, or an output the parent leaves
+            # unconnected, OI-219) reaches nothing outward: a dead end.
+            dead = not (rr - {r}) and (ports.get(r) != "output" or
+                                       (read is not None and r not in read))
+            if not outs and (dead or (rr - {r} and (rr - {r}) <= good)):
+                good.add(r)
+                grew = True
+    rr, outs = reach(i)
+    return (not outs) and bool(rr) and rr <= good
 
 def helper_self_loop(pbody, inets, onets, inst):
     """Whether the helper's input reads one parent register R and its
