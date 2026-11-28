@@ -21,8 +21,8 @@ so this is a build artifact rather than something to remember.
 | `rtl/dcu/dcu_bctl.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_FILL_AGE`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_btag.sv` | — | `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_cap.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
-| `rtl/dcu/dcu_fill.sv` | — | `CCV_P_LINE_BYTES`, `CCV_P_W_REQ_DCU_MLC` |
-| `rtl/dcu/dcu_mshr.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_CORE_ID`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_DCU_MLC`, `CCV_P_W_REQ_MIU_DCU` |
+| `rtl/dcu/dcu_fill.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_CORE_ID`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_DCU_MLC`, `CCV_P_W_REQ_MIU_DCU` |
+| `rtl/dcu/dcu_mshr.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_DCU_MLC`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
 | `rtl/include/ooe_pl.svh` | `CCV_L_W_MEM_OP`, `CCV_L_W_OPCODE`, `CCV_P_W_BYP_GROUP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_IMM`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_IDX`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
 | `rtl/miu/miu_a2.sv` | — | `CCV_DCU_SETS`, `CCV_DCU_WAYPRED_BITS`, `CCV_P_LINE_BYTES`, `CCV_W_PA_FOLD` |
@@ -98,6 +98,8 @@ so this is a build artifact rather than something to remember.
 | `test/cg/tb_cg_clk.sv` | — | `CCV_CG_HYST_W` |
 | `test/dcu/bctl_tb.cpp` | — | — |
 | `test/dcu/cap_tb.cpp` | — | — |
+| `test/dcu/fill_tb.cpp` | — | — |
+| `test/dcu/mpick_tb.cpp` | — | — |
 | `test/dcu/mshr_tb.cpp` | — | — |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |

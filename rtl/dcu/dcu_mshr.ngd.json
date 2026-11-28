@@ -7,6 +7,12 @@
       "date": "2026-11-23",
       "why": "From a neighbour's flops or a channel (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
     },
+    "lsi_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a neighbour's flops or a channel (the DCU tab's rev 104 rule: every input from a flop or a channel arrives at 0 unless listed)."
+    },
     "rid_cc03h": {
       "arrival": 0.0,
       "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
@@ -37,71 +43,77 @@
       "date": "2026-11-23",
       "why": "From a neighbour's flops or a channel (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
     },
+    "drop_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a neighbour's flops or a channel (the DCU tab's rev 104 rule: every input from a flop or a channel arrives at 0 unless listed)."
+    },
+    "dv_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 104's rule; the D2 hand-off of DI-36's update, tab rev 112)",
+      "date": "2026-11-23",
+      "why": "From dcu_bctl's flops (the tab's rule). The miss is dv && !hit here, a gate ahead of the line compare's 14."
+    },
+    "hit_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 104's rule; the D2 hand-off of DI-36's update, tab rev 112)",
+      "date": "2026-11-23",
+      "why": "From dcu_btag's flops (the tab's row 'dcu_mshr inputs from dcu_btag and dcu_cap', arrival 0)."
+    },
     "mslot_cc04h": {
       "arrival": 0.0,
       "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
       "date": "2026-11-23",
       "why": "From dcu_bctl's flops (the tab's row 'dcu_mshr inputs from dcu_btag and dcu_cap', arrival 0)."
     },
-    "rov_cc02h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "rstp_cc02h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "rpa_cc03h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "rrid_cc03h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "rop_cc03h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "rexcl_cc03h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "rfold_cc03h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "rsti_cc03h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
     "rgv_cc03h": {
-      "required": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From dcu_mpick's flops (arrival 0)."
     },
     "rgb_cc03h": {
-      "required": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the ports of DI-35, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From dcu_mpick's flops (arrival 0)."
+    },
+    "rpa_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a flop (every driver is a flop: arrival 0); MA's budget for this input is 19 NGD inside dcu_mshr, the driving side 0."
+    },
+    "rrid_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a neighbour's flops or a channel (the DCU tab's rev 104 rule: every input from a flop or a channel arrives at 0 unless listed)."
+    },
+    "rop_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a neighbour's flops or a channel (the DCU tab's rev 104 rule: every input from a flop or a channel arrives at 0 unless listed)."
+    },
+    "rexcl_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a neighbour's flops or a channel (the DCU tab's rev 104 rule: every input from a flop or a channel arrives at 0 unless listed)."
+    },
+    "rfold_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a neighbour's flops or a channel (the DCU tab's rev 104 rule: every input from a flop or a channel arrives at 0 unless listed)."
+    },
+    "rsti_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a neighbour's flops or a channel (the DCU tab's rev 104 rule: every input from a flop or a channel arrives at 0 unless listed)."
     },
     "ov_cc05h": {
       "required": 0.0,
@@ -121,41 +133,47 @@
       "date": "2026-11-23",
       "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
     },
-    "mcr_cc04h": {
+    "hv_cc05h": {
+      "required": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule: every output launches from a flop, budget 0)."
+    },
+    "hstp_cc05h": {
+      "required": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule: every output launches from a flop, budget 0)."
+    },
+    "snv_cc05h": {
       "arrival": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "From a neighbour's flops or a channel (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a flop (every driver is a flop: arrival 0); MA's budget for this input is 15 NGD inside dcu_mshr, the driving side 0. MA budgeted the send as snt_cc05h; DI split it into dcu_mpick's valid (mv_cc05h) and its bank, decoded here (DI-67)."
     },
-    "mv_cc05h": {
-      "required": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
+    "sbk_cc05h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "From a flop (every driver is a flop: arrival 0); MA's budget for this input is 15 NGD inside dcu_mshr, the driving side 0. MA budgeted the send as snt_cc05h; DI split it into dcu_mpick's valid (mv_cc05h) and its bank, decoded here (DI-67)."
     },
-    "mrid_cc06h": {
+    "pid_cc05h": {
       "required": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule: every output launches from a flop, budget 0)."
     },
-    "mpa_cc06h": {
+    "ppa_cc05h": {
       "required": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule: every output launches from a flop, budget 0)."
     },
-    "mcoh_cc06h": {
+    "pcoh_cc05h": {
       "required": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
-    },
-    "mcid_cc06h": {
-      "required": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0) or a constant (core_id)."
+      "by": "MA (MA rev 227, DI-66: MA-34's per-bank dcu_mshr and dcu_mpick)",
+      "date": "2026-11-27",
+      "why": "Straight from a flop (the DCU tab's rev 104 rule: every output launches from a flop, budget 0)."
     },
     "fv_cc03h": {
       "arrival": 0.0,
@@ -199,30 +217,6 @@
       "date": "2026-11-23",
       "why": "Straight from a flop (the tab's rule: every output launches from a flop, budget 0)."
     },
-    "xv_cc04h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "From a neighbour's flops or a channel (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "xid_cc04h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
-      "date": "2026-11-23",
-      "why": "From a neighbour's flops or a channel (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
-    },
-    "dv_cc04h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the D2 hand-off of DI-36's update, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_bctl's flops (the tab's rule). The miss is dv && !hit here, a gate ahead of the line compare's 14."
-    },
-    "hit_cc04h": {
-      "arrival": 0.0,
-      "by": "MA (DCU tab rev 104's rule; the D2 hand-off of DI-36's update, tab rev 112)",
-      "date": "2026-11-23",
-      "why": "From dcu_btag's flops (the tab's row 'dcu_mshr inputs from dcu_btag and dcu_cap', arrival 0)."
-    },
     "flv_cc05h": {
       "required": 0.0,
       "by": "MA (MA rev 180, DI-40)",
@@ -246,6 +240,18 @@
       "by": "MA (MA rev 180, DI-40)",
       "date": "2026-11-23",
       "why": "Straight from a flop (the DCU tab's rev 104 rule); its receiver's arrival 0 rests on it (DI-40)."
+    },
+    "xv_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
+      "date": "2026-11-23",
+      "why": "From a neighbour's flops or a channel (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
+    },
+    "xid_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 104, slice 2 part 1, port NGD budgets)",
+      "date": "2026-11-23",
+      "why": "From a neighbour's flops or a channel (the tab's rule: every input from a flop or a channel arrives at 0 unless listed)."
     }
   }
 }
