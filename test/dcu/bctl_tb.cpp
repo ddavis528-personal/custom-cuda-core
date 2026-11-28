@@ -70,7 +70,7 @@
 
 namespace {
 
-constexpr unsigned kSlots = 4, kNB = 3, kWS = 9, kWays = 8, kWI = 6, kWF = ccv::prov::kDcuWaypredBits, kWR = kWS - kNB;
+constexpr unsigned kSlots = 4, kNB = 3, kWS = 9, kWays = 8, kWI = ccv::prov::kWReqMiuDcu, kWF = ccv::prov::kDcuWaypredBits, kWR = kWS - kNB;
 constexpr unsigned kSets = 1u << kWR, kQD = 16, kAge = 16, kBank = 0, kWWY = 3, kLines = 24;
 
 uint64_t g_seed = 0x5eed;
@@ -362,7 +362,7 @@ struct Bench {
     lastLsi = lsi;
     uint32_t rid = 0, fold = 0, drop = 0;
     for (unsigned s = 0; s < kSlots; ++s) {
-      uint32_t r = rnd ? g.below(64) : lastRid >> (s * kWI) & 63,
+      uint32_t r = rnd ? g.below(1u << kWI) : lastRid >> (s * kWI) & ((1u << kWI) - 1),
                f = rnd ? g.below(1u << kWF) : lastFold >> (s * kWF) & ((1u << kWF) - 1), d = rnd ? g.below(2) : 0;
       if (l0.valid && l0.slot == s) { r = l0.rid; f = l0.fold; d = l0.drop; }
       rid |= r << (s * kWI);
