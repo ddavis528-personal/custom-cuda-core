@@ -44,7 +44,7 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
 ## Register bookmarks (sweep of Fri 11-27)
-AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 231, MI 76, DI 99, DA 136,
+AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 232, MI 77, DI 99, DA 136,
 Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27; all 11 ponged ok, and
 every agent's ping to MI answered.
 - Sweep merges: ort on many criss-cross bases can run hours. Use scratchpad/sweep2.sh: merge-tree
@@ -59,7 +59,7 @@ every agent's ping to MI answered.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. Pushed 285eaef0 (SCOPED PASS). MI tab rev 76: MI-52 (ruled, below), MI-53 (TI: bin + merge).
+0. Pushed 285eaef0 (SCOPED PASS). MI tab rev 77: MI-52 (ruled, below), MI-53 (TI: bin + merge).
    MA tab rev 224: MI-52 ruled. New miu_pass (1 inst, stage H-1): picks every MQ-sourced lookup
    (later passes, window fills, drains incl st.pred RMW and atomic A1/A3, walker reads); TLB lookup
    (its one port, RR with L0 refills) before offering; flops per-lookup-slot candidate at H-1
@@ -71,9 +71,8 @@ every agent's ping to MI answered.
    first pass ahead of every pass; loser dropped like a first-pass loser, re-offered later.
    Bins pass_bank_lost, pass_slot_busy; controls pass-wins-bank, pass-on-owned-slot. Responses by
    req_id (miu_ids), never hitq. Partition row comes with slice 2's notice (wait for it).
-   MA-35: MA changed MI's miu_a2.sv (DS param, lofold), a2_tb, cg-build, run-rtl (bench
-   miu_a2_s64, control lofold). Merge MA's branch at next sweep; answer MA-35 (shape OK?).
-   MA rev 231: MI-51 fixed (669cfdde pushed: p1 skips dropped lookups, 0 CHECKs cm32priv model+p1; control dcu-drop-answers). Mark MI-51 closed in MI tab; merge at sweep.
+   MA-35 merged (8bd5f9f2, MA's cd94f843: lofold in miu_a2, unit miu_a2_s64, control lofold) and
+   accepted in MI-54 (rev 77, rung MA); MI-51 closed (MA's 669cfdde). Gate-push of the merge in flight.
 1. Option B done in the model (0c891315): IdPool(width, slots, ids=kMiuDcuIds) interleaved
    id%4 = slot; record gate recs_ = CCV_MIU_MEMOPS_INFLIGHT (env lowers it), bin miu_memop_rec_full.
 2. miu_pass (MI-52) once MA's slice-2 notice brings its partition row. miu_grp remaining: lines + lost flag (OA-486 assertion +
