@@ -37,14 +37,19 @@ wins (spec content nodes: MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-
 - Single-unit checks: tools/bg-run.sh <name> python3 tools/check-ngd.py --unit <u> (or check-cg.py);
   check-cg --unit exit 0 does not apply the module budget: read ungated vs max(2%, 7).
   Lint: python3 tools/lint-rtl.py. Benches + controls: test/miu/run-rtl.sh.
-- RTL lessons: CCV-L23 no self-feeding shift array; a comb net read by more than its own state's
+- RTL lessons: CCV-L23 no self-feeding shift array; a hold enable (prev || self valid) must be
+  `logic x_en_cmNNh; assign ...` (the D-side exemption skips `wire x = ...`), named <what>_en; a comb net read by more than its own state's
   flops goes inline in always_ff; no package-to-package params; one assert label per module;
   tags _cmNNh; RST-1; CG-5; (* keep *) output copies; payload no-flop end: compute both, mux last.
   Sum == constant without a carry chain: A+B+c == K iff A^B^K == {Z[n-2:0], c}, Z = A&B | (A|B)&~K.
 
 ## Register bookmarks (sweep of Fri 11-27)
-AR 423, OA 503, IS 201, TI 586, OI 427, CP 160, RA 159, RI 92, MA 221, MI 70, DI 96, DA 136,
-Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27.
+AR 426, OA 506, IS 201, TI 594, OI 428, CP 160, RA 159, RI 93, MA 232, MI 77, DI 99, DA 136,
+Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27; all 11 ponged ok, and
+every agent's ping to MI answered.
+- Sweep merges: ort on many criss-cross bases can run hours. Use scratchpad/sweep2.sh: merge-tree
+  against the one base with fewest conflicts, auto-resolving only where one side's blob is in the
+  other's history; anything else stops for a decision.
 - MI tab rev 72: MI-47 (8566e6ff to TI; MI-20/29/46 decided), MI-48 (TI-590, OA-505).
 - TI-569/571: ccv_miu.feedback.json lands with the ccv_miu assembly (held at
   scratchpad/ccv_miu.feedback.held.json, "by": "MA" per DA-135).
@@ -54,23 +59,32 @@ Conventions 20; specs MIU 236, Common 9, DCU 142. Friday pings sent 11-27.
   AR 419: time the 160-id free pick against 25 NGD (free-list FIFO is flat); over -> split by bank (20/bank).
 
 ## Open work, most urgent first
-0. TI-590 (blocks TI's option-B gate): miu_ids fix 1ed1800b on gate-scratch/MI-rp (built on TI-rp
-   1183b16c in worktree scratchpad/wt-rp, local branch mi-rp): 160 ids, quarter k = ids q*4+k, log-depth
-   pick, AND-OR read; NGD 20.0, all MIU benches pass. MI-48 (rev 72) rung TI + OA. When TI lands ti-rp,
-   merge it into mi-dev (1ed1800b comes with it), re-measure MI's IMPL_PINS rows (held-wait 875/876,
-   privwin priv_form 10, UE rows) on its params.
-   OA-505 done (MI-49, rev 73): miu_form's 11.5 GB was g++ on check-cg's replay harness; replay_cxx
-   clang++ in test/miu/cg-units.json -> 564 MiB, same result. On gate-scratch/MI-rp as 3826f9cf (TI to
-   cherry-pick with 1ed1800b) and on mi-dev as 104678de (unpushed; goes with the next gate-push).
-   Pings 11-27: all 11 ponged; OI and RH sender=stale (their rosters lack MI; their fix).
-1. Option B rest: model IdPool cap at ccv::kMiuDcuIds (TI-584), 8-bit req_id, memops 8 (after ti-rp lands).
-2. miu_grp remaining: window fill RTL (same-bank fill-vs-pass case + control in lead_tb, MA rev 213);
-   lines + lost flag (OA-486 assertion + control); drop_held; predicate-transfer faults.
-3. Then: miu_hitq, miu_rsp (fill assertion + orphan control, MA rev 187), miu_ext, miu_ecc (K=128,
-   syndrome R2, budget 17), miu_out, ccv_miu top (+ feedback.json); miu_cred -> TI's common counter.
+0. Pushed 285eaef0 (SCOPED PASS). MI tab rev 77: MI-52 (ruled, below), MI-53 (TI: bin + merge).
+   MA tab rev 224: MI-52 ruled. New miu_pass (1 inst, stage H-1): picks every MQ-sourced lookup
+   (later passes, window fills, drains incl st.pred RMW and atomic A1/A3, walker reads); TLB lookup
+   (its one port, RR with L0 refills) before offering; flops per-lookup-slot candidate at H-1
+   {valid, PA line, set, bank, pa_fold, kind, MQ entry}. Order: walker, N_drain-fired drain, fills +
+   later passes oldest MQ first, other drains. miu_lead gains a flop-selected 2:1 before req valid
+   and lead flops: slot k takes the candidate only when no first pass owns k by footprint (miu_pair
+   H-1 flops), never on the late credit-gated valid. Pass spends bank credit via miu_cred; used[b]
+   counts it. miu_a2 muxes payload by flopped pass bit (PA from candidate, no L0). A2 ranks every
+   first pass ahead of every pass; loser dropped like a first-pass loser, re-offered later.
+   Bins pass_bank_lost, pass_slot_busy; controls pass-wins-bank, pass-on-owned-slot. Responses by
+   req_id (miu_ids), never hitq. Partition row comes with slice 2's notice (wait for it).
+   MA-35 merged (8bd5f9f2, MA's cd94f843: lofold in miu_a2, unit miu_a2_s64, control lofold) and
+   accepted in MI-54 (rev 77, rung MA); MI-51 closed (MA's 669cfdde). Gate-push of the merge in flight.
+1. Option B done in the model (0c891315): IdPool(width, slots, ids=kMiuDcuIds) interleaved
+   id%4 = slot; record gate recs_ = CCV_MIU_MEMOPS_INFLIGHT (env lowers it), bin miu_memop_rec_full.
+2. miu_pass (MI-52) once MA's slice-2 notice brings its partition row. miu_grp remaining: lines + lost flag (OA-486 assertion +
+   control); drop_held; predicate-transfer faults.
+3. miu_hitq landed (ef9bb022; 253 flops, 22 gates). Next: miu_rsp (fill assertion + orphan
+   control, MA rev 187; reads hitq's hv/he/hs at R1), miu_ext, miu_ecc (K=128, syndrome R2,
+   budget 17), miu_out, ccv_miu top (+ feedback.json); miu_cred -> TI's common counter.
 4. Model: UE on a clean line keeps req_id live (AR 403); mispredict late answer at due+2 (AR 405);
    MI-11 (2); way-mispredict path (AR 390). Awaiting TI: MI-4, MI-8, MI-9 (3), MI-13. M0 report.
 - Scratch: scratchpad/wt-tr worktree (its sim/miu/miu_block.cpp has an L0T debug trace; never carry).
 
 ## Pushed
-- ccr-58815650-0ch1hh at 8566e6ff: full PASS (sweep 11-27 merge + A2 faults + MQ lane map + F-SHARED).
+- ccr-58815650-0ch1hh at 208e4c46: SCOPED PASS (miu_form clang++, handoff); RI and TI rung.
+- ccr-58815650-0ch1hh at 285eaef0: SCOPED PASS (option B model, miu_hitq, handoff).
+- ccr-58815650-0ch1hh at 8719d88b: full PASS (sweep merge of 8 branches incl. TI's c0883a36).
