@@ -1,0 +1,31 @@
+{
+  "_comment": "bad_conn6.sv's reference_pkp.",
+  "reads": {
+    "u_c.v_cy01h": {
+      "from": {
+        "cone": [
+          "pm_cy04h",
+          "u_x.y_cy02h"
+        ],
+        "ahead": {
+          "pm_cy04h": 3,
+          "u_x.y_cy02h": 3
+        }
+      },
+      "loop": [
+        "u_c.e_cy02h",
+        "pm_cy03h",
+        "pm_cy04h"
+      ],
+      "assert": [
+        "conn_m_fresh"
+      ],
+      "control": [
+        "conn-m-dup"
+      ],
+      "by": "OA",
+      "date": "2026-11-24",
+      "why": "a cone over a parent register and a crossing of a sibling traced to a listed register (OA-498)"
+    }
+  }
+}
