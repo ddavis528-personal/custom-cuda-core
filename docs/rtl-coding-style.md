@@ -627,6 +627,10 @@ reader's own; in every parent instantiating the module, the port is fed
 directly by that instance's output driven by that register; the module
 holds the named assertion that the read never meets a write; and the
 bench names its control. Then the read counts at the reader's stage.
+The writer's register may reach its output through the writer's
+combinational logic, never another register (OA-496: a sibling child's
+table, as u_map's read by u_dep; `reference_mtpp.sv` passes,
+`bad_tport2.sv` is refused).
 `reference_tpp.sv` (with `reference_tpr.sv`, `reference_tpw.sv`) passes;
 `bad_tport.sv`'s wrong `ahead`, port fed through logic and missing
 assertion are refused.
