@@ -44,7 +44,9 @@
 // sec_free_live and sec_alloc_free catch; ooe_rename's CCV-L23 loop control)
 // and rt-late (Rename 2's returns a cycle late, each naming a row
 // granted two edges back, which rt_of_grant catches; the loop control
-// of u_gfree's rt_v and rt_row).
+// of u_gfree's rt_v and rt_row), and sal-late and rtl-late (sa_l or
+// rt_l a cycle late, which sa_led or rt_led catches; the loop controls
+// of u_gfree's sa_l and rt_l).
 //
 // FL_POOL selects the pool: 0 the GPR rows (CCV_P_PHYS_REGS), 1 the
 // predicates (CCV_P_PRED_REGS). Each new core resets the RTL. Every
@@ -345,8 +347,9 @@ void hook(const Core &c) {
     // Each lane's lead: the next step's allocation or return on it.
     const auto &nsa = control == "sa-early" ? c.cycleSecAllocs() : control == "sa-late" ? prev2_sa : prev_sa;
     auto lanes = [](size_t n) { return n ? (1u << std::min<size_t>(n, FL_A)) - 1u : 0u; };
-    dut->sa_l_cq00h = lanes(nsa.size());
-    dut->rt_l_cq00h = lanes(control == "rt-late" ? prev_rt.size() : c.cycleReturns().size());
+    // sal-late and rtl-late: that lead a cycle late, the step's own allocations or returns.
+    dut->sa_l_cq00h = lanes(control == "sal-late" ? sa.size() : nsa.size());
+    dut->rt_l_cq00h = lanes(control == "rtl-late" ? rt.size() : control == "rt-late" ? prev_rt.size() : c.cycleReturns().size());
     driven_sa2 = driven_sa;
     driven_sa = sa;
     sec_allocs += sa.size();
