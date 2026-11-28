@@ -662,8 +662,10 @@ order, the last being `"from"`; each hop is traced (the first register's
 next value or enable reads a listed output's net, each later one the
 register before it, through combinational nets only), and `ahead` is
 `"from"`'s stage less the input's tag. A hop may cross a register-free
-helper, which is the parent's logic (OI-213; `reference_hp.sv`), never a
-child with a register (`bad_conn3.sv`). A `<module>.feedback.json` beside no
+helper unnamed, as the parent's logic (OI-213; `reference_hp.sv`), and any
+child through a combinational path named in the loop as
+`"<inst>.<input>><output>"` (OA-494; `reference_xp.sv`); a named crossing
+of a registered path is refused (`bad_conn3.sv`). A `<module>.feedback.json` beside no
 `.sv` defining its module is refused, since the lint would never read it
 (MI-44). `reference_pp.sv` holds both;
 `bad_conn2.sv`'s untraced hop and helper feeding a second register are

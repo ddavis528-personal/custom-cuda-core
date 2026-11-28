@@ -2476,13 +2476,19 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
         return "ahead is %r, but %s lies %s stage(s) past the input's tag" % (
             d.get("ahead"), fr, (sn[2] - sp[2]) if sn and sp else "?")
     loop = [str(x) for x in (d.get("loop") or [])]
-    outs = [x for x in loop if "." in x]
-    regs = [x for x in loop if "." not in x]
-    if not outs or not regs or loop != outs + regs or regs[-1] != fr:
-        return ("\"loop\" lists the reader's output(s), then the parent registers in "
-                "order, ending at %s" % fr)
+    # The reader's output(s) first, then hops in order: a parent register, or
+    # a crossing "<inst>.<input>><output>" of a child with a combinational
+    # path from that input to that output (OA-494); the last is "from".
+    n_out = 0
+    while n_out < len(loop) and "." in loop[n_out] and ">" not in loop[n_out]:
+        n_out += 1
+    outs, hops = loop[:n_out], loop[n_out:]
+    if not outs or not hops or hops[-1] != fr or any(
+            "." in h and ">" not in h for h in hops):
+        return ("\"loop\" lists the reader's output(s), then the hops in order (parent "
+                "registers, or \"<inst>.<input>><output>\" crossings), ending at %s" % fr)
     paths = port_paths(insts[ri][2], insts[ri][1])
-    onets = set()
+    src = set()
     for x in outs:
         oi, op = x.split(".", 1)
         if oi != ri:
@@ -2491,20 +2497,34 @@ def verify_regloop(ri, rp, fr, d, pbody, insts):
             return "%s is no output of %s" % (op, ri)
         if rp not in paths.get(op, {}):
             return "%s's input %s does not reach its output %s" % (ri, rp, op)
-        onets |= set(conn_ids(insts[ri][3].get(op, "")))
-    prev = None
-    for g in regs:
-        if g not in flops:
-            return "loop register %s is no register of this module" % g
-        nets, rr = cone(deps, flops, deps.get(g, ()))
-        if prev is None:
-            if not (onets & (nets | rr)):
-                return ("the loop's hop to %s is not traced: its next value and enable "
-                        "reach no listed output's net through combinational logic" % g)
-        elif prev not in rr:
-            return ("the loop's hop %s -> %s is not traced: %s's next value and enable "
-                    "do not read %s through combinational logic" % (prev, g, g, prev))
-        prev = g
+        src |= set(conn_ids(insts[ri][3].get(op, "")))
+    prev = " / ".join(outs)
+    for h in hops:
+        if ">" in h:
+            ci, rest = h.split(".", 1)
+            cin, cout = rest.split(">", 1)
+            if ci not in insts:
+                return "crossing %s names no instance of this module" % h
+            cports = insts[ci][1]
+            if cports.get(cin) != "input" or cports.get(cout) != "output":
+                return "crossing %s: %s is no input or %s no output of %s" % (h, cin, cout, ci)
+            if not port_paths(insts[ci][2], cports).get(cout, {}).get(cin):
+                return ("crossing %s: %s has no combinational path from %s to %s; a "
+                        "registered crossing is refused" % (h, insts[ci][0], cin, cout))
+            nets, rr = cone(deps, flops, conn_ids(insts[ci][3].get(cin, "")))
+            if not (src & (nets | rr)):
+                return ("the loop's hop %s -> %s is not traced: %s's input %s does not read "
+                        "it through combinational logic" % (prev, h, ci, cin))
+            src = set(conn_ids(insts[ci][3].get(cout, "")))
+        else:
+            if h not in flops:
+                return "loop register %s is no register of this module" % h
+            nets, rr = cone(deps, flops, deps.get(h, ()))
+            if not (src & (nets | rr)):
+                return ("the loop's hop %s -> %s is not traced: %s's next value and enable "
+                        "do not read it through combinational logic" % (prev, h, h))
+            src = {h}
+        prev = h
     return None
 
 
