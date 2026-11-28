@@ -1,0 +1,18 @@
+{
+  "_comment": "bad_conn9.sv's reference_rgp: the loop declared through a grandchild with a register (OI-227 (e)).",
+  "reads": {
+    "u_c.a_cy01h": {
+      "from": "rm_cy02h",
+      "ahead": 1,
+      "loop": [
+        "u_c.y_cy02h",
+        "rm_cy02h"
+      ],
+      "assert": "conn_g_fresh",
+      "control": "conn-g-dup",
+      "by": "OA",
+      "date": "2026-11-27",
+      "why": "u_c's input reaches its output through its register-free child u_g, traced as u_c's logic (OI-227 (e)); the loop closes through m_cy02h"
+    }
+  }
+}

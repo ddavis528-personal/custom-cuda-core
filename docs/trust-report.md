@@ -29,6 +29,7 @@ so this is a build artifact rather than something to remember.
 | `rtl/miu/miu_agu8.sv` | — | `CCV_PRIV_WINDOWS` |
 | `rtl/miu/miu_cred.sv` | — | `CCV_DCACHE_LOOKUPS`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA` |
 | `rtl/miu/miu_form.sv` | `CCV_L_W_MEM_OP` | `CCV_LANE_CONTEXTS`, `CCV_MEMOP_CREDITS`, `CCV_PRIV_WINDOWS`, `CCV_P_CORE_ID`, `CCV_P_W_CTA_SLOT`, `CCV_P_W_DEV_CORE` |
+| `rtl/miu/miu_hitq.sv` | — | `CCV_MEMOP_CREDITS` |
 | `rtl/miu/miu_ids.sv` | — | `CCV_MEMOP_CREDITS`, `CCV_P_W_REQ_MIU_DCU` |
 | `rtl/miu/miu_lead.sv` | — | `CCV_PRIV_WINDOWS` |
 | `rtl/miu/miu_mq.sv` | `CCV_L_W_MEM_OP` | `CCV_MEMOP_CREDITS`, `CCV_P_W_CTA_SLOT`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
